@@ -275,6 +275,7 @@ function Coachmarks({
           <div
             className="guide-dim"
             style={{ top: 0, left: 0, right: 0, height: Math.max(0, box.top) }}
+            onClick={(e) => e.stopPropagation()}
           />
           <div
             className="guide-dim"
@@ -284,6 +285,7 @@ function Coachmarks({
               right: 0,
               bottom: 0,
             }}
+            onClick={(e) => e.stopPropagation()}
           />
           <div
             className="guide-dim"
@@ -293,6 +295,7 @@ function Coachmarks({
               width: Math.max(0, box.left),
               height: box.height,
             }}
+            onClick={(e) => e.stopPropagation()}
           />
           <div
             className="guide-dim"
@@ -302,29 +305,28 @@ function Coachmarks({
               right: 0,
               height: box.height,
             }}
+            onClick={(e) => e.stopPropagation()}
           />
           <div className="guide-spot" style={box} />
         </>
       ) : (
-        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-200" />
+        <div
+          className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-200"
+          onClick={(e) => e.stopPropagation()}
+        />
       )}
-
-      {/* Click blocker */}
-      <div
-        className="absolute inset-0"
-        onClick={(e) => e.stopPropagation()}
-      />
 
       {/* Coachmark Card */}
       <div
+        key={index}
         ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="guide-title"
         aria-describedby="guide-body"
         tabIndex={-1}
-        className="fixed z-10 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
-        style={cardStyle}
+        className="fixed z-[100] rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95 pointer-events-auto"
+        style={{ ...cardStyle, zIndex: 100 }}
       >
         {arrowStyle && (
           <span
@@ -348,7 +350,10 @@ function Coachmarks({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="-mr-1.5 -mt-1.5 flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] transition-colors cursor-pointer"
             aria-label="Close guide"
           >
@@ -383,8 +388,11 @@ function Coachmarks({
         <div className="mt-5 flex items-center justify-between gap-2 pt-3 border-t border-[var(--line)]">
           <button
             type="button"
-            onClick={onClose}
-            className="text-xs font-semibold text-[var(--muted)] hover:text-[var(--ink)] transition-colors px-2 py-1.5"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="text-xs font-semibold text-[var(--muted)] hover:text-[var(--ink)] transition-colors px-2 py-1.5 cursor-pointer"
           >
             Skip Tour
           </button>
@@ -392,8 +400,11 @@ function Coachmarks({
             {index > 0 && (
               <button
                 type="button"
-                onClick={back}
-                className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  back();
+                }}
+                className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 cursor-pointer"
               >
                 <ArrowLeft size={14} strokeWidth={2.5} />
                 <span>Back</span>
@@ -401,8 +412,11 @@ function Coachmarks({
             )}
             <button
               type="button"
-              onClick={next}
-              className="btn-primary text-xs py-1.5 px-3.5 flex items-center gap-1.5 shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                next();
+              }}
+              className="btn-primary text-xs py-1.5 px-3.5 flex items-center gap-1.5 shadow-sm cursor-pointer font-bold"
             >
               <span>{last ? "Done" : "Next"}</span>
               {!last && <ArrowRight size={14} strokeWidth={2.5} />}

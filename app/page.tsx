@@ -680,7 +680,7 @@ function ClinicDashboardContent() {
             portalName={store.portalConfig.portalName}
             hasAccess={(key) => store.hasAccess(user.role, key as ModuleKey)}
             onOpenItem={handleOpenMenuItem}
-            onOpenGuide={() => setGuideModalOpen(true)}
+            onOpenGuide={() => guide.start("menu")}
           />
         )}
 
