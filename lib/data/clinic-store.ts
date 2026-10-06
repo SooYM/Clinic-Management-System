@@ -608,14 +608,16 @@ export function useClinicStore(isAuthenticated = false) {
   }, []);
 
   function updatePortalConfig(updates: Partial<ClinicPortalConfig>) {
+    let updatedName = "";
     setPortalConfig((prev) => {
       const next = { ...prev, ...updates };
+      updatedName = next.portalName;
       try {
         localStorage.setItem("kumo_portal_config", JSON.stringify(next));
       } catch {}
-      notify(`Portal updated: "${next.portalName}"`, "success");
       return next;
     });
+    notify(`Portal updated: "${updatedName || updates.portalName || "Settings"}"`, "success");
   }
 
   function resetPortalConfig() {

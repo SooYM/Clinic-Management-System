@@ -11,7 +11,15 @@ let counter = 0;
 /** Fire a transient popup from anywhere (no provider/threading needed). */
 export function notify(message: string, kind: Kind = "success") {
   const toast = { id: ++counter, message, kind };
-  listeners.forEach((l) => l(toast));
+  if (typeof queueMicrotask === "function") {
+    queueMicrotask(() => {
+      listeners.forEach((l) => l(toast));
+    });
+  } else {
+    setTimeout(() => {
+      listeners.forEach((l) => l(toast));
+    }, 0);
+  }
 }
 
 /** Mounted once near the root; renders the stack of active toasts. */

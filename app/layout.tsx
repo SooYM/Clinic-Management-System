@@ -5,7 +5,7 @@ import { SessionProvider } from "../lib/state/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Kumo Clinic Management System (CMS)",
+  title: "Clinical Management System",
   description: "Malaysia-focused clinic operations workspace for patient registration, queues, clinical documents, inventory, and billing.",
 };
 
