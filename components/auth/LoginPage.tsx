@@ -9,24 +9,24 @@ interface Props {
 
 export function LoginPage({ onSuccess }: Props) {
   const { signIn } = useSession();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const [busy, setBusy] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const fe: { email?: string; password?: string } = {};
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Enter your clinic email address.";
+    const fe: { username?: string; password?: string } = {};
+    if (!username.trim()) fe.username = "Enter your username or clinic email.";
     if (!password) fe.password = "Enter your password.";
     setFieldErrors(fe);
-    if (fe.email || fe.password) return;
+    if (fe.username || fe.password) return;
 
     setBusy(true);
     setError(null);
     try {
-      await signIn(email.trim(), password);
+      await signIn(username.trim(), password);
       onSuccess?.();
     } catch (err) {
       setError((err as Error).message);
@@ -156,22 +156,22 @@ export function LoginPage({ onSuccess }: Props) {
 
             <div>
               <label className="text-xs font-bold text-[var(--ink)] block mb-1">
-                Email
+                Username or Email
               </label>
               <input
-                type="email"
+                type="text"
                 autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 autoFocus
-                placeholder="name@clinic.my"
+                placeholder="admin, doctor, reception, nurse"
                 className={`w-full text-xs p-2.5 rounded-lg border ${
-                  fieldErrors.email ? "border-[var(--danger)]" : "border-[var(--line)]"
+                  fieldErrors.username ? "border-[var(--danger)]" : "border-[var(--line)]"
                 } bg-[var(--surface-2)] focus:bg-[var(--surface)] focus:border-[var(--blue)] font-medium`}
               />
-              {fieldErrors.email && (
+              {fieldErrors.username && (
                 <span className="text-[0.68rem] text-[var(--danger)] mt-1 block font-medium">
-                  {fieldErrors.email}
+                  {fieldErrors.username}
                 </span>
               )}
             </div>

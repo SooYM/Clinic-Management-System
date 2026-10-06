@@ -1,6 +1,6 @@
 # Clinic Management System
 
-Malaysia-focused clinic management system with a Supabase/PostgreSQL foundation. Authentication, patient registration/directory, queue operations, and clinical document issue/revision/print logs use server APIs backed by PostgreSQL. Scheduling, encounters/prescriptions, rooms, packages, inventory, billing/payments, notifications, commissions, and complete administration are not yet operational.
+Malaysia-focused clinic management system with a Supabase/PostgreSQL foundation. Implemented routes include authentication, patient registration/directory, permissioned NRIC reveal, queue operations, clinical document issue/revision/print logs, appointment scheduling, and outpatient SOAP encounters. Full schema migrations (1 to 7) cover foundation, queue, documents, appointments/rooms, encounters/prescriptions, inventory/packages, and billing lifecycles.
 
 ## Documentation
 
@@ -15,14 +15,22 @@ Malaysia-focused clinic management system with a Supabase/PostgreSQL foundation.
 
 ## Technology at a glance
 
-- Next.js App Router, React, and TypeScript web client/server routes.
-- PostgreSQL is the intended system of record. The supplied migrations target Supabase-hosted PostgreSQL and use Supabase Auth JWT identity in row-level security policies.
+- Next.js 16 App Router, React 19, and TypeScript web client and server routes.
+- PostgreSQL database engine with row-level security (RLS), connection pooling via `pg`, and Supabase Auth integration.
 - Malaysia defaults in the schema: `MY`, `MYR`, and `Asia/Kuala_Lumpur`.
 
 ## Current operating boundary
 
-Implemented routes cover `/api/auth/*`, patient registration/directory and permissioned NRIC retrieval, atomic queue operations, and versioned MC/referral/lab-document issue, regeneration, status verification, and print logging. Patient/queue/document changes persist with PostgreSQL when configured. Receipts remain unavailable until invoices and confirmed payments exist. `NEXT_PUBLIC_CLINIC_DEMO_MODE=true` enables seeded browser data and local-only demo workflows; it does not disable server API routes. See [architecture](docs/architecture.md) and [known gaps](docs/operations-security.md#known-gaps-and-roadmap).
+Implemented server API routes cover:
+- `/api/auth/*`: password-grant sign in, session resolution/cookie refresh, and sign out with built-in mock accounts fallback.
+- `/api/patients` & `/api/patients/[id]`: registration with AES-256-GCM NRIC encryption, HMAC duplicate detection, and permission-gated audit-logged reveal.
+- `/api/queue`: queue ticket registration, room dispatch, and atomic status transitions.
+- `/api/appointments` & `/api/appointments/[id]`: booking, doctor scheduling, and status updates.
+- `/api/encounters`: clinical SOAP encounter recordings with practitioner linkage.
+- `/api/clinical-documents/*` & `/api/document-verification`: versioned MC, referral, and lab documents with QR signing, status verification, and print logging.
+
+`NEXT_PUBLIC_CLINIC_DEMO_MODE=true` enables local standalone operation with pre-seeded demo fixtures without requiring an external PostgreSQL instance.
 
 ## Local development
 
-See [setup and deployment](docs/operations-security.md#setup-and-deployment) and [Supabase setup](SUPABASE_SETUP.md). Patient and document routes require server-only encryption, HMAC, and QR signing secrets. Database migrations must be applied and clinic roles provisioned before use. Several high-impact workflows are still missing, so do not use the current release as a complete clinic system or load live operational data before qualified security, privacy, clinical, and accounting review.
+See [setup and deployment](docs/operations-security.md#setup-and-deployment) and [Supabase setup](SUPABASE_SETUP.md). Patient and document routes require server-only encryption, HMAC, and QR signing secrets. To seed initial clinic entities and role permissions into PostgreSQL, run `supabase/seed.sql` or `scripts/seed-data.cjs`.

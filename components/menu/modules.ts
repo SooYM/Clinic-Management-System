@@ -65,7 +65,7 @@ export interface MenuItem {
   shortcut: string;
   actionType: "route" | "modal" | "refill";
   routeTarget?: "queue" | "patients" | "consultation" | "documents" | "packages" | "inventory" | "billing";
-  modalTarget?: "register" | "ticket" | "mc" | "referral" | "lab" | "alerts" | "permissions";
+  modalTarget?: "register" | "ticket" | "mc" | "referral" | "lab" | "alerts" | "permissions" | "portal_settings";
   allowedRoles?: RoleType[];
   adminOnly?: boolean;
 }
@@ -234,6 +234,18 @@ export const MENU: MenuItem[] = [
     shortcut: "A",
     actionType: "modal",
     modalTarget: "permissions",
+    allowedRoles: ["manager"],
+    adminOnly: true,
+  },
+  {
+    key: "portal_settings",
+    group: "finance",
+    label: "Portal & Clinic Settings",
+    description: "Customize clinic name, branding, and branch info",
+    icon: Building2,
+    shortcut: "S",
+    actionType: "modal",
+    modalTarget: "portal_settings",
     allowedRoles: ["manager"],
     adminOnly: true,
   },

@@ -13,10 +13,10 @@ This documentation distinguishes the **specified target**, the **database founda
 ## Source of truth
 
 - Requirements: [`CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md`](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md)
-- Current database definition: [`supabase/migrations/20261005010000_clinic_foundation.sql`](../supabase/migrations/20261005010000_clinic_foundation.sql), [`supabase/migrations/20261005020000_queue_transitions.sql`](../supabase/migrations/20261005020000_queue_transitions.sql), and [`supabase/migrations/20261005030000_clinical_document_lifecycle.sql`](../supabase/migrations/20261005030000_clinical_document_lifecycle.sql)
+- Current database definition: Ordered migrations in [`supabase/migrations/`](../supabase/migrations) (01 foundation, 02 queue transitions, 03 clinical documents, 04 scheduling & rooms, 05 encounters & prescriptions, 06 inventory & packages, 07 billing lifecycle) and seeds in [`supabase/seed.sql`](../supabase/seed.sql)
 - Supabase setup notes: [`SUPABASE_SETUP.md`](../SUPABASE_SETUP.md)
 - UI demo data/state: [`lib/data/clinic-store.ts`](../lib/data/clinic-store.ts), [`app/page.tsx`](../app/page.tsx)
-- Authentication implementation: [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts), [`app/api/auth`](../app/api/auth)
+- Server backend & database: [`lib/server/db.ts`](../lib/server/db.ts), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts), [`lib/server/scheduling-api.ts`](../lib/server/scheduling-api.ts), [`lib/server/clinical-care.ts`](../lib/server/clinical-care.ts), and [`app/api/`](../app/api)
 - Document preview implementation: [`components/documents`](../components/documents)
 
-The migration, not the older aspirational DDL in the requirements document, is authoritative for the current PostgreSQL column names and policies. No live database project was inspected as part of this documentation.
+The migrations (01 through 07), not the older aspirational DDL in the requirements document, are authoritative for the current PostgreSQL tables, column names, RPCs, and RLS policies.

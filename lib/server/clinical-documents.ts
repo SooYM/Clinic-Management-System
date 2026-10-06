@@ -3,6 +3,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { AuthRouteError, type AuthenticatedClinicStaff } from "./supabase-auth";
 import type { ClinicDocumentArtifact, ClinicDocumentKind, ClinicDocumentSection } from "../../components/documents/types";
+import { withSessionClient } from "./db";
 
 export type PersistedDocumentKind = Extract<ClinicDocumentKind, "MC" | "REFERRAL" | "LAB_REQUISITION">;
 export type DocumentSourceData =
@@ -14,43 +15,20 @@ type PatientRow = { id: string; full_name: string; medical_record_number: string
 type ClinicRow = { id: string; name: string; currency: string };
 type BranchRow = { id: string; name: string; address: Record<string, unknown>; phone: string | null };
 type StoredContent = Omit<ClinicDocumentArtifact, "artifactId" | "version"> & { sourceData: Record<string, unknown> };
-type RpcDocument = {
-  document_id: string; document_number: string; document_type: "medical_certificate" | "referral_letter" | "lab_requisition";
-  issued_at: string; current_version: number; content: StoredContent; print_count?: number;
+export type RpcDocument = {
+  document_id: string;
+  document_number: string;
+  document_type: "medical_certificate" | "referral_letter" | "lab_requisition";
+  issued_at: string;
+  current_version: number;
+  content: StoredContent;
+  print_count?: number;
 };
 
-function databaseConfig() {
-  const url = process.env.SUPABASE_URL?.trim().replace(/\/$/, "");
-  const anon = process.env.SUPABASE_ANON_KEY?.trim();
-  if (!url || !anon) throw new AuthRouteError(503, "DATABASE_NOT_CONFIGURED", "PostgreSQL is not configured.");
-  return { url, anon };
-}
-
-export async function databaseRequest(token: string, path: string, init: RequestInit = {}) {
-  const { url, anon } = databaseConfig();
-  try {
-    return await fetch(url + "/rest/v1/" + path, {
-      ...init,
-      cache: "no-store",
-      headers: { apikey: anon, Authorization: "Bearer " + token, "Content-Type": "application/json", ...(init.headers ?? {}) },
-    });
-  } catch {
-    throw new AuthRouteError(503, "DATABASE_UNAVAILABLE", "The clinic database is unavailable.");
-  }
-}
-
-export async function readDatabaseError(response: Response): Promise<AuthRouteError> {
-  const payload = await response.json().catch(() => ({})) as { code?: string };
-  if (payload.code === "42501") return new AuthRouteError(403, "DOCUMENT_PERMISSION_DENIED", "Your clinic role cannot perform this document action.");
-  if (payload.code === "P0002") return new AuthRouteError(404, "DOCUMENT_NOT_FOUND", "Clinical document or patient record was not found.");
-  if (payload.code === "40001") return new AuthRouteError(409, "DOCUMENT_STALE", "This document changed in another session. Reload the reception log and retry.");
-  if (payload.code === "23505") return new AuthRouteError(409, "DOCUMENT_DUPLICATE", "A document with this reference already exists.");
-  if (payload.code === "22023" || payload.code === "23514") return new AuthRouteError(400, "DOCUMENT_INVALID", "Document data is invalid.");
-  return new AuthRouteError(502, "DOCUMENT_DATABASE_ERROR", "The database could not complete the document action.");
-}
-
 function requiredString(value: unknown, label: string, max = 1000): string {
-  if (typeof value !== "string" || !value.trim() || value.length > max) throw new AuthRouteError(400, "DOCUMENT_INVALID", "Enter a valid " + label + ".");
+  if (typeof value !== "string" || !value.trim() || value.length > max) {
+    throw new AuthRouteError(400, "DOCUMENT_INVALID", "Enter a valid " + label + ".");
+  }
   return value.trim();
 }
 
@@ -68,18 +46,25 @@ export function validateDocumentSource(kind: PersistedDocumentKind, input: unkno
   const data = input as Record<string, unknown>;
   if (kind === "MC") {
     const days = Number(data.days);
-    if (!Number.isInteger(days) || days < 1 || days > 30) throw new AuthRouteError(400, "DOCUMENT_INVALID", "Medical leave must be from 1 to 30 days.");
+    if (!Number.isInteger(days) || days < 1 || days > 30) {
+      throw new AuthRouteError(400, "DOCUMENT_INVALID", "Medical leave must be from 1 to 30 days.");
+    }
     return {
-      days, startDate: validDate(data.startDate, "start date"),
+      days,
+      startDate: validDate(data.startDate, "start date"),
       diagnosis: typeof data.diagnosis === "string" ? data.diagnosis.trim().slice(0, 500) : "",
       isDiagnosisRedacted: data.isDiagnosisRedacted === true,
     };
   }
   if (kind === "REFERRAL") {
     const urgencyOptions = ["ROUTINE", "SEMI_URGENT", "URGENT_SAME_DAY", "EMERGENCY"] as const;
-    if (typeof data.urgency !== "string" || !urgencyOptions.includes(data.urgency as typeof urgencyOptions[number])) throw new AuthRouteError(400, "DOCUMENT_INVALID", "Select a valid referral urgency.");
+    if (typeof data.urgency !== "string" || !urgencyOptions.includes(data.urgency as typeof urgencyOptions[number])) {
+      throw new AuthRouteError(400, "DOCUMENT_INVALID", "Select a valid referral urgency.");
+    }
     const meds = Array.isArray(data.medications) ? data.medications : [];
-    if (meds.length > 20 || meds.some((item) => typeof item !== "string" || item.length > 120)) throw new AuthRouteError(400, "DOCUMENT_INVALID", "Referral medication list is invalid.");
+    if (meds.length > 20 || meds.some((item) => typeof item !== "string" || item.length > 120)) {
+      throw new AuthRouteError(400, "DOCUMENT_INVALID", "Referral medication list is invalid.");
+    }
     return {
       hospitalOrSpecialty: requiredString(data.hospitalOrSpecialty, "referral destination", 160),
       urgency: data.urgency as "ROUTINE" | "SEMI_URGENT" | "URGENT_SAME_DAY" | "EMERGENCY",
@@ -89,9 +74,13 @@ export function validateDocumentSource(kind: PersistedDocumentKind, input: unkno
     };
   }
   const specimenOptions = ["BLOOD", "URINE", "SWAB", "BIOPSY"] as const;
-  if (typeof data.specimenType !== "string" || !specimenOptions.includes(data.specimenType as typeof specimenOptions[number])) throw new AuthRouteError(400, "DOCUMENT_INVALID", "Select a valid specimen type.");
+  if (typeof data.specimenType !== "string" || !specimenOptions.includes(data.specimenType as typeof specimenOptions[number])) {
+    throw new AuthRouteError(400, "DOCUMENT_INVALID", "Select a valid specimen type.");
+  }
   const panels = Array.isArray(data.panels) ? data.panels : [];
-  if (panels.length < 1 || panels.length > 30 || panels.some((item) => typeof item !== "string" || item.length > 120)) throw new AuthRouteError(400, "DOCUMENT_INVALID", "Select one or more valid investigation panels.");
+  if (panels.length < 1 || panels.length > 30 || panels.some((item) => typeof item !== "string" || item.length > 120)) {
+    throw new AuthRouteError(400, "DOCUMENT_INVALID", "Select one or more valid investigation panels.");
+  }
   return {
     panels: panels.map((item) => (item as string).trim()).filter(Boolean),
     specimenType: data.specimenType as "BLOOD" | "URINE" | "SWAB" | "BIOPSY",
@@ -106,21 +95,28 @@ function addressLines(address: Record<string, unknown>): string[] {
 }
 
 async function clinicSnapshot(session: AuthenticatedClinicStaff) {
-  const clinicQuery = new URLSearchParams({ select: "id,name,currency", id: "eq." + session.user.clinic_id, limit: "1" });
-  const clinicResponse = await databaseRequest(session.accessToken, "clinics?" + clinicQuery);
-  if (!clinicResponse.ok) throw await readDatabaseError(clinicResponse);
-  const [clinic] = await clinicResponse.json() as ClinicRow[];
-  const branchQuery = new URLSearchParams({ select: "id,name,address,phone", id: "eq." + session.user.branch_id, limit: "1" });
-  const branchResponse = await databaseRequest(session.accessToken, "branches?" + branchQuery);
-  if (!branchResponse.ok) throw await readDatabaseError(branchResponse);
-  const [branch] = await branchResponse.json() as BranchRow[];
-  if (!clinic || !branch) throw new AuthRouteError(404, "CLINIC_NOT_FOUND", "Clinic details are not configured.");
-  return {
-    name: clinic.name,
-    addressLines: [branch.name, ...addressLines(branch.address ?? {})],
-    phone: branch.phone ?? undefined,
-    currency: clinic.currency === "MYR" ? "MYR" as const : undefined,
-  };
+  return withSessionClient(session.user.auth_user_id, async (client) => {
+    const clinicRes = await client.query<ClinicRow>(
+      `SELECT id, name, currency FROM public.clinics WHERE id = $1 LIMIT 1;`,
+      [session.user.clinic_id],
+    );
+    const branchRes = await client.query<BranchRow>(
+      `SELECT id, name, address, phone FROM public.branches WHERE id = $1 LIMIT 1;`,
+      [session.user.branch_id],
+    );
+
+    const clinic = clinicRes.rows[0];
+    const branch = branchRes.rows[0];
+    if (!clinic || !branch) {
+      throw new AuthRouteError(404, "CLINIC_NOT_FOUND", "Clinic details are not configured.");
+    }
+    return {
+      name: clinic.name,
+      addressLines: [branch.name, ...addressLines(branch.address ?? {})],
+      phone: branch.phone ?? undefined,
+      currency: clinic.currency === "MYR" ? ("MYR" as const) : undefined,
+    };
+  });
 }
 
 function sectionsFor(kind: PersistedDocumentKind, source: DocumentSourceData, patientName: string) {
@@ -131,14 +127,30 @@ function sectionsFor(kind: PersistedDocumentKind, source: DocumentSourceData, pa
     const endDate = end.toISOString().slice(0, 10);
     return {
       title: "Medical Certificate",
-      sections: [{
-        heading: "Medical leave",
-        paragraphs: [
-          "This certificate records that " + patientName + " was assessed by the issuing practitioner and is advised medical leave from " + data.startDate + " to " + endDate + " (" + data.days + " day" + (data.days === 1 ? "" : "s") + ").",
-          ...(!data.isDiagnosisRedacted && data.diagnosis ? ["Clinical information: " + data.diagnosis] : []),
-        ],
-        fields: [{ label: "Start date", value: data.startDate }, { label: "End date", value: endDate }, { label: "Duration", value: data.days + " day" + (data.days === 1 ? "" : "s") }],
-      }] satisfies ClinicDocumentSection[],
+      sections: [
+        {
+          heading: "Medical leave",
+          paragraphs: [
+            "This certificate records that " +
+              patientName +
+              " was assessed by the issuing practitioner and is advised medical leave from " +
+              data.startDate +
+              " to " +
+              endDate +
+              " (" +
+              data.days +
+              " day" +
+              (data.days === 1 ? "" : "s") +
+              ").",
+            ...(!data.isDiagnosisRedacted && data.diagnosis ? ["Clinical information: " + data.diagnosis] : []),
+          ],
+          fields: [
+            { label: "Start date", value: data.startDate },
+            { label: "End date", value: endDate },
+            { label: "Duration", value: data.days + " day" + (data.days === 1 ? "" : "s") },
+          ],
+        },
+      ] satisfies ClinicDocumentSection[],
     };
   }
   if (kind === "REFERRAL") {
@@ -172,21 +184,35 @@ export async function createStoredContent(
 ): Promise<StoredContent> {
   if (!/^[0-9a-f-]{36}$/i.test(patientId)) throw new AuthRouteError(400, "INVALID_PATIENT", "Select a valid patient.");
   const source = validateDocumentSource(kind, rawSource);
-  const query = new URLSearchParams({
-    select: "id,full_name,medical_record_number,date_of_birth,phone",
-    id: "eq." + patientId, clinic_id: "eq." + session.user.clinic_id, branch_id: "eq." + session.user.branch_id, limit: "1",
+
+  const patient = await withSessionClient(session.user.auth_user_id, async (client) => {
+    const res = await client.query<PatientRow>(
+      `SELECT id, full_name, medical_record_number, date_of_birth, phone
+       FROM public.patients
+       WHERE id = $1 AND clinic_id = $2 AND branch_id = $3 LIMIT 1;`,
+      [patientId, session.user.clinic_id, session.user.branch_id],
+    );
+    return res.rows[0];
   });
-  const response = await databaseRequest(session.accessToken, "patients?" + query);
-  if (!response.ok) throw await readDatabaseError(response);
-  const [patient] = await response.json() as PatientRow[];
+
   if (!patient) throw new AuthRouteError(404, "PATIENT_NOT_FOUND", "Patient was not found in this clinic branch.");
   const clinic = await clinicSnapshot(session);
   const built = sectionsFor(kind, source, patient.full_name);
   return {
-    reference: "", kind, title: built.title, issuedAt: new Date().toISOString(),
-    patient: { name: patient.full_name, patientNumber: patient.medical_record_number, dateOfBirth: patient.date_of_birth ?? undefined, contactNumber: patient.phone ?? undefined },
+    reference: "",
+    kind,
+    title: built.title,
+    issuedAt: new Date().toISOString(),
+    patient: {
+      name: patient.full_name,
+      patientNumber: patient.medical_record_number,
+      dateOfBirth: patient.date_of_birth ?? undefined,
+      contactNumber: patient.phone ?? undefined,
+    },
     practitioner: { name: session.user.full_name, registrationNumber: session.user.license_number ?? undefined },
-    clinic, sections: built.sections, sourceData: source as unknown as Record<string, unknown>,
+    clinic,
+    sections: built.sections,
+    sourceData: source as unknown as Record<string, unknown>,
   };
 }
 
@@ -198,42 +224,90 @@ export function generateDocumentNumber(kind: PersistedDocumentKind) {
 
 export function mapRpcDocument(row: RpcDocument, verificationUrl?: string): ClinicDocumentArtifact {
   const kinds: Record<RpcDocument["document_type"], PersistedDocumentKind> = {
-    medical_certificate: "MC", referral_letter: "REFERRAL", lab_requisition: "LAB_REQUISITION",
+    medical_certificate: "MC",
+    referral_letter: "REFERRAL",
+    lab_requisition: "LAB_REQUISITION",
   };
   return {
-    ...row.content, artifactId: row.document_id, reference: row.document_number,
-    kind: kinds[row.document_type], issuedAt: row.content.issuedAt || row.issued_at,
-    version: row.current_version, printCount: row.print_count ?? 0,
+    ...row.content,
+    artifactId: row.document_id,
+    reference: row.document_number,
+    kind: kinds[row.document_type],
+    issuedAt: row.content?.issuedAt || row.issued_at,
+    version: row.current_version,
+    printCount: row.print_count ?? 0,
     verificationUrl,
   };
 }
 
-export async function rpcDocument(session: AuthenticatedClinicStaff, name: string, body: unknown): Promise<RpcDocument> {
-  const response = await databaseRequest(session.accessToken, "rpc/" + name, { method: "POST", body: JSON.stringify(body) });
-  if (!response.ok) throw await readDatabaseError(response);
-  return await response.json() as RpcDocument;
+export async function rpcDocument(session: AuthenticatedClinicStaff, name: string, body: Record<string, unknown>): Promise<RpcDocument> {
+  return withSessionClient(session.user.auth_user_id, async (client) => {
+    let sql: string;
+    let params: unknown[];
+
+    if (name === "issue_clinical_document") {
+      sql = `SELECT public.issue_clinical_document($1::uuid, $2::uuid, $3::public.clinical_document_type, $4::text, $5::jsonb, $6::bytea) AS result;`;
+      params = [
+        body.p_document_id,
+        body.p_patient_id,
+        body.p_document_type,
+        body.p_document_number,
+        JSON.stringify(body.p_content),
+        body.p_token_sha256,
+      ];
+    } else if (name === "revoke_clinical_document") {
+      sql = `SELECT public.revoke_clinical_document($1::uuid, $2::text) AS result;`;
+      params = [body.p_document_id, body.p_reason];
+    } else if (name === "regenerate_clinical_document") {
+      sql = `SELECT public.regenerate_clinical_document($1::uuid, $2::integer, $3::jsonb, $4::bytea) AS result;`;
+      params = [
+        body.p_document_id,
+        body.p_expected_version,
+        JSON.stringify(body.p_content),
+        body.p_token_sha256,
+      ];
+    } else if (name === "record_clinical_document_print") {
+      sql = `SELECT public.record_clinical_document_print($1::uuid, $2::integer, $3::text) AS result;`;
+      params = [body.p_document_id, body.p_version_number, body.p_purpose];
+    } else {
+      throw new AuthRouteError(500, "UNKNOWN_RPC", "Unknown RPC document function: " + name);
+    }
+
+    const res = await client.query<{ result: RpcDocument }>(sql, params);
+    return res.rows[0]?.result;
+  });
 }
 
 export async function verifyDocumentWritePermission(session: AuthenticatedClinicStaff) {
-  const query = new URLSearchParams({
-    select: "is_allowed", clinic_id: "eq." + session.user.clinic_id,
-    branch_id: "eq." + session.user.branch_id, role: "eq." + session.user.role,
-    permission_key: "eq.documents.write", limit: "1",
+  const allowed = await withSessionClient(session.user.auth_user_id, async (client) => {
+    const res = await client.query<{ is_allowed: boolean }>(
+      `SELECT is_allowed
+       FROM public.role_permissions
+       WHERE clinic_id = $1 AND branch_id = $2 AND role = $3 AND permission_key = 'documents.write'
+       LIMIT 1;`,
+      [session.user.clinic_id, session.user.branch_id, session.user.role],
+    );
+    return res.rows[0]?.is_allowed === true;
   });
-  const response = await databaseRequest(session.accessToken, "role_permissions?" + query);
-  if (!response.ok) throw await readDatabaseError(response);
-  const [row] = await response.json() as Array<{ is_allowed: boolean }>;
-  if (row?.is_allowed !== true) throw new AuthRouteError(403, "DOCUMENT_PERMISSION_DENIED", "Document writing permission is not enabled for this clinic role.");
+
+  if (!allowed) {
+    throw new AuthRouteError(403, "DOCUMENT_PERMISSION_DENIED", "Document writing permission is not enabled for this clinic role.");
+  }
 }
 
 export async function verifyDocumentReadPermission(session: AuthenticatedClinicStaff) {
-  const query = new URLSearchParams({
-    select: "is_allowed", clinic_id: "eq." + session.user.clinic_id,
-    branch_id: "eq." + session.user.branch_id, role: "eq." + session.user.role,
-    permission_key: "eq.documents.read", limit: "1",
+  const allowed = await withSessionClient(session.user.auth_user_id, async (client) => {
+    const res = await client.query<{ is_allowed: boolean }>(
+      `SELECT is_allowed
+       FROM public.role_permissions
+       WHERE clinic_id = $1 AND branch_id = $2 AND role = $3 AND permission_key = 'documents.read'
+       LIMIT 1;`,
+      [session.user.clinic_id, session.user.branch_id, session.user.role],
+    );
+    return res.rows[0]?.is_allowed === true;
   });
-  const response = await databaseRequest(session.accessToken, "role_permissions?" + query);
-  if (!response.ok) throw await readDatabaseError(response);
-  const [row] = await response.json() as Array<{ is_allowed: boolean }>;
-  if (row?.is_allowed !== true) throw new AuthRouteError(403, "DOCUMENT_PERMISSION_DENIED", "Document reading permission is not enabled for this clinic role.");
+
+  if (!allowed) {
+    throw new AuthRouteError(403, "DOCUMENT_PERMISSION_DENIED", "Document reading permission is not enabled for this clinic role.");
+  }
 }

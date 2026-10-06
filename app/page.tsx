@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, CircleHelp, ChevronRight, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CircleHelp, ChevronRight, ShieldCheck, Building2, Pencil } from "lucide-react";
 import { useClinicStore, type Role, type ModuleKey } from "../lib/data/clinic-store";
 import { Modal } from "../components/Modal";
 import { notify } from "../components/toast";
@@ -10,6 +10,7 @@ import { LoginPage } from "../components/auth/LoginPage";
 import { MainMenu } from "../components/menu/MainMenu";
 import { GuideModal } from "../components/menu/GuideModal";
 import { RolePermissionsModal } from "../components/menu/RolePermissionsModal";
+import { PortalSettingsModal } from "../components/menu/PortalSettingsModal";
 import { type MenuItem } from "../components/menu/modules";
 import { QrCode } from "../components/QrCode";
 import { genderFromMalaysianIc, normalizeMalaysianPhone } from "../src/domain/MalaysianIc";
@@ -29,6 +30,7 @@ export default function ClinicDashboard() {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [guideModalOpen, setGuideModalOpen] = useState(false);
   const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
+  const [portalSettingsModalOpen, setPortalSettingsModalOpen] = useState(false);
 
   // Sync role with session user when user logs in
   useEffect(() => {
@@ -91,10 +93,16 @@ export default function ClinicDashboard() {
   }, [viewPatientModal]);
 
   const clinicDocumentProfile = {
-    name: "Kumo Clinic · Demonstration System",
-    addressLines: ["Kuala Lumpur, Malaysia"],
+    name: store.portalConfig.portalName,
+    addressLines: [store.portalConfig.addressLine],
     currency: "MYR" as const,
   };
+
+  useEffect(() => {
+    if (typeof document !== "undefined" && store.portalConfig?.portalName) {
+      document.title = `${store.portalConfig.portalName} - Clinic Management Suite`;
+    }
+  }, [store.portalConfig.portalName]);
 
   useEffect(() => {
     if (!user || demoMode) return;
@@ -421,6 +429,9 @@ export default function ClinicDashboard() {
         case "permissions":
           setPermissionsModalOpen(true);
           break;
+        case "portal_settings":
+          setPortalSettingsModalOpen(true);
+          break;
       }
     } else if (item.actionType === "refill") {
       store.triggerMedicationRefillAlert(store.activePatient.id, "Amlodipine 5mg");
@@ -475,14 +486,24 @@ export default function ClinicDashboard() {
             </div>
           </div>
         ) : (
-          <div className="brand">
-            <div className="brand-mark">K</div>
+          <div className="brand flex items-center gap-2">
+            <div className="brand-mark">{store.portalConfig.portalName.trim().charAt(0).toUpperCase() || "K"}</div>
             <div>
-              <div className="leading-tight font-extrabold text-base tracking-tight text-[var(--navy)]">
-                KUMO CLINIC
+              <div className="leading-tight font-extrabold text-base tracking-tight text-[var(--navy)] flex items-center gap-1.5">
+                <span>{store.portalConfig.portalName}</span>
+                {user.role === "manager" && (
+                  <button
+                    type="button"
+                    onClick={() => setPortalSettingsModalOpen(true)}
+                    className="text-xs text-[var(--blue)] hover:text-[var(--blue-dark)] p-0.5 rounded transition-colors"
+                    title="Edit Portal Name & Branding (Admin)"
+                  >
+                    <Pencil size={12} strokeWidth={2.5} />
+                  </button>
+                )}
               </div>
               <div className="text-[0.65rem] font-semibold text-[var(--muted)] tracking-wider uppercase">
-                Medical & Aesthetic Specialist
+                {store.portalConfig.portalTagline}
               </div>
             </div>
           </div>
@@ -491,11 +512,24 @@ export default function ClinicDashboard() {
         <div className="hidden md:flex items-center gap-2 pl-4 border-l border-[var(--line)]">
           <span className="text-xs font-bold text-[var(--muted)]">Branch:</span>
           <span className="text-xs font-bold text-[var(--blue-on-soft)] bg-[var(--blue-soft)] px-2.5 py-1 rounded-md">
-            {user.assignedBranch}
+            {store.portalConfig.branchName || user.assignedBranch}
           </span>
         </div>
 
         <div className="header-actions">
+          {/* Admin Portal Branding Settings Button */}
+          {user.role === "manager" && (
+            <button
+              type="button"
+              className="icon-button text-xs gap-1.5"
+              onClick={() => setPortalSettingsModalOpen(true)}
+              title="Edit Portal & Clinic Branding (S)"
+            >
+              <Building2 size={16} strokeWidth={2.2} className="text-[var(--blue)]" />
+              <span className="hidden sm:inline font-bold">Portal Name</span>
+            </button>
+          )}
+
           {/* Admin Role Access Control (RBAC) Button */}
           {user.role === "manager" && (
             <button
@@ -587,6 +621,7 @@ export default function ClinicDashboard() {
           <MainMenu
             userRole={user.role}
             userName={user.fullName}
+            portalName={store.portalConfig.portalName}
             hasAccess={(key) => store.hasAccess(user.role, key as ModuleKey)}
             onOpenItem={handleOpenMenuItem}
             onOpenGuide={() => setGuideModalOpen(true)}
@@ -2400,6 +2435,16 @@ export default function ClinicDashboard() {
           onTogglePermission={store.toggleRolePermission}
           onGrantAll={store.grantAllRolePermissions}
           onResetDefaults={store.resetDefaultPermissions}
+        />
+      )}
+
+      {/* ==================== MODAL: PORTAL BRANDING & CLINIC SETTINGS ==================== */}
+      {portalSettingsModalOpen && (
+        <PortalSettingsModal
+          onClose={() => setPortalSettingsModalOpen(false)}
+          config={store.portalConfig}
+          onSave={store.updatePortalConfig}
+          onReset={store.resetPortalConfig}
         />
       )}
     </main>

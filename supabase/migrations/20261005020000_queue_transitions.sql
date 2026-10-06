@@ -9,7 +9,7 @@ set search_path = pg_catalog, public
 as $$
 declare
   branch_clinic uuid;
-  branch_id uuid;
+  target_branch_id uuid;
   actor uuid;
   actor_role public.staff_role;
   created_ticket public.queue_tickets%rowtype;
@@ -20,7 +20,7 @@ begin
   if (select count(*) from public.staff_members s where s.auth_user_id = auth.uid() and s.active) <> 1 then
     raise exception 'Select a branch before creating queue tickets' using errcode = '42501';
   end if;
-  select s.id, s.role, s.clinic_id, s.branch_id into actor, actor_role, branch_clinic, branch_id
+  select s.id, s.role, s.clinic_id, s.branch_id into actor, actor_role, branch_clinic, target_branch_id
   from public.staff_members s
   where s.auth_user_id = auth.uid()
     and s.active
@@ -28,14 +28,14 @@ begin
   if actor is null then
     raise exception 'Active branch membership required' using errcode = '42501';
   end if;
-  if not public.has_branch_permission(branch_clinic, branch_id, 'queue.manage') then
+  if not public.has_branch_permission(branch_clinic, target_branch_id, 'queue.manage') then
     raise exception 'Queue creation permission denied' using errcode = '42501';
   end if;
 
   insert into public.queue_tickets (clinic_id, branch_id, patient_id, ticket_number, status, created_by)
   select p.clinic_id, p.branch_id, p.id, p_ticket_number, 'registered', actor
   from public.patients p
-  where p.id = p_patient_id and p.clinic_id = branch_clinic and p.branch_id = branch_id;
+  where p.id = p_patient_id and p.clinic_id = branch_clinic and p.branch_id = target_branch_id;
   if not found then
     raise exception 'Patient not found in selected branch' using errcode = 'P0002';
   end if;

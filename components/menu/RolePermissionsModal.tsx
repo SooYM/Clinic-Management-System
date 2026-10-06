@@ -26,8 +26,10 @@ export function RolePermissionsModal({
   onGrantAll,
   onResetDefaults,
 }: RolePermissionsModalProps) {
-  // Filter out the permissions management tile itself from customization to avoid self-lockout
-  const customizableModules = MENU.filter((m) => m.key !== "permissions");
+  // Filter out the permissions and portal settings management tiles from customization (admin-only)
+  const customizableModules = MENU.filter(
+    (m) => m.key !== "permissions" && m.key !== "portal_settings"
+  );
 
   return (
     <Modal

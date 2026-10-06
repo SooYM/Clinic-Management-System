@@ -24,6 +24,7 @@ function isTyping(el: EventTarget | null): boolean {
 interface MainMenuProps {
   userRole: RoleType;
   userName: string;
+  portalName?: string;
   hasAccess?: (moduleKey: string) => boolean;
   onOpenItem: (item: MenuItem) => void;
   onOpenGuide: () => void;
@@ -58,6 +59,7 @@ const HUE_STYLES: Record<
 export function MainMenu({
   userRole,
   userName,
+  portalName,
   hasAccess,
   onOpenItem,
   onOpenGuide,
@@ -131,7 +133,7 @@ export function MainMenu({
             {greeting}, {userName}
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-[var(--muted)] font-medium">
-            {todayFormatted} • Kumo Outpatient & Aesthetics Suite
+            {todayFormatted} • {portalName || "Kumo Outpatient & Aesthetics Suite"}
           </p>
         </div>
 

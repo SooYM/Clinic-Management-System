@@ -29,11 +29,13 @@ The working data boundary is partial: authentication, patient, queue, and clinic
 | --- | --- | --- |
 | Next.js client | UI navigation, patient/queue/document load and write requests, sample rooms/encounters/packages/inventory, demo payment flows | [`app/page.tsx`](../app/page.tsx), [`lib/data/clinic-store.ts`](../lib/data/clinic-store.ts) |
 | Session provider | Fetch current session, call login/logout endpoints, adapt the staff profile for UI | [`lib/state/session.tsx`](../lib/state/session.tsx) |
-| Auth route handlers | Sign in, resolve/refresh, revoke Supabase Auth sessions; set HttpOnly cookies | [`app/api/auth`](../app/api/auth), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts) |
-| Patient/queue route handlers | Read/create patients; read/create/update queue tickets with active session and RLS JWT | [`app/api/patients`](../app/api/patients), [`app/api/queue`](../app/api/queue) |
+| Auth route handlers | Sign in, resolve/refresh, revoke sessions with mock accounts fallback; set HttpOnly cookies | [`app/api/auth`](../app/api/auth), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts) |
+| Patient/queue route handlers | Read/create patients; read/create/update queue tickets with active session and RLS | [`app/api/patients`](../app/api/patients), [`app/api/queue`](../app/api/queue) |
+| Appointment route handlers | Read, book, and update appointment statuses with doctor scheduling | [`app/api/appointments`](../app/api/appointments), [`lib/server/scheduling-api.ts`](../lib/server/scheduling-api.ts) |
+| Encounter route handlers | Read and create clinical SOAP encounter records with doctor linkage | [`app/api/encounters`](../app/api/encounters), [`lib/server/clinical-care.ts`](../lib/server/clinical-care.ts) |
 | Document route handlers | Issue, list, regenerate, revoke, and log prints for clinical documents; expose status-only QR verification | [`app/api/clinical-documents`](../app/api/clinical-documents), [`app/api/document-verification`](../app/api/document-verification) |
-| Supabase Auth | External identity credential verification/session issuance | Configured only when project URL and anon key are supplied |
-| PostgreSQL migrations | Define clinic tables, constraints, safe-default-deny RLS, append-only triggers, document verification and atomic queue RPCs | [`supabase/migrations`](../supabase/migrations) |
+| Database connection pool | Manages direct PostgreSQL connections with transaction/RLS helpers | [`lib/server/db.ts`](../lib/server/db.ts) |
+| PostgreSQL migrations | Define 7 migration stages (foundation, queue, documents, scheduling, encounters, inventory, billing) | [`supabase/migrations`](../supabase/migrations), [`supabase/seed.sql`](../supabase/seed.sql) |
 | Print view | Renders print-friendly document artifact and invokes browser print dialog | [`components/documents`](../components/documents) |
 
 ### Implemented persistence/API surface
@@ -42,7 +44,12 @@ The working data boundary is partial: authentication, patient, queue, and clinic
 | --- | --- |
 | `GET /api/patients` | Read branch-visible patient directory |
 | `POST /api/patients` | Validate/register patient, encrypt identifier, store HMAC duplicate key |
-| `GET /api/patients/{id}` | Read/decrypt one patient's national identifier |
+| `GET /api/patients/{id}` | Read/decrypt one patient's national identifier with audit event |
+| `GET /api/appointments` | Read branch appointments filtered by date or practitioner |
+| `POST /api/appointments` | Book appointment with patient validation and practitioner slot checking |
+| `PATCH /api/appointments/{id}` | Transition appointment status (`arrived`, `completed`, `cancelled`) |
+| `GET /api/encounters` | Read clinical SOAP encounters for patient or practitioner |
+| `POST /api/encounters` | Create signed outpatient consultation encounter |
 | `GET, POST /api/clinical-documents` | Read current document versions and issue an MC, referral, or lab requisition |
 | `POST /api/clinical-documents/{id}/versions` | Create immutable revision from current persisted source data |
 | `POST /api/clinical-documents/{id}/print` | Append print-attempt record before opening browser print |
@@ -52,15 +59,11 @@ The working data boundary is partial: authentication, patient, queue, and clinic
 | `POST /api/queue` | Call `create_queue_ticket`; atomically create a ticket and its initial event |
 | `PATCH /api/queue` | Call `transition_queue_ticket`; atomically change a ticket and append its event |
 
-`NEXT_PUBLIC_CLINIC_DEMO_MODE` is opt-in and defaults off. When set to `true`, the client initializes sample arrays and skips patient/queue/document database hydration. Those demo workflows are local; success messages identify demo-only records. In non-demo mode, failed patient/queue/document hydration shows an error instead of silently displaying seeded records.
-
-In non-demo mode, queue creation and supported ticket status transitions persist. The client optimistically updates its in-memory view after a successful response; there is no realtime subscription, so other sessions need a refresh/reload to observe changes. Existing-patient check-in also calls the queue create endpoint. The room list is still sample/local and is not hydrated from PostgreSQL.
-
-The non-demo dashboard banner identifies current PostgreSQL-backed areas (patient registration/directory, queue tickets/status history, and clinical documents) and lists remaining non-persisted domains. The queue screen distinguishes database mode from local demo mode and explains that live updates and room configuration are not yet available. Document issue/revision/print/revocation uses database RPCs; QR verification returns status only.
+`NEXT_PUBLIC_CLINIC_DEMO_MODE` is opt-in and defaults off. When set to `true`, the client initializes sample arrays and runs fully in local standalone mode without requiring a PostgreSQL connection. In non-demo mode, failed patient/queue/document hydration shows an error instead of silently displaying seeded records.
 
 ### Still demo-only or not implemented
 
-Appointment booking, room records, encounter/consultation, medication orders, package redemptions, inventory movements, invoices, payments, notifications, commissions, and broad audit workflows have no application data routes. Receipts are not issued in live mode without confirmed persisted payments. These UI records are sample/local state. The application therefore mixes PostgreSQL-backed patient/queue/document records with browser demonstration data.
+Room records, medication dispensing, package redemptions, inventory FEFO movements, invoices, payments, external notifications, commissions, and broad audit workflows have no application data routes yet. Receipts are not issued in live mode without confirmed persisted payments.
 
 ## Intended production topology
 

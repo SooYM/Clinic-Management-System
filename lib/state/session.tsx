@@ -64,11 +64,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => { mounted = false; };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (identifier: string, password: string) => {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username: identifier, email: identifier, password }),
     });
     if (!response.ok) throw new Error(await readApiError(response));
     const payload = await response.json() as { user: SessionApiUser };

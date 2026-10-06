@@ -22,7 +22,7 @@ export function documentVerificationOrigin(requestOrigin: string): string {
   let parsed: URL;
   try { parsed = new URL(configured); }
   catch { throw new AuthRouteError(503, "APP_BASE_URL_INVALID", "APP_BASE_URL must be an absolute URL."); }
-  if (parsed.protocol !== "https:" && process.env.NODE_ENV === "production") {
+  if (parsed.protocol !== "https:" && process.env.NODE_ENV === "production" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
     throw new AuthRouteError(503, "APP_BASE_URL_INVALID", "APP_BASE_URL must use HTTPS in production.");
   }
   return parsed.origin;

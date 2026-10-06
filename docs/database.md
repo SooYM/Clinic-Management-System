@@ -1,8 +1,15 @@
 # PostgreSQL database design
 
-## Authority and status
+The authoritative current schema is defined by the 7 ordered migrations in [`supabase/migrations/`](../supabase/migrations):
+1. `20261005010000_clinic_foundation.sql` (Clinics, branches, staff, patients, audit)
+2. `20261005020000_queue_transitions.sql` (Queue tickets, atomic transitions, queue events)
+3. `20261005030000_clinical_document_lifecycle.sql` (Clinical documents, immutable versions, QR verification tokens, print logs)
+4. `20261005040000_scheduling_and_rooms.sql` (Appointments, consultation rooms, scheduling exclusion constraints)
+5. `20261005050000_outpatient_encounters_and_prescriptions.sql` (SOAP encounters, medication orders, drafts & signed snapshots)
+6. `20261005060000_inventory_packages_lifecycle.sql` (Inventory items, batches, FEFO movements, treatment packages & redemptions)
+7. `20261005070000_billing_lifecycle.sql` (Invoices, invoice line items, payments, receipt print logs)
 
-The authoritative current schema is defined by [`20261005010000_clinic_foundation.sql`](../supabase/migrations/20261005010000_clinic_foundation.sql), [`20261005020000_queue_transitions.sql`](../supabase/migrations/20261005020000_queue_transitions.sql), and [`20261005030000_clinical_document_lifecycle.sql`](../supabase/migrations/20261005030000_clinical_document_lifecycle.sql). Together they are PostgreSQL migrations using `pgcrypto`, `btree_gist`, UUID identifiers, `jsonb`, PostgreSQL enums, exclusion constraints, security-definer functions, and row-level security (RLS). Supabase supplies Auth and the `auth.uid()` identity function.
+Initial seed data is located in [`supabase/seed.sql`](../supabase/seed.sql). Together they are PostgreSQL migrations using `pgcrypto`, `btree_gist`, UUID identifiers, `jsonb`, PostgreSQL enums, exclusion constraints, security-definer functions, and row-level security (RLS).
 
 This is a **foundation migration**, not an application-ready data layer: operational UI does not yet read/write these relations. A production database must be provisioned, migration applied, and RLS reviewed before use. The older SQL sketch in the product specification is aspirational and has different details; where they differ, this document describes the actual migration.
 

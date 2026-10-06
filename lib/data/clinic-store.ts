@@ -21,7 +21,8 @@ export type ModuleKey =
   | "billing"
   | "ledger"
   | "alerts"
-  | "permissions";
+  | "permissions"
+  | "portal_settings";
 
 export type RolePermissions = Record<Role, ModuleKey[]>;
 
@@ -69,7 +70,24 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     "ledger",
     "alerts",
     "permissions",
+    "portal_settings",
   ],
+};
+
+export interface ClinicPortalConfig {
+  portalName: string;
+  portalTagline: string;
+  legalEntityName: string;
+  branchName: string;
+  addressLine: string;
+}
+
+export const DEFAULT_PORTAL_CONFIG: ClinicPortalConfig = {
+  portalName: "KUMO CLINIC",
+  portalTagline: "Medical & Aesthetic Specialist",
+  legalEntityName: "Kumo Clinic Sdn Bhd",
+  branchName: "KL Sentral Branch",
+  addressLine: "Kuala Lumpur, Malaysia",
 };
 
 export interface PatientRecord {
@@ -574,6 +592,40 @@ export function useClinicStore(isAuthenticated = false) {
     return rolePermissions[targetRole]?.includes(moduleKey) ?? false;
   }
 
+  // Clinic & Portal Branding Configuration (Editable by Admin)
+  const [portalConfig, setPortalConfig] = useState<ClinicPortalConfig>(DEFAULT_PORTAL_CONFIG);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("kumo_portal_config");
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<ClinicPortalConfig>;
+        if (parsed && typeof parsed === "object" && parsed.portalName) {
+          setPortalConfig((prev) => ({ ...prev, ...parsed }));
+        }
+      }
+    } catch {}
+  }, []);
+
+  function updatePortalConfig(updates: Partial<ClinicPortalConfig>) {
+    setPortalConfig((prev) => {
+      const next = { ...prev, ...updates };
+      try {
+        localStorage.setItem("kumo_portal_config", JSON.stringify(next));
+      } catch {}
+      notify(`Portal updated: "${next.portalName}"`, "success");
+      return next;
+    });
+  }
+
+  function resetPortalConfig() {
+    setPortalConfig(DEFAULT_PORTAL_CONFIG);
+    try {
+      localStorage.removeItem("kumo_portal_config");
+    } catch {}
+    notify("Portal branding reset to default.", "info");
+  }
+
   // Active consultation patient (defaults to Q-101 Patricia Koh)
   const [activePatientId, setActivePatientId] = useState<string>("pat-1");
 
@@ -990,5 +1042,8 @@ export function useClinicStore(isAuthenticated = false) {
     grantAllRolePermissions,
     resetDefaultPermissions,
     hasAccess,
+    portalConfig,
+    updatePortalConfig,
+    resetPortalConfig,
   };
 }

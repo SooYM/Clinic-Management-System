@@ -1,6 +1,15 @@
 # Supabase database setup
 
-The schema is defined by ordered migrations `supabase/migrations/20261005010000_clinic_foundation.sql`, `supabase/migrations/20261005020000_queue_transitions.sql`, and `supabase/migrations/20261005030000_clinical_document_lifecycle.sql`. They define Malaysia defaults (MYR and `Asia/Kuala_Lumpur`), clinic/branch-scoped staff membership, operational records, safe-default-deny RLS policies, immutable history tables, status-only document verification, atomic queue transitions, and versioned clinical document issue/revision/print RPCs.
+The schema is defined by 7 ordered migrations:
+1. `supabase/migrations/20261005010000_clinic_foundation.sql` (Foundation schema, staff, clinics, branches, patients, and audit)
+2. `supabase/migrations/20261005020000_queue_transitions.sql` (Queue tickets, atomic transitions, and audit events)
+3. `supabase/migrations/20261005030000_clinical_document_lifecycle.sql` (Clinical document versions, SHA-256 verification, and print logs)
+4. `supabase/migrations/20261005040000_scheduling_and_rooms.sql` (Appointments, consultation room allocation, and audit events)
+5. `supabase/migrations/20261005050000_outpatient_encounters_and_prescriptions.sql` (SOAP clinical encounters, mutable drafts, immutable signed snapshots)
+6. `supabase/migrations/20261005060000_inventory_packages_lifecycle.sql` (FEFO drug batch tracking, movements, treatment package punch-cards)
+7. `supabase/migrations/20261005070000_billing_lifecycle.sql` (Invoices, receipts, payment settlements, and receipt print logs)
+
+They define Malaysia defaults (MYR and `Asia/Kuala_Lumpur`), clinic/branch-scoped staff membership, operational records, safe-default-deny RLS policies, immutable history tables, status-only document verification, atomic queue transitions, and versioned clinical document issue/revision/print RPCs.
 
 ## Apply the migration and provision access
 
