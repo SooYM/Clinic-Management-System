@@ -133,7 +133,7 @@ export function MainMenu({
             {greeting}, {userName}
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-[var(--muted)] font-medium">
-            {todayFormatted} • {portalName || "Kumo Outpatient & Aesthetics Suite"}
+            {todayFormatted} • {portalName || "Clinical Management System"}
           </p>
         </div>
 

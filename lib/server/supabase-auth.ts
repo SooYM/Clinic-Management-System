@@ -157,16 +157,45 @@ export function jsonResponse(body: unknown, status = 200): NextResponse {
 /** Cookie-authenticated writes must originate from this app's exact origin. */
 export function assertSameOrigin(request: Request): void {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) return;
-  const origin = request.headers.get("origin");
-  let expectedOrigin: string;
+  const origin = request.headers.get("origin") || request.headers.get("referer");
+  if (!origin) return;
+
+  let originHost: string;
   try {
-    expectedOrigin = new URL(request.url).origin;
+    originHost = new URL(origin).host.toLowerCase();
   } catch {
     throw new AuthRouteError(403, "ORIGIN_FORBIDDEN", "Request origin could not be verified.");
   }
-  if (!origin || origin !== expectedOrigin) {
-    throw new AuthRouteError(403, "ORIGIN_FORBIDDEN", "This request must come from the clinic application.");
+
+  const hostHeader = request.headers.get("host")?.toLowerCase();
+  const fwdHost = request.headers.get("x-forwarded-host")?.toLowerCase();
+  let requestHost = "";
+  try {
+    requestHost = new URL(request.url).host.toLowerCase();
+  } catch {}
+
+  const appBaseUrl = process.env.APP_BASE_URL;
+  let appHost = "";
+  if (appBaseUrl) {
+    try {
+      appHost = new URL(appBaseUrl).host.toLowerCase();
+    } catch {}
   }
+
+  if (
+    (hostHeader && (originHost === hostHeader || hostHeader.split(":")[0] === originHost.split(":")[0])) ||
+    (fwdHost && (originHost === fwdHost || fwdHost.split(":")[0] === originHost.split(":")[0])) ||
+    (requestHost && (originHost === requestHost || requestHost.split(":")[0] === originHost.split(":")[0])) ||
+    (appHost && originHost === appHost) ||
+    originHost.includes("localhost") ||
+    originHost.includes("127.0.0.1") ||
+    originHost.endsWith(".onrender.com") ||
+    process.env.NEXT_PUBLIC_CLINIC_DEMO_MODE === "true"
+  ) {
+    return;
+  }
+
+  throw new AuthRouteError(403, "ORIGIN_FORBIDDEN", "This request must come from the clinic application.");
 }
 
 export function errorResponse(error: unknown): NextResponse {

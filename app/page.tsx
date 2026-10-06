@@ -444,7 +444,7 @@ export default function ClinicDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs font-bold text-[var(--muted)]">Loading Kumo Clinic Session...</span>
+          <span className="text-xs font-bold text-[var(--muted)]">Loading Clinic Session...</span>
         </div>
       </div>
     );
@@ -1263,7 +1263,7 @@ export default function ClinicDashboard() {
                   Treatment Packages & Prepaid Credits
                 </h1>
                 <p className="text-xs text-[var(--muted)] mt-1">
-                  Kumo Clinic flagship workflow: Multi-session aesthetic & therapy packages with 1-tap session redemption.
+                  Multi-session aesthetic & therapy packages with 1-tap session redemption.
                 </p>
               </div>
 
@@ -1847,7 +1847,7 @@ export default function ClinicDashboard() {
         >
           <div className="space-y-4">
             <div className="pb-2 border-b border-[var(--line)]">
-              <span className="badge badge-mint mb-1">KUMO PACKAGE REDEMPTION</span>
+              <span className="badge badge-mint mb-1">TREATMENT PACKAGE REDEMPTION</span>
               <h2 id="redeem-modal-title" className="text-lg font-extrabold text-[var(--navy)]">
                 Redeem Treatment Session
               </h2>
@@ -2006,7 +2006,7 @@ export default function ClinicDashboard() {
             </div>
             <div className="flex flex-col items-center gap-3 rounded-xl bg-[var(--surface-2)] p-4 text-center">
               <QrCode
-                value="KUMO-DEMO-DUITNOW|MYR|63.00|INV-DEMO-2026-001"
+                value="CLINIC-DEMO-DUITNOW|MYR|63.00|INV-DEMO-2026-001"
                 label="Demo DuitNow payment QR code"
               />
               <p className="max-w-sm text-xs text-[var(--muted)]">

@@ -11,7 +11,7 @@ export function GuideModal({ onClose }: { onClose: () => void }) {
         <div className="pb-2 border-b border-[var(--line)]">
           <span className="badge badge-blue mb-1">KEYBOARD SHORTCUTS & USER GUIDE</span>
           <h2 id="guide-modal-title" className="text-lg font-extrabold text-[var(--navy)]">
-            Kumo Clinic Navigation Guide
+            Clinical Management System Guide
           </h2>
           <p className="text-xs text-[var(--muted)]">
             Press single keys directly on your keyboard to instantly trigger clinic operations.

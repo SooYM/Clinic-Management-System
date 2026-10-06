@@ -83,10 +83,10 @@ export interface ClinicPortalConfig {
 }
 
 export const DEFAULT_PORTAL_CONFIG: ClinicPortalConfig = {
-  portalName: "KUMO CLINIC",
-  portalTagline: "Medical & Aesthetic Specialist",
-  legalEntityName: "Kumo Clinic Sdn Bhd",
-  branchName: "KL Sentral Branch",
+  portalName: "CLINIC MANAGEMENT SYSTEM",
+  portalTagline: "Medical & Healthcare Specialist",
+  legalEntityName: "Clinic Management Sdn Bhd",
+  branchName: "Main Branch",
   addressLine: "Kuala Lumpur, Malaysia",
 };
 
@@ -430,7 +430,7 @@ const INITIAL_INVENTORY: InventoryItemData[] = [
   {
     id: "inv-4",
     sku: "SKN-HA-SERUM",
-    name: "Kumo Advanced Hyaluronic Acid Serum 50ml",
+    name: "Advanced Hyaluronic Acid Serum 50ml",
     category: "SKINCARE_RETAIL",
     minimumParLevel: 20,
     sellingPrice: 85.0,
@@ -447,7 +447,7 @@ const INITIAL_NOTIFICATIONS: NotificationLogData[] = [
     template: "BOOKING_CONFIRMATION",
     recipient: "+60 12-345 6789",
     patientName: "Patricia Koh",
-    messagePreview: "Confirmed: Follow-up Appointment with Dr. Alicia Tan on Mon 10:00 AM. Location: Kumo Kuala Lumpur Clinic.",
+    messagePreview: "Confirmed: Follow-up Appointment with Dr. Alicia Tan on Mon 10:00 AM. Location: Kuala Lumpur Clinic.",
     sentAt: "Today 08:30 AM",
   },
   {
@@ -597,11 +597,19 @@ export function useClinicStore(isAuthenticated = false) {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("kumo_portal_config");
+      const saved = localStorage.getItem("clinic_portal_config") || localStorage.getItem("kumo_portal_config");
       if (saved) {
         const parsed = JSON.parse(saved) as Partial<ClinicPortalConfig>;
-        if (parsed && typeof parsed === "object" && parsed.portalName) {
-          setPortalConfig((prev) => ({ ...prev, ...parsed }));
+        if (parsed && typeof parsed === "object") {
+          if (parsed.portalName === "KUMO CLINIC") {
+            parsed.portalName = DEFAULT_PORTAL_CONFIG.portalName;
+          }
+          if (parsed.legalEntityName === "Kumo Clinic Sdn Bhd") {
+            parsed.legalEntityName = DEFAULT_PORTAL_CONFIG.legalEntityName;
+          }
+          if (parsed.portalName) {
+            setPortalConfig((prev) => ({ ...prev, ...parsed }));
+          }
         }
       }
     } catch {}
@@ -613,7 +621,7 @@ export function useClinicStore(isAuthenticated = false) {
       const next = { ...prev, ...updates };
       updatedName = next.portalName;
       try {
-        localStorage.setItem("kumo_portal_config", JSON.stringify(next));
+        localStorage.setItem("clinic_portal_config", JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -623,6 +631,7 @@ export function useClinicStore(isAuthenticated = false) {
   function resetPortalConfig() {
     setPortalConfig(DEFAULT_PORTAL_CONFIG);
     try {
+      localStorage.removeItem("clinic_portal_config");
       localStorage.removeItem("kumo_portal_config");
     } catch {}
     notify("Portal branding reset to default.", "info");

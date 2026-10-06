@@ -45,13 +45,13 @@ export function LoginPage({ onSuccess }: Props) {
         <div className="relative z-10">
           <div className="mb-8 flex items-center gap-3">
             <div className="h-11 w-11 rounded-xl bg-gradient-to-tr from-sky-400 to-teal-300 flex items-center justify-center text-white font-extrabold text-xl shadow-lg ring-1 ring-white/20">
-              K
+              C
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-sky-300">
-                Kumo Clinic Management System
+                Clinical Management System
               </p>
-              <p className="text-[0.65rem] text-white/70">Medical & Aesthetic Suite</p>
+              <p className="text-[0.65rem] text-white/70">Medical & Healthcare Suite</p>
             </div>
           </div>
 
@@ -59,10 +59,10 @@ export function LoginPage({ onSuccess }: Props) {
             className="text-3xl font-extrabold leading-tight text-white tracking-tight"
             style={{ letterSpacing: "-0.02em" }}
           >
-            Clinical operating system for outpatient medical & aesthetic care
+            Clinical operating system for outpatient medical & healthcare
           </h1>
           <p className="mt-3 text-sm text-sky-100/80 leading-relaxed">
-            Unified platform for front-desk queue management, digital medical certificates, FEFO dispensary stock, and Kumo treatment packages.
+            Unified platform for front-desk queue management, digital medical certificates, FEFO dispensary stock, and clinic treatment packages.
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export function LoginPage({ onSuccess }: Props) {
             <div>
               <strong className="block text-white font-semibold">Treatment Packages & FEFO Inventory</strong>
               <span className="text-xs text-white/75 mt-0.5 block leading-normal">
-                Kumo multi-session punch cards, First-Expiry-First-Out drug depletion, and split POS billing.
+                Multi-session punch cards, First-Expiry-First-Out drug depletion, and split POS billing.
               </span>
             </div>
           </li>
@@ -120,11 +120,11 @@ export function LoginPage({ onSuccess }: Props) {
           {/* Mobile Logo for small screens */}
           <div className="mb-6 flex items-center gap-3 lg:hidden">
             <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-sky-400 to-teal-400 flex items-center justify-center text-white font-extrabold text-lg shadow-md">
-              K
+              C
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
-                Kumo Clinic Management System
+                Clinical Management System
               </p>
             </div>
           </div>

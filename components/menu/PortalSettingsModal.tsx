@@ -125,7 +125,7 @@ export function PortalSettingsModal({
                     portalName: e.target.value,
                   }))
                 }
-                placeholder="e.g. KUMO CLINIC"
+                placeholder="e.g. KLINIK SENTRAL"
                 className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] focus:bg-[var(--surface)] focus:border-[var(--blue)] font-bold text-[var(--navy)]"
               />
               <span className="text-[0.68rem] text-[var(--muted)] mt-1 block">
@@ -186,7 +186,7 @@ export function PortalSettingsModal({
                     legalEntityName: e.target.value,
                   }))
                 }
-                placeholder="e.g. Kumo Clinic Sdn Bhd"
+                placeholder="e.g. Klinik Sentral Sdn Bhd"
                 className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] focus:bg-[var(--surface)] focus:border-[var(--blue)] font-medium"
               />
             </div>
