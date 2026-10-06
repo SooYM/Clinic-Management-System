@@ -17,9 +17,10 @@ export type ModuleKey =
   | "lab"
   | "packages"
   | "inventory"
-  | "refill"
+  | "drugs"
   | "billing"
   | "ledger"
+  | "users"
   | "alerts"
   | "permissions"
   | "portal_settings";
@@ -44,14 +45,14 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     "referral",
     "lab",
     "packages",
-    "refill",
+    "drugs",
     "alerts",
   ],
   nurse: [
     "queue",
     "packages",
     "inventory",
-    "refill",
+    "drugs",
     "alerts",
   ],
   manager: [
@@ -65,9 +66,10 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     "lab",
     "packages",
     "inventory",
-    "refill",
+    "drugs",
     "billing",
     "ledger",
+    "users",
     "alerts",
     "permissions",
     "portal_settings",
@@ -101,6 +103,8 @@ export interface PatientRecord {
   dob: string;
   age: number;
   gender: "Female" | "Male" | "Other" | "Unknown";
+  nationality?: string;
+  address?: string;
   bloodGroup: string;
   allergies: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }>;
   chronicConditions: string[];
@@ -206,10 +210,33 @@ export interface InventoryItemData {
   sku: string;
   name: string;
   category: "MEDICATION" | "AESTHETIC_CONSUMABLE" | "SKINCARE_RETAIL";
+  dosageForm?: string;
+  strength?: string;
+  instructions?: string;
   minimumParLevel: number;
   sellingPrice: number;
   batches: InventoryBatchData[];
 }
+
+export interface StaffUserRecord {
+  id: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  specialty?: string;
+  licenseNumber?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export const INITIAL_STAFF: StaffUserRecord[] = [
+  { id: "staff-1", fullName: "Dr. Alicia Tan", email: "alicia.tan@clinic.com", role: "doctor", specialty: "General Medicine & Chronic Care", licenseNumber: "MMC-48219", isActive: true, createdAt: "2026-01-01" },
+  { id: "staff-2", fullName: "Dr. Marcus Wong", email: "marcus.wong@clinic.com", role: "doctor", specialty: "Pediatrics & Minor Surgery", licenseNumber: "MMC-51022", isActive: true, createdAt: "2026-01-15" },
+  { id: "staff-3", fullName: "Therapist Chloe Lim", email: "chloe.lim@clinic.com", role: "doctor", specialty: "Laser & Skin Rejuvenation", licenseNumber: "CPD-9104", isActive: true, createdAt: "2026-02-01" },
+  { id: "staff-4", fullName: "Siti Rahmah", email: "siti.rahmah@clinic.com", role: "receptionist", isActive: true, createdAt: "2026-01-10" },
+  { id: "staff-5", fullName: "Nurse Jessica Tan", email: "jessica.tan@clinic.com", role: "nurse", isActive: true, createdAt: "2026-01-12" },
+  { id: "staff-6", fullName: "Admin Clinic Manager", email: "manager@clinic.com", role: "manager", isActive: true, createdAt: "2026-01-01" },
+];
 
 export interface NotificationLogData {
   id: string;
@@ -224,6 +251,7 @@ export interface NotificationLogData {
 const INITIAL_PATIENTS: PatientRecord[] = [
   {
     id: "pat-1",
+    medicalRecordNumber: "1",
     nric: "880412-10-1234",
     name: "Patricia Koh",
     phone: "+60 12-345 6789",
@@ -231,6 +259,8 @@ const INITIAL_PATIENTS: PatientRecord[] = [
     dob: "1988-04-12",
     age: 38,
     gender: "Female",
+    nationality: "Malaysian",
+    address: "12 Jalan Ampang, 50450 Kuala Lumpur",
     bloodGroup: "O+",
     allergies: [
       { substance: "Penicillin", severity: "SEVERE" },
@@ -240,6 +270,7 @@ const INITIAL_PATIENTS: PatientRecord[] = [
   },
   {
     id: "pat-2",
+    medicalRecordNumber: "2",
     nric: "920825-14-1235",
     name: "Marcus Lee Wei Jie",
     phone: "+60 12-876 5432",
@@ -247,12 +278,15 @@ const INITIAL_PATIENTS: PatientRecord[] = [
     dob: "1992-08-25",
     age: 34,
     gender: "Male",
+    nationality: "Malaysian",
+    address: "45 Jalan Bukit Bintang, 55100 Kuala Lumpur",
     bloodGroup: "A+",
     allergies: [],
     chronicConditions: ["Allergic Rhinitis"],
   },
   {
     id: "pat-3",
+    medicalRecordNumber: "3",
     nric: "751103-10-1237",
     name: "Ahmad Bin Razali",
     phone: "+60 13-234 5678",
@@ -260,12 +294,15 @@ const INITIAL_PATIENTS: PatientRecord[] = [
     dob: "1975-11-03",
     age: 51,
     gender: "Male",
+    nationality: "Malaysian",
+    address: "88 Jalan Bangsar, 59100 Kuala Lumpur",
     bloodGroup: "B+",
     allergies: [{ substance: "Sulfa Drugs", severity: "MODERATE" }],
     chronicConditions: ["Type 2 Diabetes", "Hyperlipidemia"],
   },
   {
     id: "pat-4",
+    medicalRecordNumber: "4",
     nric: "960214-10-1246",
     name: "Elena Tan Su-Lyn",
     phone: "+60 14-345 6789",
@@ -273,6 +310,8 @@ const INITIAL_PATIENTS: PatientRecord[] = [
     dob: "1996-02-14",
     age: 30,
     gender: "Female",
+    nationality: "Singaporean",
+    address: "10 Mont Kiara, 50480 Kuala Lumpur",
     bloodGroup: "AB+",
     allergies: [],
     chronicConditions: ["Acne Vulgaris"],
@@ -401,6 +440,9 @@ const INITIAL_INVENTORY: InventoryItemData[] = [
     sku: "MED-AMLO-05",
     name: "Amlodipine Besylate 5mg",
     category: "MEDICATION",
+    dosageForm: "Tablet",
+    strength: "5mg",
+    instructions: "1 tablet once daily in the morning",
     minimumParLevel: 50,
     sellingPrice: 18.0,
     batches: [
@@ -413,6 +455,9 @@ const INITIAL_INVENTORY: InventoryItemData[] = [
     sku: "MED-AUGM-625",
     name: "Augmentin (Amoxicillin/Clavulanate) 625mg",
     category: "MEDICATION",
+    dosageForm: "Tablet",
+    strength: "625mg",
+    instructions: "1 tablet twice daily after meals",
     minimumParLevel: 30,
     sellingPrice: 35.0,
     batches: [
@@ -421,9 +466,82 @@ const INITIAL_INVENTORY: InventoryItemData[] = [
   },
   {
     id: "inv-3",
+    sku: "MED-PCM-500",
+    name: "Paracetamol 500mg",
+    category: "MEDICATION",
+    dosageForm: "Tablet",
+    strength: "500mg",
+    instructions: "2 tablets every 6 hours as needed for fever/pain",
+    minimumParLevel: 100,
+    sellingPrice: 8.0,
+    batches: [
+      { batchNumber: "PCM-2026-03", expiryDate: "2028-05-31", quantity: 250 },
+    ],
+  },
+  {
+    id: "inv-4",
+    sku: "MED-CET-10",
+    name: "Cetirizine Hydrochloride 10mg",
+    category: "MEDICATION",
+    dosageForm: "Tablet",
+    strength: "10mg",
+    instructions: "1 tablet once daily at bedtime",
+    minimumParLevel: 40,
+    sellingPrice: 12.0,
+    batches: [
+      { batchNumber: "CET-2026-09", expiryDate: "2028-02-28", quantity: 80 },
+    ],
+  },
+  {
+    id: "inv-5",
+    sku: "MED-MET-500",
+    name: "Metformin HCl 500mg",
+    category: "MEDICATION",
+    dosageForm: "Tablet",
+    strength: "500mg",
+    instructions: "1 tablet twice daily with or after meals",
+    minimumParLevel: 60,
+    sellingPrice: 15.0,
+    batches: [
+      { batchNumber: "MET-2026-02", expiryDate: "2027-11-30", quantity: 150 },
+    ],
+  },
+  {
+    id: "inv-6",
+    sku: "MED-OME-20",
+    name: "Omeprazole 20mg",
+    category: "MEDICATION",
+    dosageForm: "Capsule",
+    strength: "20mg",
+    instructions: "1 capsule once daily before breakfast",
+    minimumParLevel: 30,
+    sellingPrice: 22.0,
+    batches: [
+      { batchNumber: "OME-2026-04", expiryDate: "2027-10-31", quantity: 60 },
+    ],
+  },
+  {
+    id: "inv-7",
+    sku: "MED-IBU-400",
+    name: "Ibuprofen 400mg",
+    category: "MEDICATION",
+    dosageForm: "Tablet",
+    strength: "400mg",
+    instructions: "1 tablet 3 times daily after meals as needed",
+    minimumParLevel: 40,
+    sellingPrice: 14.0,
+    batches: [
+      { batchNumber: "IBU-2026-01", expiryDate: "2027-12-31", quantity: 90 },
+    ],
+  },
+  {
+    id: "inv-8",
     sku: "AES-BOTOX-100",
     name: "Botox Cosmetic (Allergan) 100U",
     category: "AESTHETIC_CONSUMABLE",
+    dosageForm: "Vial",
+    strength: "100 Units",
+    instructions: "Reconstitute with 2.5ml sterile saline for injection",
     minimumParLevel: 10,
     sellingPrice: 650.0,
     batches: [
@@ -431,10 +549,13 @@ const INITIAL_INVENTORY: InventoryItemData[] = [
     ],
   },
   {
-    id: "inv-4",
+    id: "inv-9",
     sku: "SKN-HA-SERUM",
     name: "Advanced Hyaluronic Acid Serum 50ml",
     category: "SKINCARE_RETAIL",
+    dosageForm: "Bottle",
+    strength: "50ml",
+    instructions: "Apply 3-4 drops morning and evening after cleansing",
     minimumParLevel: 20,
     sellingPrice: 85.0,
     batches: [
@@ -478,6 +599,7 @@ const EMPTY_PATIENT: PatientRecord = { id: "", nric: "", name: "No patient selec
 
 export function useClinicStore(isAuthenticated = false) {
   const [role, setRole] = useState<Role>("doctor");
+  const [staffList, setStaffList] = useState<StaffUserRecord[]>(INITIAL_STAFF);
   const [patients, setPatients] = useState<PatientRecord[]>(DEMO_MODE ? INITIAL_PATIENTS : []);
   const [rooms, setRooms] = useState<ConsultationRoomData[]>(DEMO_MODE ? INITIAL_ROOMS : []);
   const [queue, setQueue] = useState<QueueTicketData[]>(DEMO_MODE ? INITIAL_QUEUE : []);
@@ -574,7 +696,8 @@ export function useClinicStore(isAuthenticated = false) {
       "lab",
       "packages",
       "inventory",
-      "refill",
+      "drugs",
+      "users",
       "billing",
       "ledger",
       "alerts",
@@ -719,11 +842,18 @@ export function useClinicStore(isAuthenticated = false) {
   }
 
   function issueDigitalMC(params: {
+    patientId?: string;
+    doctorName?: string;
     days: number;
     startDate: string;
     diagnosis: string;
     isDiagnosisRedacted: boolean;
   }) {
+    const targetPatient = params.patientId
+      ? (patients.find((p) => p.id === params.patientId) || activePatient)
+      : activePatient;
+    const docName = params.doctorName || "Dr. Alicia Tan";
+
     const start = new Date(params.startDate);
     const end = new Date(start);
     end.setDate(end.getDate() + (params.days - 1));
@@ -732,10 +862,10 @@ export function useClinicStore(isAuthenticated = false) {
     const newMc: DigitalMCData = {
       id: `mc-${Date.now()}`,
       mcNumber: mcNum,
-      patientId: activePatient.id,
-      patientName: activePatient.name,
-      patientNric: activePatient.nric,
-      doctorName: "Dr. Alicia Tan",
+      patientId: targetPatient.id,
+      patientName: targetPatient.name,
+      patientNric: targetPatient.nric,
+      doctorName: docName,
       licenseNumber: "MMC-DEMO-18293A",
       startDate: params.startDate,
       endDate: end.toISOString().split("T")[0],
@@ -753,31 +883,38 @@ export function useClinicStore(isAuthenticated = false) {
       id: `notif-${Date.now()}`,
       channel: "WHATSAPP",
       template: "BOOKING_CONFIRMATION",
-      recipient: activePatient.phone,
-      patientName: activePatient.name,
+      recipient: targetPatient.phone,
+      patientName: targetPatient.name,
       messagePreview: `Demo notification preview: Digital MC #${mcNum} for ${params.days} day(s) issued.`,
       sentAt: "Just now",
     };
     setNotifications((prev) => [alert, ...prev]);
 
-    notify(`Demo MC #${mcNum} created. Verification is not configured.`, "info");
+    notify(`Demo MC #${mcNum} for ${targetPatient.name} created.`, "info");
     return newMc;
   }
 
   function issueReferralLetter(params: {
+    patientId?: string;
+    doctorName?: string;
     hospitalOrSpecialty: string;
     urgency: "ROUTINE" | "SEMI_URGENT" | "URGENT_SAME_DAY" | "EMERGENCY";
     reason: string;
     summary: string;
     medications: string[];
   }) {
+    const targetPatient = params.patientId
+      ? (patients.find((p) => p.id === params.patientId) || activePatient)
+      : activePatient;
+    const docName = params.doctorName || "Dr. Alicia Tan";
+
     const refNum = `REF-${Math.floor(100000 + Math.random() * 900000)}`;
     const newRef: ReferralLetterData = {
       id: `ref-${Date.now()}`,
       referralNumber: refNum,
-      patientId: activePatient.id,
-      patientName: activePatient.name,
-      referringDoctor: "Dr. Alicia Tan",
+      patientId: targetPatient.id,
+      patientName: targetPatient.name,
+      referringDoctor: docName,
       targetHospitalOrSpecialty: params.hospitalOrSpecialty,
       urgency: params.urgency,
       reasonForReferral: params.reason,
@@ -787,7 +924,7 @@ export function useClinicStore(isAuthenticated = false) {
     };
 
     setReferrals((prev) => [newRef, ...prev]);
-    notify(`Referral Letter #${refNum} to ${params.hospitalOrSpecialty} compiled!`, "success");
+    notify(`Referral Letter #${refNum} for ${targetPatient.name} to ${params.hospitalOrSpecialty} compiled!`, "success");
     return newRef;
   }
 
@@ -846,6 +983,70 @@ export function useClinicStore(isAuthenticated = false) {
     );
 
     notify(`Session ${nextSession}/${pkg.totalSessions} redeemed for ${pkg.patientName}!`, "success");
+  }
+
+  function removeTreatmentPackage(packageId: string) {
+    const pkg = packages.find((p) => p.id === packageId);
+    setPackages((prev) => prev.filter((p) => p.id !== packageId));
+    notify(`Treatment package "${pkg?.packageName || ""}" removed successfully.`, "info");
+  }
+
+  function updateInventoryItem(updated: InventoryItemData) {
+    setInventory((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    notify(`Medicine "${updated.name}" updated in formulary!`, "success");
+  }
+
+  function addInventoryItem(newItem: Omit<InventoryItemData, "id">) {
+    const created: InventoryItemData = {
+      ...newItem,
+      id: `inv-${Date.now()}`,
+    };
+    setInventory((prev) => [created, ...prev]);
+    notify(`New drug "${created.name}" added to formulary!`, "success");
+    return created;
+  }
+
+  function registerStaffUser(params: {
+    fullName: string;
+    email: string;
+    role: Role;
+    specialty?: string;
+    licenseNumber?: string;
+  }) {
+    const newStaff: StaffUserRecord = {
+      id: `staff-${Date.now()}`,
+      fullName: params.fullName.trim(),
+      email: params.email.trim(),
+      role: params.role,
+      specialty: params.specialty?.trim(),
+      licenseNumber: params.licenseNumber?.trim(),
+      isActive: true,
+      createdAt: new Date().toISOString().slice(0, 10),
+    };
+    setStaffList((prev) => [...prev, newStaff]);
+    if (params.role === "doctor") {
+      const nextRoom = rooms.length + 1;
+      const newRoom: ConsultationRoomData = {
+        id: `rm-${Date.now()}`,
+        name: `Room 0${nextRoom}`,
+        practitionerName: params.fullName.trim(),
+        specialty: params.specialty?.trim() || "General Practice",
+        isOccupied: false,
+      };
+      setRooms((prev) => [...prev, newRoom]);
+    }
+    notify(`Registered new user ${newStaff.fullName} as ${params.role.toUpperCase()}!`, "success");
+    return newStaff;
+  }
+
+  function addDoctor(params: { name: string; specialty: string; licenseNumber: string }) {
+    return registerStaffUser({
+      fullName: params.name,
+      email: `${params.name.toLowerCase().replace(/[^a-z0-9]/g, "")}@clinic.com`,
+      role: "doctor",
+      specialty: params.specialty,
+      licenseNumber: params.licenseNumber,
+    });
   }
 
   function dispenseStockItem(itemId: string, qty: number) {
@@ -955,6 +1156,8 @@ export function useClinicStore(isAuthenticated = false) {
     email: string;
     dob: string;
     gender: "Female" | "Male" | "Other";
+    nationality?: string;
+    address?: string;
     bloodGroup: string;
     allergies: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }>;
     chronicConditions: string[];
@@ -968,34 +1171,69 @@ export function useClinicStore(isAuthenticated = false) {
     const isNric = params.idType !== "passport";
     const effectiveGender = (isNric ? (genderFromMalaysianIc(params.nric) as "Female" | "Male" | undefined) : null) ?? params.gender;
 
+    // Incremental numeric MRN (1, 2, 3, 4, ...)
+    const existingNumericMrns = patients
+      .map((p) => parseInt(p.medicalRecordNumber || "0", 10))
+      .filter((n) => !isNaN(n) && n > 0);
+    const nextMrn = existingNumericMrns.length > 0 ? Math.max(...existingNumericMrns) + 1 : patients.length + 1;
+    const assignedMrn = String(nextMrn);
+
     if (DEMO_MODE) {
-      const dob = new Date(params.dob);
+      const dob = params.dob ? new Date(params.dob) : null;
       const today = new Date();
+      const calculatedAge = dob && !isNaN(dob.getTime())
+        ? Math.max(0, today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0))
+        : 0;
+
       const demoPatient: PatientRecord = {
-        id: crypto.randomUUID(), medicalRecordNumber: `DEMO-${Date.now()}`, nric: params.nric,
-        name: params.name.trim(), phone: phone || "—", email: params.email.trim(), dob: params.dob,
-        age: Math.max(0, today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0)),
-        gender: effectiveGender, bloodGroup: params.bloodGroup,
-        allergies: params.allergies, chronicConditions: params.chronicConditions,
+        id: crypto.randomUUID(),
+        medicalRecordNumber: assignedMrn,
+        nric: params.nric,
+        name: params.name.trim(),
+        phone: phone || "—",
+        email: params.email.trim(),
+        dob: params.dob,
+        age: calculatedAge,
+        gender: effectiveGender,
+        nationality: params.nationality || (isNric ? "Malaysian" : "Foreign"),
+        address: params.address?.trim() || "—",
+        bloodGroup: params.bloodGroup,
+        allergies: params.allergies,
+        chronicConditions: params.chronicConditions,
       };
       setPatients((prev) => [demoPatient, ...prev]);
       let demoTicket: QueueTicketData | undefined;
       if (params.enqueueNow) {
         demoTicket = {
-          id: crypto.randomUUID(), ticketNumber: `DEMO-Q-${queue.length + 1}`, patientId: demoPatient.id,
-          patientName: demoPatient.name, phone: demoPatient.phone, email: demoPatient.email, status: "WAITING",
-          practitionerName: "Unassigned", registeredAt: new Date().toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" }),
+          id: crypto.randomUUID(),
+          ticketNumber: `Q-${queue.length + 101}`,
+          patientId: demoPatient.id,
+          patientName: demoPatient.name,
+          phone: demoPatient.phone,
+          email: demoPatient.email,
+          status: "WAITING",
+          practitionerName: "Unassigned",
+          registeredAt: new Date().toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" }),
           waitTimeMinutes: 0,
         };
         setQueue((prev) => [...prev, demoTicket!]);
       }
-      notify(`Demo-only patient created: ${demoPatient.name}. This record is not saved to PostgreSQL.`, "info");
+      notify(`Patient created: ${demoPatient.name} (MRN #${assignedMrn}).`, "success");
       return { patient: demoPatient, ticket: demoTicket };
     }
-    const response = await fetch("/api/patients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...params, phone, gender: effectiveGender }) });
+    const response = await fetch("/api/patients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...params, phone, gender: effectiveGender, medicalRecordNumber: assignedMrn }),
+    });
     const payload = await response.json() as { patient?: PatientRecord; error?: { message?: string } };
     if (!response.ok || !payload.patient) throw new Error(payload.error?.message ?? "Patient registration failed.");
-    const newPatient = payload.patient;
+    const newPatient: PatientRecord = {
+      ...payload.patient,
+      medicalRecordNumber: payload.patient.medicalRecordNumber || assignedMrn,
+      nationality: params.nationality || payload.patient.nationality,
+      address: params.address || payload.patient.address,
+    };
     setPatients((prev) => [newPatient, ...prev.filter((patient) => patient.id !== newPatient.id)]);
 
     let newTicket: QueueTicketData | undefined;
@@ -1018,10 +1256,9 @@ export function useClinicStore(isAuthenticated = false) {
         waitTimeMinutes: (queue.filter((q) => q.status === "WAITING").length + 1) * 10,
       };
       setQueue((prev) => [...prev, newTicket!]);
-
     }
 
-    notify(`Registered ${newPatient.name}${params.enqueueNow ? ` · ticket ${newTicket?.ticketNumber} issued.` : ""}`, "success");
+    notify(`Registered ${newPatient.name} (MRN #${assignedMrn})${params.enqueueNow ? ` · ticket ${newTicket?.ticketNumber} issued.` : ""}`, "success");
     return { patient: newPatient, ticket: newTicket };
   }
 
@@ -1100,11 +1337,17 @@ export function useClinicStore(isAuthenticated = false) {
     issueReferralLetter,
     issueLabOrder,
     redeemPackageSession,
+    removeTreatmentPackage,
     dispenseStockItem,
     receiveStockBatch,
+    updateInventoryItem,
+    addInventoryItem,
     triggerMedicationRefillAlert,
     registerPatient,
     enqueueExistingPatient,
+    staffList,
+    registerStaffUser,
+    addDoctor,
     rolePermissions,
     toggleRolePermission,
     grantAllRolePermissions,

@@ -62,7 +62,7 @@ export const TOURS: Record<TourId, GuideStep[]> = {
     {
       target: "group-treatment",
       label: "Treatment & Pharmacy",
-      body: "Prepaid aesthetic punch-cards, First-Expiry-First-Out (FEFO) dispensary inventory, batch receiving, and WhatsApp refill reminders.",
+      body: "Prepaid aesthetic punch-cards, First-Expiry-First-Out (FEFO) dispensary inventory, batch receiving, and master drug formulary.",
     },
     {
       target: "group-finance",

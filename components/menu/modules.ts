@@ -9,11 +9,11 @@ import {
   FlaskConical,
   Sparkles,
   Pill,
-  BellRing,
   CreditCard,
   Coins,
   MessageSquare,
   ShieldCheck,
+  UserCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,9 +63,9 @@ export interface MenuItem {
   description: string;
   icon: LucideIcon;
   shortcut: string;
-  actionType: "route" | "modal" | "refill";
+  actionType: "route" | "modal";
   routeTarget?: "queue" | "patients" | "consultation" | "documents" | "packages" | "inventory" | "billing";
-  modalTarget?: "register" | "ticket" | "mc" | "referral" | "lab" | "alerts" | "permissions" | "portal_settings";
+  modalTarget?: "register" | "ticket" | "mc" | "referral" | "lab" | "alerts" | "permissions" | "portal_settings" | "users";
   allowedRoles?: RoleType[];
   adminOnly?: boolean;
 }
@@ -183,13 +183,14 @@ export const MENU: MenuItem[] = [
     allowedRoles: ["nurse", "manager"],
   },
   {
-    key: "refill",
+    key: "drugs",
     group: "treatment",
-    label: "3-Day Refill Alert",
-    description: "Simulate automated WhatsApp refill alert",
-    icon: BellRing,
-    shortcut: "R",
-    actionType: "refill",
+    label: "Drug List & Formulary",
+    description: "Master list of available clinic medicines (can edit)",
+    icon: Pill,
+    shortcut: "D",
+    actionType: "route",
+    routeTarget: "inventory",
   },
 
   // Billing & Admin
@@ -226,26 +227,14 @@ export const MENU: MenuItem[] = [
     modalTarget: "alerts",
   },
   {
-    key: "permissions",
+    key: "users",
     group: "finance",
-    label: "Role Access Control",
-    description: "Custom role permissions for Front Desk, Doctor & Nurse",
-    icon: ShieldCheck,
-    shortcut: "A",
+    label: "User & Doctor Management",
+    description: "Register new staff users & enter doctor profiles",
+    icon: UserCheck,
+    shortcut: "U",
     actionType: "modal",
-    modalTarget: "permissions",
-    allowedRoles: ["manager"],
-    adminOnly: true,
-  },
-  {
-    key: "portal_settings",
-    group: "finance",
-    label: "Portal & Clinic Settings",
-    description: "Customize clinic name, branding, and branch info",
-    icon: Building2,
-    shortcut: "S",
-    actionType: "modal",
-    modalTarget: "portal_settings",
+    modalTarget: "users",
     allowedRoles: ["manager"],
     adminOnly: true,
   },

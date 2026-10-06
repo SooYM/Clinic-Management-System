@@ -84,8 +84,8 @@ export function GuideModal({ onClose }: { onClose: () => void }) {
                 <kbd className="font-mono font-bold bg-[var(--surface)] px-2 py-0.5 rounded border border-[var(--line)] text-[var(--ink)]">0</kbd>
               </div>
               <div className="p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] flex items-center justify-between">
-                <span>3-Day Refill Simulator</span>
-                <kbd className="font-mono font-bold bg-[var(--surface)] px-2 py-0.5 rounded border border-[var(--line)] text-[var(--ink)]">R</kbd>
+                <span>Drug List & Formulary</span>
+                <kbd className="font-mono font-bold bg-[var(--surface)] px-2 py-0.5 rounded border border-[var(--line)] text-[var(--ink)]">D</kbd>
               </div>
               <div className="p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] flex items-center justify-between">
                 <span>POS Billing & Checkout</span>

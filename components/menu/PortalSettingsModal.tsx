@@ -49,7 +49,7 @@ export function PortalSettingsModal({
   };
 
   const brandInitial =
-    formData.portalName.trim().charAt(0).toUpperCase() || "K";
+    formData.portalName.trim().charAt(0).toUpperCase() || "C";
 
   return (
     <Modal
@@ -60,11 +60,8 @@ export function PortalSettingsModal({
       <div className="space-y-6 max-w-2xl">
         {/* Header */}
         <div className="pb-3 border-b border-[var(--line)]">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="badge badge-blue mb-1">ADMIN SETTINGS</span>
-            <span className="text-[0.68rem] text-[var(--muted)] font-mono">
-              Identity & Branding
-            </span>
           </div>
           <h2
             id="portal-settings-title"

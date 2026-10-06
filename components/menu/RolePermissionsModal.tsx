@@ -40,9 +40,8 @@ export function RolePermissionsModal({
       <div className="space-y-5 max-w-4xl">
         {/* Header */}
         <div className="pb-3 border-b border-[var(--line)]">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="badge badge-blue mb-1">ADMIN ACCESS CONTROL</span>
-            <span className="text-[0.68rem] text-[var(--muted)] font-mono">RBAC Engine v2.4</span>
           </div>
           <h2 id="role-permissions-title" className="text-xl font-extrabold text-[var(--navy)]">
             Role Access Control & Module Permissions
