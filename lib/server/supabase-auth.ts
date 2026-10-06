@@ -2,8 +2,10 @@ import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
 
-export const ACCESS_COOKIE = "kumo_access_token";
-export const REFRESH_COOKIE = "kumo_refresh_token";
+export const ACCESS_COOKIE = "cms_access_token";
+export const REFRESH_COOKIE = "cms_refresh_token";
+export const LEGACY_ACCESS_COOKIE = "kumo_access_token";
+export const LEGACY_REFRESH_COOKIE = "kumo_refresh_token";
 
 const ACCESS_MAX_AGE_SECONDS = 15 * 60;
 const REFRESH_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
@@ -56,7 +58,7 @@ export interface BuiltInStaffAccount {
 export const BUILT_IN_STAFF_ACCOUNTS: BuiltInStaffAccount[] = [
   {
     username: "admin",
-    email: "admin@kumo.clinic",
+    email: "admin@clinic.local",
     passwordHash: "admin123",
     profile: {
       id: "10000000-0000-4000-8000-000000000001",
@@ -70,7 +72,7 @@ export const BUILT_IN_STAFF_ACCOUNTS: BuiltInStaffAccount[] = [
   },
   {
     username: "doctor",
-    email: "doctor@kumo.clinic",
+    email: "doctor@clinic.local",
     passwordHash: "doctor123",
     profile: {
       id: "10000000-0000-4000-8000-000000000002",
@@ -84,7 +86,7 @@ export const BUILT_IN_STAFF_ACCOUNTS: BuiltInStaffAccount[] = [
   },
   {
     username: "marcus",
-    email: "marcus@kumo.clinic",
+    email: "marcus@clinic.local",
     passwordHash: "doctor123",
     profile: {
       id: "10000000-0000-4000-8000-000000000003",
@@ -98,7 +100,7 @@ export const BUILT_IN_STAFF_ACCOUNTS: BuiltInStaffAccount[] = [
   },
   {
     username: "reception",
-    email: "reception@kumo.clinic",
+    email: "reception@clinic.local",
     passwordHash: "reception123",
     profile: {
       id: "10000000-0000-4000-8000-000000000004",
@@ -112,7 +114,7 @@ export const BUILT_IN_STAFF_ACCOUNTS: BuiltInStaffAccount[] = [
   },
   {
     username: "nurse",
-    email: "nurse@kumo.clinic",
+    email: "nurse@clinic.local",
     passwordHash: "nurse123",
     profile: {
       id: "10000000-0000-4000-8000-000000000005",
@@ -251,17 +253,20 @@ function parseTokens(value: unknown): SupabaseSessionTokens {
 
 export async function signInWithPassword(identifier: string, password: string): Promise<SupabaseSessionTokens> {
   const normalized = identifier.trim().toLowerCase();
-  const matched = BUILT_IN_STAFF_ACCOUNTS.find(
-    (acc) => acc.username.toLowerCase() === normalized || acc.email.toLowerCase() === normalized
-  );
+  const matched = BUILT_IN_STAFF_ACCOUNTS.find((acc) => {
+    const username = acc.username.toLowerCase();
+    const email = acc.email.toLowerCase();
+    const legacyEmail = email.replace("@clinic.local", "@kumo.clinic");
+    return normalized === username || normalized === email || normalized === legacyEmail;
+  });
 
   if (matched) {
     if (matched.passwordHash !== password) {
       throw new AuthRouteError(401, "INVALID_CREDENTIALS", "Username/email or password is incorrect.");
     }
     return {
-      access_token: `kumo_mock_${matched.profile.id}`,
-      refresh_token: `kumo_mock_refresh_${matched.profile.id}`,
+      access_token: `cms_mock_${matched.profile.id}`,
+      refresh_token: `cms_mock_refresh_${matched.profile.id}`,
       expires_in: 86400,
       user: { id: matched.profile.id },
     };
@@ -309,9 +314,9 @@ async function getSupabaseUser(accessToken: string): Promise<SupabaseUser | null
 }
 
 export async function getActiveStaffProfile(accessToken: string, authUserId: string): Promise<StaffSessionUser> {
-  if (accessToken.startsWith("kumo_mock_") || authUserId.startsWith("usr_")) {
+  if (accessToken.startsWith("cms_mock_") || accessToken.startsWith("kumo_mock_") || authUserId.startsWith("usr_")) {
     const matched = BUILT_IN_STAFF_ACCOUNTS.find(
-      (acc) => acc.profile.id === authUserId || `kumo_mock_${acc.profile.id}` === accessToken
+      (acc) => acc.profile.id === authUserId || `cms_mock_${acc.profile.id}` === accessToken || `kumo_mock_${acc.profile.id}` === accessToken
     );
     if (matched) return matched.profile;
   }
@@ -379,16 +384,18 @@ export function setSessionCookies(response: NextResponse, tokens: SupabaseSessio
 export function clearSessionCookies(response: NextResponse): NextResponse {
   response.cookies.set(ACCESS_COOKIE, "", { ...cookieOptions(0), expires: new Date(0) });
   response.cookies.set(REFRESH_COOKIE, "", { ...cookieOptions(0), expires: new Date(0) });
+  response.cookies.set(LEGACY_ACCESS_COOKIE, "", { ...cookieOptions(0), expires: new Date(0) });
+  response.cookies.set(LEGACY_REFRESH_COOKIE, "", { ...cookieOptions(0), expires: new Date(0) });
   return noStore(response);
 }
 
 export async function getAuthenticatedClinicStaff(request: NextRequest): Promise<AuthenticatedClinicStaff> {
   assertSameOrigin(request);
-  let accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
-  const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
+  let accessToken = request.cookies.get(ACCESS_COOKIE)?.value || request.cookies.get(LEGACY_ACCESS_COOKIE)?.value;
+  const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value || request.cookies.get(LEGACY_REFRESH_COOKIE)?.value;
 
-  if (accessToken?.startsWith("kumo_mock_")) {
-    const userId = accessToken.replace("kumo_mock_", "");
+  if (accessToken?.startsWith("cms_mock_") || accessToken?.startsWith("kumo_mock_")) {
+    const userId = accessToken.replace(/^(cms|kumo)_mock_/, "");
     const matched = BUILT_IN_STAFF_ACCOUNTS.find((acc) => acc.profile.id === userId);
     if (matched) {
       return { user: matched.profile, accessToken };

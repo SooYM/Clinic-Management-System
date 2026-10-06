@@ -96,7 +96,7 @@ This target is architectural direction, not delivered provider infrastructure. D
 
 ## Authentication and authorization path
 
-1. `POST /api/auth/login` accepts email and password, requests a Supabase password-grant session, looks up an active `staff_members` profile, and sets `kumo_access_token` and `kumo_refresh_token` as HttpOnly cookies. The access cookie is capped at 15 minutes; refresh cookie is 7 days. Secure flag is enabled in production; cookies use SameSite=Lax.
+1. `POST /api/auth/login` accepts email and password, requests a Supabase password-grant session, looks up an active `staff_members` profile, and sets `cms_access_token` and `cms_refresh_token` as HttpOnly cookies. The access cookie is capped at 15 minutes; refresh cookie is 7 days. Secure flag is enabled in production; cookies use SameSite=Lax.
 2. `GET /api/auth/session` resolves/refreshes a session and returns the staff profile. `POST /api/auth/logout` attempts upstream revocation and clears local cookies even on upstream failure.
 3. Domain table RLS uses `auth.uid()` matched to an active clinic+branch staff membership and explicit `role_permissions` entries. Patient, queue, and clinical-document routes forward the signed-in user's JWT to PostgREST, so database RLS applies. Migrations seed no permission entries, so these routes remain denied until permissions are provisioned for the active branch/role. The NRIC reveal endpoint alone uses the service role to append an audit row after checking the user's distinct identifier permission; it fails closed if audit cannot be written. Other ordinary API operations must use the user JWT.
 

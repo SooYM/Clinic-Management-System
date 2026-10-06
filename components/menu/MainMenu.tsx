@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { Lock } from "lucide-react";
+import { useEffect } from "react";
 import {
   GROUPS,
   MENU,
@@ -138,10 +137,13 @@ export function MainMenu({
         </div>
 
         <div className="flex items-center gap-3 text-xs text-[var(--muted)] font-medium">
-          <span className="hidden sm:inline">Press key on tile to open</span>
+          <span className="hidden sm:inline" data-guide="menu-shortcuts">
+            Press key on tile to open
+          </span>
           <span className="hidden sm:inline text-[var(--line)]">|</span>
           <button
             type="button"
+            data-guide="guide-btn"
             onClick={onOpenGuide}
             className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-[var(--line)] bg-[var(--surface-2)] hover:bg-[var(--surface)] hover:text-[var(--ink)] text-xs font-bold transition-colors cursor-pointer"
           >
@@ -157,10 +159,16 @@ export function MainMenu({
       <div className="space-y-8">
         {GROUPS.map((group) => {
           const tiles = byGroup(group.id);
+          const visibleTiles = tiles.filter(isUsable);
+          if (visibleTiles.length === 0) return null;
           const hue = HUE_STYLES[group.hue] || HUE_STYLES.blue;
 
           return (
-            <section key={group.id} aria-labelledby={`group-${group.id}`}>
+            <section
+              key={group.id}
+              aria-labelledby={`group-${group.id}`}
+              data-guide={`group-${group.id}`}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <h2
                   id={`group-${group.id}`}
@@ -179,24 +187,15 @@ export function MainMenu({
 
               {/* Grid with min-height and pastel blue hover */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
-                {tiles.map((item) => {
-                  const usable = isUsable(item);
+                {visibleTiles.map((item) => {
                   const Icon = item.icon;
 
                   return (
                     <button
                       key={item.key}
                       type="button"
-                      aria-disabled={usable ? undefined : "true"}
-                      title={usable ? undefined : "Restricted for your role"}
-                      onClick={() => {
-                        if (usable) onOpenItem(item);
-                      }}
-                      className={`tile group cursor-pointer ${
-                        usable
-                          ? "hover:border-[var(--blue)] hover:shadow-md"
-                          : "opacity-60 cursor-not-allowed bg-[var(--surface-2)]"
-                      }`}
+                      onClick={() => onOpenItem(item)}
+                      className="tile group cursor-pointer hover:border-[var(--blue)] hover:shadow-md"
                     >
                       {/* Top Row: Icon + Shortcut key badge */}
                       <div className="tile-top flex items-start justify-between gap-2 w-full">
@@ -206,21 +205,12 @@ export function MainMenu({
                           <Icon size={20} strokeWidth={2} aria-hidden />
                         </div>
 
-                        {usable ? (
-                          <kbd
-                            aria-hidden
-                            className="font-mono text-[0.7rem] font-bold px-1.5 py-0.5 rounded border border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted)] group-hover:text-[var(--blue)] group-hover:border-[var(--blue)] transition-colors"
-                          >
-                            {item.shortcut}
-                          </kbd>
-                        ) : (
-                          <span
-                            title="Locked"
-                            className="p-1 rounded bg-[var(--surface-2)] text-[var(--muted)]"
-                          >
-                            <Lock size={14} strokeWidth={2.2} />
-                          </span>
-                        )}
+                        <kbd
+                          aria-hidden
+                          className="font-mono text-[0.7rem] font-bold px-1.5 py-0.5 rounded border border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted)] group-hover:text-[var(--blue)] group-hover:border-[var(--blue)] transition-colors"
+                        >
+                          {item.shortcut}
+                        </kbd>
                       </div>
 
                       {/* Bottom Text: Title + Description */}
@@ -229,7 +219,7 @@ export function MainMenu({
                           {item.label}
                         </span>
                         <span className="block text-xs text-[var(--muted)] mt-1 line-clamp-2 leading-relaxed">
-                          {usable ? item.description : "Authorized roles only"}
+                          {item.description}
                         </span>
                       </div>
                     </button>

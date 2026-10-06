@@ -1,6 +1,6 @@
 /**
  * OOP Domain Model: Clinic Pharmacy & Consumables Inventory
- * Core Kumo Clinic capability: Batch Tracking, FEFO Dispensing, and Branch Transfers
+ * Batch Tracking, FEFO Dispensing, and Branch Transfers
  */
 
 export interface StockBatch {

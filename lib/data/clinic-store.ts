@@ -80,6 +80,7 @@ export interface ClinicPortalConfig {
   legalEntityName: string;
   branchName: string;
   addressLine: string;
+  customDuitNowQrImage?: string;
 }
 
 export const DEFAULT_PORTAL_CONFIG: ClinicPortalConfig = {
@@ -194,6 +195,12 @@ export interface TreatmentPackageData {
   }>;
 }
 
+export interface InventoryBatchData {
+  batchNumber: string;
+  expiryDate: string;
+  quantity: number;
+}
+
 export interface InventoryItemData {
   id: string;
   sku: string;
@@ -201,11 +208,7 @@ export interface InventoryItemData {
   category: "MEDICATION" | "AESTHETIC_CONSUMABLE" | "SKINCARE_RETAIL";
   minimumParLevel: number;
   sellingPrice: number;
-  batches: Array<{
-    batchNumber: string;
-    expiryDate: string;
-    quantity: number;
-  }>;
+  batches: InventoryBatchData[];
 }
 
 export interface NotificationLogData {
@@ -739,7 +742,7 @@ export function useClinicStore(isAuthenticated = false) {
       totalDays: params.days,
       diagnosis: params.diagnosis,
       isDiagnosisRedacted: params.isDiagnosisRedacted,
-      qrHash: `VERIFY-KUMO-${mcNum}-${crypto.randomUUID()}`,
+      qrHash: `VERIFY-CLINIC-${mcNum}-${crypto.randomUUID()}`,
       issuedAt: new Date().toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }),
     };
 
@@ -877,6 +880,54 @@ export function useClinicStore(isAuthenticated = false) {
     notify(`Dispensed ${qty} unit(s) of ${item.name} via FEFO order!`, "success");
   }
 
+  function receiveStockBatch(params: {
+    itemId: string;
+    batchNumber: string;
+    expiryDate: string;
+    quantity: number;
+    supplier?: string;
+  }) {
+    const item = inventory.find((i) => i.id === params.itemId);
+    if (!item) {
+      notify("Inventory item not found.", "error");
+      return;
+    }
+    if (params.quantity <= 0) {
+      notify("Quantity must be greater than zero.", "error");
+      return;
+    }
+
+    setInventory((prev) =>
+      prev.map((i) => {
+        if (i.id !== params.itemId) return i;
+        const existingBatchIndex = i.batches.findIndex(
+          (b) => b.batchNumber.toLowerCase() === params.batchNumber.trim().toLowerCase()
+        );
+        let nextBatches: InventoryBatchData[];
+        if (existingBatchIndex >= 0) {
+          nextBatches = i.batches.map((b, idx) =>
+            idx === existingBatchIndex
+              ? { ...b, quantity: b.quantity + params.quantity, expiryDate: params.expiryDate || b.expiryDate }
+              : b
+          );
+        } else {
+          const newBatch: InventoryBatchData = {
+            batchNumber: params.batchNumber.trim().toUpperCase(),
+            expiryDate: params.expiryDate,
+            quantity: params.quantity,
+          };
+          nextBatches = [...i.batches, newBatch];
+        }
+        return { ...i, batches: nextBatches };
+      })
+    );
+
+    notify(
+      `Stock In: Received ${params.quantity} units of ${item.name} (Batch #${params.batchNumber.trim().toUpperCase()}).`,
+      "success"
+    );
+  }
+
   function triggerMedicationRefillAlert(patientId: string, medName: string) {
     const pat = patients.find((p) => p.id === patientId);
     if (!pat) return;
@@ -896,30 +947,35 @@ export function useClinicStore(isAuthenticated = false) {
   }
 
   async function registerPatient(params: {
+    idType?: "nric" | "passport";
     nric: string;
     name: string;
-    phone: string;
+    phone?: string;
+    countryCode?: string;
     email: string;
     dob: string;
-    gender: "Female" | "Male";
+    gender: "Female" | "Male" | "Other";
     bloodGroup: string;
     allergies: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }>;
     chronicConditions: string[];
     enqueueNow: boolean;
     pdpaConsent: boolean;
   }) {
-    const normalizedPhone = normalizeMalaysianPhone(params.phone);
-    if (!normalizedPhone) {
-      throw new Error("Enter a valid Malaysian phone number, such as 012-345 6789.");
-    }
+    const rawPhone = (params.phone || "").trim();
+    const phone = rawPhone
+      ? (params.countryCode && !rawPhone.startsWith("+") ? `${params.countryCode} ${rawPhone}` : rawPhone)
+      : "";
+    const isNric = params.idType !== "passport";
+    const effectiveGender = (isNric ? (genderFromMalaysianIc(params.nric) as "Female" | "Male" | undefined) : null) ?? params.gender;
+
     if (DEMO_MODE) {
       const dob = new Date(params.dob);
       const today = new Date();
       const demoPatient: PatientRecord = {
         id: crypto.randomUUID(), medicalRecordNumber: `DEMO-${Date.now()}`, nric: params.nric,
-        name: params.name.trim(), phone: normalizedPhone, email: params.email.trim(), dob: params.dob,
+        name: params.name.trim(), phone: phone || "—", email: params.email.trim(), dob: params.dob,
         age: Math.max(0, today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0)),
-        gender: genderFromMalaysianIc(params.nric) ?? params.gender, bloodGroup: params.bloodGroup,
+        gender: effectiveGender, bloodGroup: params.bloodGroup,
         allergies: params.allergies, chronicConditions: params.chronicConditions,
       };
       setPatients((prev) => [demoPatient, ...prev]);
@@ -936,7 +992,7 @@ export function useClinicStore(isAuthenticated = false) {
       notify(`Demo-only patient created: ${demoPatient.name}. This record is not saved to PostgreSQL.`, "info");
       return { patient: demoPatient, ticket: demoTicket };
     }
-    const response = await fetch("/api/patients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...params, phone: normalizedPhone, gender: genderFromMalaysianIc(params.nric) ?? params.gender }) });
+    const response = await fetch("/api/patients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...params, phone, gender: effectiveGender }) });
     const payload = await response.json() as { patient?: PatientRecord; error?: { message?: string } };
     if (!response.ok || !payload.patient) throw new Error(payload.error?.message ?? "Patient registration failed.");
     const newPatient = payload.patient;
@@ -1045,6 +1101,7 @@ export function useClinicStore(isAuthenticated = false) {
     issueLabOrder,
     redeemPackageSession,
     dispenseStockItem,
+    receiveStockBatch,
     triggerMedicationRefillAlert,
     registerPatient,
     enqueueExistingPatient,

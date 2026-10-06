@@ -1,5 +1,5 @@
 /**
- * OOP Domain Model: Queue Management & Room Allocation (Kumo Parity)
+ * OOP Domain Model: Queue Management & Room Allocation
  * Real-time clinic queue tracking, room dispatch, and queue event streaming
  */
 

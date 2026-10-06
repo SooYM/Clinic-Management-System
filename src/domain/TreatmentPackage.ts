@@ -1,5 +1,5 @@
 /**
- * OOP Domain Model: Treatment Package Aggregate (Kumo Clinic Core)
+ * OOP Domain Model: Treatment Package Aggregate
  * Handles Prepaid Treatment Packages, Session Redemptions, and Expiry Invariants
  */
 

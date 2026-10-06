@@ -79,7 +79,7 @@ export class ClinicAlertDispatcher {
         appointmentTime,
         doctorName,
         branchLocation,
-        calendarLink: `https://clinic.kumo.com/cal?id=${Date.now()}`
+        calendarLink: `https://clinic.local/cal?id=${Date.now()}`
       }
     };
     await this._strategies.get("WHATSAPP")?.sendMessage(payload);

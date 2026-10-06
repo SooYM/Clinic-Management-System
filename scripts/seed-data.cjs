@@ -188,7 +188,7 @@ async function seed() {
       { id: "80000000-0000-4000-8000-000000000001", sku: "MED-AMLO-05", name: "Amlodipine Besylate 5mg", minPar: 50, category: "medication" },
       { id: "80000000-0000-4000-8000-000000000002", sku: "MED-AUGM-625", name: "Augmentin (Amoxicillin/Clavulanate) 625mg", minPar: 30, category: "medication" },
       { id: "80000000-0000-4000-8000-000000000003", sku: "AES-BOTOX-100", name: "Botox Cosmetic (Allergan) 100U", minPar: 10, category: "aesthetic_consumable" },
-      { id: "80000000-0000-4000-8000-000000000004", sku: "SKN-HA-SERUM", name: "Kumo Advanced Hyaluronic Acid Serum 50ml", minPar: 20, category: "retail" }
+      { id: "80000000-0000-4000-8000-000000000004", sku: "SKN-HA-SERUM", name: "Advanced Hyaluronic Acid Serum 50ml", minPar: 20, category: "retail" }
     ];
     for (const it of items) {
       await client.query(`

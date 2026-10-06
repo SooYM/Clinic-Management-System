@@ -482,3 +482,43 @@ a { color: inherit; text-decoration: none; }
   border-radius: 3px;
   flex: none;
 }
+
+/* ---- Interactive Coachmark Guide ---- */
+.guide-spot {
+  position: fixed;
+  border-radius: 12px;
+  box-shadow: 0 0 0 4px var(--blue), 0 0 0 8px rgba(37, 99, 235, 0.25);
+  pointer-events: none;
+  z-index: 10000;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.guide-dim {
+  position: fixed;
+  background: rgba(15, 23, 42, 0.55);
+  pointer-events: auto;
+  z-index: 9998;
+}
+.guide-arrow {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+.guide-arrow-below {
+  border-right-width: 0;
+  border-bottom-width: 0;
+}
+.guide-arrow-above {
+  border-left-width: 0;
+  border-top-width: 0;
+}
+.guide-arrow-right {
+  border-top-width: 0;
+  border-right-width: 0;
+}
+.guide-arrow-left {
+  border-bottom-width: 0;
+  border-left-width: 0;
+}

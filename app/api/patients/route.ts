@@ -72,12 +72,28 @@ export async function POST(request: NextRequest) {
       throw new AuthRouteError(403, "ROLE_FORBIDDEN", "Your role cannot register patients.");
     }
     const body = (await request.json()) as Record<string, unknown>;
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const nric = typeof body.nric === "string" ? normalizeMalaysianIc(body.nric).replace(/[^\d]/g, "") : "";
-    const phone = typeof body.phone === "string" ? normalizeMalaysianPhone(body.phone) : null;
+    const idType = (typeof body.idType === "string" ? body.idType.toLowerCase() : "nric") === "passport" ? "passport" : "nric";
+    const name = typeof body.name === "string" ? body.name.trim() : (typeof body.fullName === "string" ? body.fullName.trim() : "");
+    const rawId = typeof body.nric === "string" ? body.nric.trim() : (typeof body.nationalId === "string" ? body.nationalId.trim() : "");
+    const nric = idType === "nric" ? normalizeMalaysianIc(rawId).replace(/[^\d]/g, "") : rawId.toUpperCase();
+
+    // Phone is optional now, can include country code
+    let phone: string | null = null;
+    if (typeof body.phone === "string" && body.phone.trim()) {
+      const trimmedPhone = body.phone.trim();
+      const countryCode = typeof body.countryCode === "string" && body.countryCode.trim() ? body.countryCode.trim() : "";
+      phone = countryCode && !trimmedPhone.startsWith("+") ? `${countryCode} ${trimmedPhone}` : trimmedPhone;
+    }
+
     const dob = typeof body.dob === "string" ? body.dob : "";
-    if (name.length < 2 || name.length > 160 || !/^\d{12}$/.test(nric) || !phone || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-      throw new AuthRouteError(400, "INVALID_PATIENT", "Enter a name, valid 12-digit Malaysian IC, Malaysian phone, and date of birth.");
+    if (name.length < 2 || name.length > 160 || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+      throw new AuthRouteError(400, "INVALID_PATIENT", "Enter a patient name and valid date of birth.");
+    }
+    if (idType === "nric" && !/^\d{12}$/.test(nric)) {
+      throw new AuthRouteError(400, "INVALID_NRIC", "Enter a valid 12-digit Malaysian IC number.");
+    }
+    if (idType === "passport" && (nric.length < 3 || nric.length > 30)) {
+      throw new AuthRouteError(400, "INVALID_PASSPORT", "Enter a valid passport or foreign identification number (3-30 characters).");
     }
     const parsedDob = new Date(`${dob}T00:00:00.000Z`);
     if (Number.isNaN(parsedDob.getTime()) || parsedDob.toISOString().slice(0, 10) !== dob || parsedDob > new Date()) {
@@ -91,7 +107,9 @@ export async function POST(request: NextRequest) {
 
     const ciphertext = encryptPatientNationalId(nric);
     const hash = hashPatientNationalId(nric);
-    const rawGender = genderFromMalaysianIc(nric) || (typeof body.gender === "string" ? body.gender : "unknown");
+    const rawGender = idType === "nric"
+      ? (genderFromMalaysianIc(nric) || (typeof body.gender === "string" ? body.gender : "unknown"))
+      : (typeof body.gender === "string" ? body.gender : "unknown");
     const gender = (rawGender.toLowerCase() === "female" ? "female" : rawGender.toLowerCase() === "male" ? "male" : "other") as "female" | "male" | "other" | "unknown";
     const bloodGroup = typeof body.bloodGroup === "string" && body.bloodGroup ? body.bloodGroup : null;
     const validBloodGroups = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"]);

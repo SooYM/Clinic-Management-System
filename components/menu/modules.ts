@@ -165,7 +165,7 @@ export const MENU: MenuItem[] = [
     key: "packages",
     group: "treatment",
     label: "Treatment Packages",
-    description: "Kumo prepaid punch-cards & sessions",
+    description: "Prepaid treatment punch-cards & sessions",
     icon: Sparkles,
     shortcut: "9",
     actionType: "route",

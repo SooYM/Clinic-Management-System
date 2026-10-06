@@ -1,6 +1,6 @@
 /**
  * OOP Domain Model: Billing & Point of Sale (POS)
- * Implements Open/Closed Principle via Strategy Pattern (Kumo Parity)
+ * Implements Open/Closed Principle via Strategy Pattern
  */
 
 export interface LineItem {

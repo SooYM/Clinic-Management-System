@@ -1,6 +1,6 @@
 /**
  * OOP Domain Model: Practitioner Commission & Performance Ledger
- * Core Kumo Clinic capability: Distributes service, package, and retail product sales commissions
+ * Distributes service, package, and retail product sales commissions
  */
 
 export type CommissionTargetType = "CONSULTATION" | "TREATMENT_SESSION" | "PACKAGE_SALE" | "RETAIL_PRODUCT";

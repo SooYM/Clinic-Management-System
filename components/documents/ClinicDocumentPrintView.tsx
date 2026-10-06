@@ -130,7 +130,7 @@ export function ClinicDocumentPrintView({
           </div>
           <div className={styles.documentQr}>
             <QrCode
-              value={activeDocument.verificationUrl ?? ("kumo-demo-document:" + activeDocument.kind + ":" + activeDocument.reference + ":v" + activeDocument.version)}
+              value={activeDocument.verificationUrl ?? ("clinic-document:" + activeDocument.kind + ":" + activeDocument.reference + ":v" + activeDocument.version)}
               label={activeDocument.verificationUrl ? "Status-only verification for " + activeDocument.reference : "Demo reference QR for " + activeDocument.reference}
             />
             <span>{activeDocument.verificationUrl ? "Scan for status only · no patient details are shown" : "Demo reference QR · not a verification code"}</span>

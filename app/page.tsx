@@ -16,16 +16,45 @@ import { QrCode } from "../components/QrCode";
 import { genderFromMalaysianIc, normalizeMalaysianPhone } from "../src/domain/MalaysianIc";
 import { ClinicDocumentPrintView } from "../components/documents/ClinicDocumentPrintView";
 import { documentFromLabOrder, documentFromMC, documentFromReferral } from "../components/documents/fromClinicRecords";
-import { createClinicDocumentArtifact, regenerateClinicDocumentArtifact } from "../components/documents/service";
+import { createClinicDocumentArtifact, regenerateClinicDocumentArtifact } from "../components/documents";
 import type { ClinicDocumentArtifact, DocumentPrintRecord } from "../components/documents/types";
+import { GuideProvider, useGuide, useFirstLoginGuide } from "../components/guide/GuideProvider";
 
 type Tab = "menu" | "queue" | "patients" | "consultation" | "documents" | "packages" | "inventory" | "billing";
 
 export default function ClinicDashboard() {
-  const { user, isLoaded, signOut } = useSession();
+  const { user, isLoaded } = useSession();
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-bold text-[var(--muted)]">Loading Clinic Session...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return (
+    <GuideProvider username={user.username}>
+      <ClinicDashboardContent />
+    </GuideProvider>
+  );
+}
+
+function ClinicDashboardContent() {
+  const { user, signOut } = useSession();
   const store = useClinicStore(Boolean(user));
+  const guide = useGuide();
+  useFirstLoginGuide(user?.username ?? null);
   const demoMode = process.env.NEXT_PUBLIC_CLINIC_DEMO_MODE === "true";
   const [tab, setTab] = useState<Tab>("menu");
+  const [billingSubTab, setBillingSubTab] = useState<"pos" | "commission">("pos");
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [guideModalOpen, setGuideModalOpen] = useState(false);
@@ -39,26 +68,42 @@ export default function ClinicDashboard() {
     }
   }, [user]);
 
+  // Tab permission guard (Requirement 10)
+  useEffect(() => {
+    if (tab !== "menu" && user && !store.hasAccess(user.role, tab as ModuleKey)) {
+      setTab("menu");
+    }
+  }, [tab, store.rolePermissions, user]);
+
   // Modal Dialog States
   const [mcModalOpen, setMcModalOpen] = useState(false);
   const [referralModalOpen, setReferralModalOpen] = useState(false);
   const [labModalOpen, setLabModalOpen] = useState(false);
   const [redeemModalOpen, setRedeemModalOpen] = useState<string | null>(null);
   const [dispenseModalOpen, setDispenseModalOpen] = useState<string | null>(null);
+  const [stockInModalOpen, setStockInModalOpen] = useState(false);
+  const [stockInItemId, setStockInItemId] = useState("");
+  const [stockInBatchNumber, setStockInBatchNumber] = useState("");
+  const [stockInExpiryDate, setStockInExpiryDate] = useState("");
+  const [stockInQuantity, setStockInQuantity] = useState(50);
+  const [stockInSupplier, setStockInSupplier] = useState("");
   const [regModalOpen, setRegModalOpen] = useState(false);
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
+  const [checkInSearch, setCheckInSearch] = useState("");
   const [viewPatientModal, setViewPatientModal] = useState<string | null>(null);
   const [viewPatientNric, setViewPatientNric] = useState<string | null>(null);
   const [viewPatientNricError, setViewPatientNricError] = useState(false);
 
-  // Form states for Patient Registration
+  // Form states for Patient Registration (Requirements 3 & 4)
+  const [regIdType, setRegIdType] = useState<"nric" | "passport">("nric");
+  const [regCountryCode, setRegCountryCode] = useState("+60");
   const [regName, setRegName] = useState("");
   const [regNric, setRegNric] = useState("");
   const [regPdpaConsent, setRegPdpaConsent] = useState(false);
-  const [regPhone, setRegPhone] = useState("+60 ");
+  const [regPhoneRaw, setRegPhoneRaw] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regDob, setRegDob] = useState("1995-06-15");
-  const [regGender, setRegGender] = useState<"Female" | "Male">("Female");
+  const [regGender, setRegGender] = useState<"Female" | "Male" | "Other">("Female");
   const [regBloodGroup, setRegBloodGroup] = useState("");
   const [regAllergyText, setRegAllergyText] = useState("");
   const [regConditionsText, setRegConditionsText] = useState("");
@@ -299,14 +344,26 @@ export default function ClinicDashboard() {
 
   async function handleRegisterPatient(e: React.FormEvent) {
     e.preventDefault();
-    if (!regName.trim() || !regNric.trim() || !regPhone.trim()) {
-      notify("Please fill in Name, NRIC, and Phone number.", "error");
+    if (!regName.trim() || !regNric.trim()) {
+      notify("Please fill in Name and Identification Number.", "error");
       return;
     }
-    if (!normalizeMalaysianPhone(regPhone)) {
-      notify("Enter a valid Malaysian phone number, such as 012-345 6789.", "error");
-      return;
+
+    if (regIdType === "nric") {
+      const cleanIc = regNric.replace(/[^\d]/g, "");
+      if (cleanIc.length !== 12) {
+        notify("Malaysian IC must have 12 digits.", "error");
+        return;
+      }
+    } else {
+      if (regNric.trim().length < 3) {
+        notify("Passport / Foreign ID must have at least 3 characters.", "error");
+        return;
+      }
     }
+
+    const finalPhone = regPhoneRaw.trim() ? `${regCountryCode} ${regPhoneRaw.trim()}` : "";
+    const finalGender = regIdType === "nric" ? (regIcGender ?? regGender) : regGender;
 
     try {
       const allergiesList: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }> = [];
@@ -326,12 +383,14 @@ export default function ClinicDashboard() {
       }
 
       await store.registerPatient({
+        idType: regIdType,
         name: regName.trim(),
         nric: regNric.trim().toUpperCase(),
-        phone: regPhone.trim(),
+        phone: finalPhone,
+        countryCode: regCountryCode,
         email: regEmail.trim(),
         dob: regDob,
-        gender: regIcGender ?? regGender,
+        gender: finalGender,
         bloodGroup: regBloodGroup,
         allergies: allergiesList,
         chronicConditions: conditionsList,
@@ -343,7 +402,7 @@ export default function ClinicDashboard() {
       setRegName("");
       setRegNric("");
       setRegPdpaConsent(false);
-      setRegPhone("+60 ");
+      setRegPhoneRaw("");
       setRegGender("Female");
       setRegBloodGroup("");
       setRegEmail("");
@@ -356,14 +415,16 @@ export default function ClinicDashboard() {
     }
   }
 
-  async function handleCheckInExisting(e: React.FormEvent) {
-    e.preventDefault();
-    if (!checkInPatientId) {
+  async function handleCheckInExisting(patientIdToEnqueue?: string) {
+    const targetId = patientIdToEnqueue || checkInPatientId;
+    if (!targetId) {
       notify("Please select a patient to check in.", "error");
       return;
     }
-    await store.enqueueExistingPatient(checkInPatientId);
+    await store.enqueueExistingPatient(targetId);
     setCheckInModalOpen(false);
+    setCheckInPatientId("");
+    setCheckInSearch("");
     setTab("queue");
   }
 
@@ -405,7 +466,15 @@ export default function ClinicDashboard() {
   // Main Menu tile executor
   function handleOpenMenuItem(item: MenuItem) {
     if (item.actionType === "route" && item.routeTarget) {
-      setTab(item.routeTarget);
+      if (item.key === "ledger") {
+        setBillingSubTab("commission");
+        setTab("billing");
+      } else if (item.key === "billing") {
+        setBillingSubTab("pos");
+        setTab("billing");
+      } else {
+        setTab(item.routeTarget);
+      }
     } else if (item.actionType === "modal" && item.modalTarget) {
       switch (item.modalTarget) {
         case "register":
@@ -438,21 +507,8 @@ export default function ClinicDashboard() {
     }
   }
 
-  // 1. Session Loading State
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs font-bold text-[var(--muted)]">Loading Clinic Session...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Unauthenticated Gate -> Render Car Loan Style Login Page
   if (!user) {
-    return <LoginPage />;
+    return null;
   }
 
   return (
@@ -463,6 +519,7 @@ export default function ClinicDashboard() {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
+              data-guide="back-menu"
               onClick={() => setTab("menu")}
               className="btn-secondary text-xs h-9 px-3 gap-1.5 flex items-center font-bold"
               aria-label="Back to Main Menu"
@@ -472,7 +529,7 @@ export default function ClinicDashboard() {
               <span>Main Menu</span>
               <kbd className="ml-1 text-[0.65rem] px-1 py-0.2 rounded border border-[var(--line)] bg-[var(--surface-2)] hidden sm:inline">Esc</kbd>
             </button>
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-[var(--muted)]">
+            <div data-guide="breadcrumb" className="hidden sm:flex items-center gap-1.5 text-xs text-[var(--muted)]">
               <ChevronRight size={14} />
               <span className="font-extrabold text-[var(--navy)]">
                 {tab === "queue" && "Live Queue & Rooms"}
@@ -481,26 +538,16 @@ export default function ClinicDashboard() {
                 {tab === "documents" && "Digital MC & Referrals"}
                 {tab === "packages" && "Treatment Packages"}
                 {tab === "inventory" && "Dispensary FEFO Stock"}
-                {tab === "billing" && "POS Billing & Checkout"}
+                {tab === "billing" && (billingSubTab === "commission" ? "Practitioner Commission Ledger" : "POS Billing & Checkout")}
               </span>
             </div>
           </div>
         ) : (
           <div className="brand flex items-center gap-2">
-            <div className="brand-mark">{store.portalConfig.portalName.trim().charAt(0).toUpperCase() || "K"}</div>
+            <div className="brand-mark">{store.portalConfig.portalName.trim().charAt(0).toUpperCase() || "C"}</div>
             <div>
-              <div className="leading-tight font-extrabold text-base tracking-tight text-[var(--navy)] flex items-center gap-1.5">
-                <span>{store.portalConfig.portalName}</span>
-                {user.role === "manager" && (
-                  <button
-                    type="button"
-                    onClick={() => setPortalSettingsModalOpen(true)}
-                    className="text-xs text-[var(--blue)] hover:text-[var(--blue-dark)] p-0.5 rounded transition-colors"
-                    title="Edit Portal Name & Branding (Admin)"
-                  >
-                    <Pencil size={12} strokeWidth={2.5} />
-                  </button>
-                )}
+              <div className="leading-tight font-extrabold text-base tracking-tight text-[var(--navy)]">
+                {store.portalConfig.portalName}
               </div>
               <div className="text-[0.65rem] font-semibold text-[var(--muted)] tracking-wider uppercase">
                 {store.portalConfig.portalTagline}
@@ -517,16 +564,16 @@ export default function ClinicDashboard() {
         </div>
 
         <div className="header-actions">
-          {/* Admin Portal Branding Settings Button */}
+          {/* Admin Clinic & Portal Settings */}
           {user.role === "manager" && (
             <button
               type="button"
               className="icon-button text-xs gap-1.5"
               onClick={() => setPortalSettingsModalOpen(true)}
-              title="Edit Portal & Clinic Branding (S)"
+              title="Clinic & Portal Settings (S)"
             >
               <Building2 size={16} strokeWidth={2.2} className="text-[var(--blue)]" />
-              <span className="hidden sm:inline font-bold">Portal Name</span>
+              <span className="hidden sm:inline font-bold">Clinic Settings</span>
             </button>
           )}
 
@@ -546,9 +593,18 @@ export default function ClinicDashboard() {
           {/* Guide Shortcut Modal Trigger */}
           <button
             type="button"
+            data-guide="guide-btn"
             className="icon-button text-xs gap-1.5"
-            onClick={() => setGuideModalOpen(true)}
-            title="Open Keyboard Shortcut Guide (?)"
+            onClick={() => {
+              guide.start(
+                tab === "menu"
+                  ? "menu"
+                  : tab === "billing" && billingSubTab === "commission"
+                  ? "ledger"
+                  : (tab as any)
+              );
+            }}
+            title="Open Interactive Coachmark Guide (?)"
           >
             <CircleHelp size={16} strokeWidth={2.2} />
             <span className="hidden sm:inline font-bold">Guide</span>
@@ -556,7 +612,7 @@ export default function ClinicDashboard() {
           </button>
 
           {/* User Account Profile Badge */}
-          <div className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--line)] px-2.5 py-1 rounded-lg">
+          <div data-guide="user-role-select" className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--line)] px-2.5 py-1 rounded-lg">
             <span className="w-6 h-6 rounded-full bg-[var(--blue)] text-white text-[0.68rem] font-extrabold flex items-center justify-center">
               {user.avatarInitials}
             </span>
@@ -654,7 +710,7 @@ export default function ClinicDashboard() {
 
             {/* Front Desk Dedicated Task Hub (Single-Purpose Launchers) */}
             {(user.role === "receptionist" || user.role === "manager") && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div data-guide="queue-actions" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setRegModalOpen(true)}
@@ -749,7 +805,7 @@ export default function ClinicDashboard() {
             </div>
 
             {/* Public Queue List Table */}
-            <div className="clinic-card">
+            <div data-guide="queue-table" className="clinic-card">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-extrabold text-base text-[var(--navy)]">
                   Patients In Queue ({store.queue.length})
@@ -886,6 +942,7 @@ export default function ClinicDashboard() {
 
               <div className="flex items-center gap-2">
                 <button
+                  data-guide="patient-register"
                   className="btn-primary text-xs py-2 px-3.5 flex items-center gap-1.5"
                   onClick={() => setRegModalOpen(true)}
                 >
@@ -896,9 +953,9 @@ export default function ClinicDashboard() {
             </div>
 
             {/* Patient Search & Directory Table */}
-            <div className="clinic-card space-y-4">
+            <div data-guide="patient-table" className="clinic-card space-y-4">
               <div className="flex items-center justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
+                <div data-guide="patient-search" className="relative flex-1 max-w-md">
                   <input
                     type="text"
                     value={patientSearch}
@@ -977,7 +1034,10 @@ export default function ClinicDashboard() {
                               ) : (
                                 <button
                                   className="btn-primary text-xs py-1 px-2.5"
-                                  onClick={() => store.enqueueExistingPatient(pat.id)}
+                                  onClick={async () => {
+                                    await store.enqueueExistingPatient(pat.id);
+                                    setTab("queue");
+                                  }}
                                 >
                                   🎫 Issue Ticket
                                 </button>
@@ -1010,7 +1070,7 @@ export default function ClinicDashboard() {
         {tab === "consultation" && (
           <div className="space-y-6">
             {/* Pinned Patient Banner (HCI Consistency & Error Shield) */}
-            <div className="clinic-card bg-gradient-to-r from-[var(--surface)] to-[var(--blue-soft)] border-l-4 border-l-[var(--blue)]">
+            <div data-guide="emr-patient" className="clinic-card bg-gradient-to-r from-[var(--surface)] to-[var(--blue-soft)] border-l-4 border-l-[var(--blue)]">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
@@ -1064,7 +1124,7 @@ export default function ClinicDashboard() {
             {/* Doctor SOAP Notes Workstation */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-6">
-                <div className="clinic-card space-y-4">
+                <div data-guide="emr-soap" className="clinic-card space-y-4">
                   <div className="flex items-center justify-between pb-2 border-b border-[var(--line)]">
                     <h3 className="font-extrabold text-base text-[var(--navy)] flex items-center gap-2">
                       <span>📝</span> SOAP Clinical Consultation Note
@@ -1153,7 +1213,7 @@ export default function ClinicDashboard() {
               </div>
 
               {/* Quick Actions & Digital Certification Triggers */}
-              <div className="space-y-4">
+              <div data-guide="emr-actions" className="space-y-4">
                 <div className="clinic-card space-y-3">
                   <h3 className="font-extrabold text-sm text-[var(--navy)] pb-2 border-b border-[var(--line)]">
                     📜 Clinical Document Issuance
@@ -1254,7 +1314,7 @@ export default function ClinicDashboard() {
           </div>
         )}
 
-        {/* ==================== TAB 4: TREATMENT PACKAGES (KUMO) ==================== */}
+        {/* ==================== TAB 4: TREATMENT PACKAGES ==================== */}
         {tab === "packages" && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[var(--line)]">
@@ -1272,7 +1332,7 @@ export default function ClinicDashboard() {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div data-guide="packages-list" className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {store.packages.map((pkg) => (
                 <div key={pkg.id} className="clinic-card package-card space-y-4">
                   <div className="flex items-start justify-between">
@@ -1357,9 +1417,28 @@ export default function ClinicDashboard() {
                   First-Expiry-First-Out batch depletion to prevent delivering expired medications.
                 </p>
               </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-guide="stock-receive-btn"
+                  className="btn-primary text-xs py-2 px-3.5 flex items-center gap-1.5"
+                  onClick={() => {
+                    if (store.inventory.length > 0) {
+                      setStockInItemId(store.inventory[0].id);
+                    }
+                    setStockInBatchNumber(`LOT-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}`);
+                    setStockInExpiryDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+                    setStockInModalOpen(true);
+                  }}
+                >
+                  <span>📥</span>
+                  <span>Stock In / Receive Batch</span>
+                </button>
+              </div>
             </div>
 
-            <div className="clinic-card">
+            <div data-guide="stock-table" className="clinic-card">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
@@ -1410,12 +1489,25 @@ export default function ClinicDashboard() {
                             </span>
                           </td>
                           <td className="py-3 text-right">
-                            <button
-                              className="btn-secondary text-xs py-1 px-2.5"
-                              onClick={() => setDispenseModalOpen(item.id)}
-                            >
-                              Dispense Stock
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                className="btn-secondary text-xs py-1 px-2.5"
+                                onClick={() => setDispenseModalOpen(item.id)}
+                              >
+                                Dispense
+                              </button>
+                              <button
+                                className="btn-primary text-xs py-1 px-2.5"
+                                onClick={() => {
+                                  setStockInItemId(item.id);
+                                  setStockInBatchNumber(`LOT-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}`);
+                                  setStockInExpiryDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+                                  setStockInModalOpen(true);
+                                }}
+                              >
+                                + Stock In
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1433,128 +1525,255 @@ export default function ClinicDashboard() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[var(--line)]">
               <div>
                 <h1 className="text-2xl font-extrabold tracking-tight text-[var(--navy)]">
-                  Point of Sale (POS) & Commission Ledger
+                  {billingSubTab === "commission" ? "Practitioner Commission Ledger" : "Point of Sale (POS) Billing"}
                 </h1>
                 <p className="text-xs text-[var(--muted)] mt-1">
-                  Multi-rail checkout, treatment package deductions, and real-time practitioner commission attribution.
+                  {billingSubTab === "commission"
+                    ? "Real-time doctor & therapist service commission attribution and monthly payout ledger."
+                    : "Multi-rail cashier checkout, treatment package deductions, and instant payment receipt issuance."}
                 </p>
+              </div>
+
+              {/* Segmented Sub-Tab Control (Separating POS Cashier from Commission Ledger) */}
+              <div className="flex items-center p-1 bg-[var(--surface-2)] rounded-xl border border-[var(--line)]">
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                    billingSubTab === "pos"
+                      ? "bg-[var(--surface)] text-[var(--blue)] shadow-xs font-extrabold"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                  }`}
+                  onClick={() => setBillingSubTab("pos")}
+                >
+                  <span>🧾</span>
+                  <span>POS Cashier Checkout</span>
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                    billingSubTab === "commission"
+                      ? "bg-[var(--surface)] text-[var(--blue)] shadow-xs font-extrabold"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                  }`}
+                  onClick={() => setBillingSubTab("commission")}
+                >
+                  <span>📊</span>
+                  <span>Commission Ledger</span>
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Checkout Bill */}
-              <div className="lg:col-span-2 clinic-card space-y-4">
-                <div className="flex justify-between items-center pb-2 border-b border-[var(--line)]">
-                  <div>
-                    <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">Invoice Preview</span>
-                    <h3 className="font-extrabold text-base text-[var(--navy)]">
-                      Patient: {store.activePatient.name}
-                    </h3>
-                  </div>
-                  <span className="badge badge-amber">PENDING PAYMENT</span>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between py-2 border-b border-[var(--line)]">
-                    <span>Doctor Consultation Fee (Dr. Alicia Tan)</span>
-                    <span className="font-bold">RM 45.00</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-[var(--line)]">
-                    <span>Amlodipine Besylate 5mg (30 Tablets)</span>
-                    <span className="font-bold">RM 18.00</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-[var(--line)]">
-                    <span>Pico Laser Session 4 (Redeemed via 5x Package)</span>
-                    <span className="font-bold text-[var(--success)]">Covered by prepaid package</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-[var(--line)]">
-                    <span>Tax</span>
-                    <span className="font-bold">Not configured</span>
+            {/* SUB-VIEW 1: POS CASHIER CHECKOUT */}
+            {billingSubTab === "pos" && (
+              <div className="space-y-6">
+                <div data-guide="billing-bill" className="clinic-card space-y-4 max-w-3xl">
+                  <div className="flex justify-between items-center pb-2 border-b border-[var(--line)]">
+                    <div>
+                      <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">Invoice Preview</span>
+                      <h3 className="font-extrabold text-base text-[var(--navy)]">
+                        Patient: {store.activePatient.name}
+                      </h3>
+                    </div>
+                    <span className="badge badge-amber font-bold">PENDING PAYMENT</span>
                   </div>
 
-                  <div className="pt-3 flex justify-between items-center text-sm font-extrabold">
-                    <span>Total Amount Payable:</span>
-                    <span className="text-xl text-[var(--blue)]">RM 63.00</span>
-                  </div>
-                </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between py-2 border-b border-[var(--line)]">
+                      <span>Doctor Consultation Fee (Dr. Alicia Tan)</span>
+                      <span className="font-bold">RM 45.00</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-[var(--line)]">
+                      <span>Amlodipine Besylate 5mg (30 Tablets)</span>
+                      <span className="font-bold">RM 18.00</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-[var(--line)]">
+                      <span>Pico Laser Session 4 (Redeemed via 5x Package)</span>
+                      <span className="font-bold text-[var(--success)]">Covered by prepaid package</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-[var(--line)]">
+                      <span>Tax / SST</span>
+                      <span className="font-bold text-[var(--muted)]">Not configured</span>
+                    </div>
 
-                <div className="pt-4 border-t border-[var(--line)] space-y-2">
-                  <span className="text-xs font-bold text-[var(--muted)] block">Select Payment Rail:</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <button
-                      className="btn-primary text-xs py-2"
-                      onClick={() => recordDemoPayment("Card · demo")}
-                    >
-                      Credit Card
-                    </button>
-                    <button
-                      className="btn-secondary text-xs py-2"
-                      onClick={() => recordDemoPayment("Cash · demo")}
-                    >
-                      Cash
-                    </button>
-                    <button
-                      className="btn-secondary text-xs py-2"
-                      onClick={() => setPaymentQrOpen(true)}
-                    >
-                      DuitNow QR (Demo)
-                    </button>
-                    <button
-                      className="btn-secondary text-xs py-2"
-                      onClick={() => recordDemoPayment("Insurance panel · demo")}
-                    >
-                      Insurance Panel
-                    </button>
+                    <div className="pt-3 flex justify-between items-center text-sm font-extrabold">
+                      <span>Total Amount Payable:</span>
+                      <span className="text-xl text-[var(--blue)] font-black">RM 63.00</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="border-t border-[var(--line)] pt-4 space-y-2">
-                  <h4 className="text-xs font-bold text-[var(--muted)] uppercase">Receipt log ({receiptLog.length})</h4>
-                  {receiptLog.length === 0 ? (
-                    <p className="text-xs text-[var(--muted)]">Demo receipts created in this session will appear here.</p>
-                  ) : receiptLog.map((receipt) => (
-                    <div key={receipt.artifactId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--surface-2)] p-2 text-xs">
-                      <span className="font-mono font-bold">{receipt.reference} · {receipt.patient.name}</span>
-                      <button type="button" className="btn-secondary text-xs" onClick={() => openClinicDocument(receipt)}>
-                        View / Print / Regenerate
+                  <div data-guide="billing-rails" className="pt-4 border-t border-[var(--line)] space-y-2">
+                    <span className="text-xs font-bold text-[var(--muted)] block">Select Payment Rail:</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <button
+                        className="btn-primary text-xs py-2"
+                        onClick={() => recordDemoPayment("Card · demo")}
+                      >
+                        Credit Card
+                      </button>
+                      <button
+                        className="btn-secondary text-xs py-2"
+                        onClick={() => recordDemoPayment("Cash · demo")}
+                      >
+                        Cash
+                      </button>
+                      <button
+                        className="btn-secondary text-xs py-2"
+                        onClick={() => setPaymentQrOpen(true)}
+                      >
+                        DuitNow QR
+                      </button>
+                      <button
+                        className="btn-secondary text-xs py-2"
+                        onClick={() => recordDemoPayment("Insurance panel · demo")}
+                      >
+                        Insurance Panel
                       </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Commission Ledger Breakdown (Kumo Parity) */}
-              <div className="clinic-card space-y-4">
-                <h3 className="font-extrabold text-sm text-[var(--navy)] pb-2 border-b border-[var(--line)]">
-                  👨‍⚕️ Provider Commission Ledger
-                </h3>
-                <p className="text-xs text-[var(--muted)]">
-                  Demo commission estimate for the sample procedures and retail sales.
-                </p>
-
-                <div className="space-y-3 text-xs">
-                  <div className="p-3 rounded-lg bg-[var(--surface-2)] space-y-1">
-                    <div className="flex justify-between font-bold text-[var(--ink)]">
-                      <span>Dr. Alicia Tan</span>
-                      <span className="text-[var(--success)] font-extrabold">+RM 18.00</span>
-                    </div>
-                    <span className="text-[0.68rem] text-[var(--muted)] block">
-                      Consultation share (40% of RM 45.00)
-                    </span>
                   </div>
 
-                  <div className="p-3 rounded-lg bg-[var(--surface-2)] space-y-1">
-                    <div className="flex justify-between font-bold text-[var(--ink)]">
-                      <span>Therapist Chloe Lim</span>
-                      <span className="text-[var(--success)] font-extrabold">+RM 30.00</span>
-                    </div>
-                    <span className="text-[0.68rem] text-[var(--muted)] block">
-                      Laser session execution commission (10% of RM 300)
-                    </span>
+                  <div data-guide="billing-receipts" className="border-t border-[var(--line)] pt-4 space-y-2">
+                    <h4 className="text-xs font-bold text-[var(--muted)] uppercase">Receipt log ({receiptLog.length})</h4>
+                    {receiptLog.length === 0 ? (
+                      <p className="text-xs text-[var(--muted)]">Payment receipts issued in this session will appear here.</p>
+                    ) : receiptLog.map((receipt) => (
+                      <div key={receipt.artifactId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--surface-2)] p-2 text-xs">
+                        <span className="font-mono font-bold">{receipt.reference} · {receipt.patient.name}</span>
+                        <button type="button" className="btn-secondary text-xs" onClick={() => openClinicDocument(receipt)}>
+                          View / Print / Regenerate
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* SUB-VIEW 2: DEDICATED PRACTITIONER COMMISSION LEDGER */}
+            {billingSubTab === "commission" && (
+              <div data-guide="ledger-overview" className="space-y-6">
+                {/* Commission Summary Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="clinic-card bg-[var(--surface)] border-t-4 border-t-[var(--blue)]">
+                    <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">Total Commission Accrued</span>
+                    <strong className="text-2xl font-black text-[var(--blue)]">RM 48.00</strong>
+                    <span className="text-[0.68rem] text-[var(--muted)] block mt-1">From active session billings</span>
+                  </div>
+                  <div className="clinic-card bg-[var(--surface)] border-t-4 border-t-[var(--mint-dark)]">
+                    <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">Attributed Practitioners</span>
+                    <strong className="text-2xl font-black text-[var(--mint-dark)]">2 Staff</strong>
+                    <span className="text-[0.68rem] text-[var(--muted)] block mt-1">1 Doctor · 1 Aesthetic Therapist</span>
+                  </div>
+                  <div className="clinic-card bg-[var(--surface)] border-t-4 border-t-[var(--amber-ink)]">
+                    <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">Payout Status</span>
+                    <strong className="text-2xl font-black text-[var(--amber-ink)]">Pending End-of-Month</strong>
+                    <span className="text-[0.68rem] text-[var(--muted)] block mt-1">Auto-aggregates to monthly payroll</span>
+                  </div>
+                </div>
+
+                {/* Individual Practitioner Ledger Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="clinic-card space-y-3">
+                    <div className="flex justify-between items-start pb-2 border-b border-[var(--line)]">
+                      <div>
+                        <h3 className="font-extrabold text-sm text-[var(--navy)]">Dr. Alicia Tan</h3>
+                        <span className="text-[0.68rem] text-[var(--muted)]">Resident Doctor · MMC #48291</span>
+                      </div>
+                      <span className="badge badge-mint font-extrabold text-xs">+RM 18.00</span>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between p-2 rounded-lg bg-[var(--surface-2)]">
+                        <div>
+                          <strong className="block text-[var(--ink)]">Consultation Share</strong>
+                          <span className="text-[0.68rem] text-[var(--muted)]">40% of standard RM 45.00 consult fee</span>
+                        </div>
+                        <span className="font-bold text-[var(--success)]">+RM 18.00</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded-lg bg-[var(--surface-2)]">
+                        <div>
+                          <strong className="block text-[var(--ink)]">Retail Medication Dispense</strong>
+                          <span className="text-[0.68rem] text-[var(--muted)]">0% (In-house dispensary tariff)</span>
+                        </div>
+                        <span className="font-bold text-[var(--muted)]">RM 0.00</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="clinic-card space-y-3">
+                    <div className="flex justify-between items-start pb-2 border-b border-[var(--line)]">
+                      <div>
+                        <h3 className="font-extrabold text-sm text-[var(--navy)]">Therapist Chloe Lim</h3>
+                        <span className="text-[0.68rem] text-[var(--muted)]">Senior Aesthetic Therapist</span>
+                      </div>
+                      <span className="badge badge-mint font-extrabold text-xs">+RM 30.00</span>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between p-2 rounded-lg bg-[var(--surface-2)]">
+                        <div>
+                          <strong className="block text-[var(--ink)]">Laser Procedure Execution</strong>
+                          <span className="text-[0.68rem] text-[var(--muted)]">10% session commission on RM 300 tier</span>
+                        </div>
+                        <span className="font-bold text-[var(--success)]">+RM 30.00</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded-lg bg-[var(--surface-2)]">
+                        <div>
+                          <strong className="block text-[var(--ink)]">Package Upsell Bonus</strong>
+                          <span className="text-[0.68rem] text-[var(--muted)]">5% package acquisition incentive</span>
+                        </div>
+                        <span className="font-bold text-[var(--muted)]">RM 0.00</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ledger Journal Log Table */}
+                <div className="clinic-card space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-[var(--line)]">
+                    <h3 className="font-extrabold text-sm text-[var(--navy)]">
+                      Recent Commission Credit Entries
+                    </h3>
+                    <span className="text-xs text-[var(--muted)] font-mono">Real-time ledger entries</span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-[var(--line)] text-[var(--muted)] font-bold">
+                          <th className="pb-2.5">Entry Reference</th>
+                          <th className="pb-2.5">Beneficiary</th>
+                          <th className="pb-2.5">Patient</th>
+                          <th className="pb-2.5">Service Rendered</th>
+                          <th className="pb-2.5">Tariff Base</th>
+                          <th className="pb-2.5">Rate</th>
+                          <th className="pb-2.5 text-right">Commission</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--line)]">
+                        <tr className="hover:bg-[var(--surface-2)]">
+                          <td className="py-2.5 font-mono font-bold text-[var(--blue-on-soft)]">COMM-2026-001</td>
+                          <td className="py-2.5 font-bold">Dr. Alicia Tan</td>
+                          <td className="py-2.5 text-[var(--ink)]">{store.activePatient.name}</td>
+                          <td className="py-2.5">General Outpatient Consult</td>
+                          <td className="py-2.5 font-mono">RM 45.00</td>
+                          <td className="py-2.5 font-bold">40%</td>
+                          <td className="py-2.5 text-right font-extrabold text-[var(--success)]">+RM 18.00</td>
+                        </tr>
+                        <tr className="hover:bg-[var(--surface-2)]">
+                          <td className="py-2.5 font-mono font-bold text-[var(--blue-on-soft)]">COMM-2026-002</td>
+                          <td className="py-2.5 font-bold">Therapist Chloe Lim</td>
+                          <td className="py-2.5 text-[var(--ink)]">{store.activePatient.name}</td>
+                          <td className="py-2.5">Pico Laser Treatment Execution</td>
+                          <td className="py-2.5 font-mono">RM 300.00</td>
+                          <td className="py-2.5 font-bold">10%</td>
+                          <td className="py-2.5 text-right font-extrabold text-[var(--success)]">+RM 30.00</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2000,17 +2219,33 @@ export default function ClinicDashboard() {
             <div className="pb-2 border-b border-[var(--line)]">
               <span className="badge badge-blue mb-1">MALAYSIA · DUITNOW QR</span>
               <h2 id="payment-qr-title" className="text-lg font-extrabold text-[var(--navy)]">
-                Payment QR preview
+                DuitNow QR Payment
               </h2>
               <p className="text-xs text-[var(--muted)]">Amount due: RM 63.00</p>
             </div>
             <div className="flex flex-col items-center gap-3 rounded-xl bg-[var(--surface-2)] p-4 text-center">
-              <QrCode
-                value="CLINIC-DEMO-DUITNOW|MYR|63.00|INV-DEMO-2026-001"
-                label="Demo DuitNow payment QR code"
-              />
+              {store.portalConfig.customDuitNowQrImage ? (
+                <div className="space-y-2 flex flex-col items-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={store.portalConfig.customDuitNowQrImage}
+                    alt="Clinic DuitNow QR"
+                    className="max-h-64 max-w-full rounded-lg border border-[var(--line)] bg-white p-2 shadow-sm object-contain"
+                  />
+                  <span className="text-[0.68rem] font-bold text-[var(--blue-on-soft)] bg-[var(--blue-soft)] px-2.5 py-0.5 rounded-full">
+                    Official Clinic DuitNow QR
+                  </span>
+                </div>
+              ) : (
+                <QrCode
+                  value="CLINIC-DEMO-DUITNOW|MYR|63.00|INV-DEMO-2026-001"
+                  label="Demo DuitNow payment QR code"
+                />
+              )}
               <p className="max-w-sm text-xs text-[var(--muted)]">
-                This is a demo QR preview for layout checks. Connect a DuitNow QR payment provider to accept live payments.
+                {store.portalConfig.customDuitNowQrImage
+                  ? "Scan using any Malaysian banking or e-wallet app (Maybank, CIMB, Touch 'n Go, GrabPay, Boost, etc.) to complete payment."
+                  : "Demo QR preview. Clinic Admin can upload official DuitNow QR in Clinic Settings."}
               </p>
             </div>
             <div className="flex justify-end gap-2">
@@ -2018,7 +2253,7 @@ export default function ClinicDashboard() {
                 recordDemoPayment("DuitNow QR · demo");
                 setPaymentQrOpen(false);
               }}>
-                Record demo payment as received
+                Record payment as received
               </button>
               <button className="btn-secondary text-xs" onClick={() => setPaymentQrOpen(false)}>
                 Close
@@ -2060,8 +2295,39 @@ export default function ClinicDashboard() {
                 Register New Patient
               </h2>
               <p className="text-xs text-[var(--muted)]">
-                Register a patient and optionally issue a queue ticket.
+                Register a patient master record and optionally issue a live queue ticket.
               </p>
+            </div>
+
+            {/* ID Type Segmented Picker (NRIC vs Foreign Passport) */}
+            <div>
+              <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                Identification Document Type
+              </label>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-[var(--surface-2)] rounded-lg border border-[var(--line)]">
+                <button
+                  type="button"
+                  className={`py-1.5 text-xs font-bold rounded-md transition ${
+                    regIdType === "nric"
+                      ? "bg-[var(--surface)] text-[var(--blue)] shadow-xs font-extrabold"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                  }`}
+                  onClick={() => setRegIdType("nric")}
+                >
+                  🇲🇾 Malaysian IC (MyKad)
+                </button>
+                <button
+                  type="button"
+                  className={`py-1.5 text-xs font-bold rounded-md transition ${
+                    regIdType === "passport"
+                      ? "bg-[var(--surface)] text-[var(--blue)] shadow-xs font-extrabold"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                  }`}
+                  onClick={() => setRegIdType("passport")}
+                >
+                  🌐 Foreign Passport / ID
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2081,7 +2347,7 @@ export default function ClinicDashboard() {
 
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  Malaysian IC <span className="text-[var(--danger)]">*</span>
+                  {regIdType === "nric" ? "Malaysian IC (12 Digits)" : "Passport / Foreign ID No."} <span className="text-[var(--danger)]">*</span>
                 </label>
                 <input
                   required
@@ -2090,34 +2356,65 @@ export default function ClinicDashboard() {
                   onChange={(e) => {
                     const value = e.target.value.toUpperCase();
                     setRegNric(value);
-                    const inferredGender = genderFromMalaysianIc(value);
-                    setRegGender(inferredGender ?? "Female");
+                    if (regIdType === "nric") {
+                      const inferredGender = genderFromMalaysianIc(value);
+                      if (inferredGender) setRegGender(inferredGender);
+                    }
                   }}
-                  placeholder="e.g. 950101-10-1235"
-                  maxLength={14}
+                  placeholder={regIdType === "nric" ? "e.g. 950101-10-1235" : "e.g. A12345678"}
+                  maxLength={regIdType === "nric" ? 14 : 30}
                   className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
                 />
+                {regIdType === "nric" && (
+                  <span className="text-[0.65rem] text-[var(--muted)] mt-0.5 block">
+                    Gender is automatically derived from the last digit.
+                  </span>
+                )}
               </div>
             </div>
 
+            {/* Flexible Phone Input with Country Code Picker */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  Mobile Number (WhatsApp) <span className="text-[var(--danger)]">*</span>
+                  Mobile Phone <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
                 </label>
-                <input
-                  required
-                  type="tel"
-                  value={regPhone}
-                  onChange={(e) => setRegPhone(e.target.value)}
-                  placeholder="+60 12-345 6789"
-                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono"
-                />
+                <div className="flex gap-1.5">
+                  <select
+                    value={regCountryCode}
+                    onChange={(e) => setRegCountryCode(e.target.value)}
+                    className="w-28 text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
+                  >
+                    <option value="+60">🇲🇾 +60</option>
+                    <option value="+65">🇸🇬 +65</option>
+                    <option value="+62">🇮🇩 +62</option>
+                    <option value="+86">🇨🇳 +86</option>
+                    <option value="+1">🇺🇸 +1</option>
+                    <option value="+44">🇬🇧 +44</option>
+                    <option value="+61">🇦🇺 +61</option>
+                    <option value="+81">🇯🇵 +81</option>
+                    <option value="+82">🇰🇷 +82</option>
+                    <option value="+91">🇮🇳 +91</option>
+                    <option value="+66">🇹🇭 +66</option>
+                    <option value="+84">🇻🇳 +84</option>
+                    <option value="+63">🇵🇭 +63</option>
+                    <option value="+852">🇭🇰 +852</option>
+                    <option value="+886">🇹🇼 +886</option>
+                    <option value="+971">🇦🇪 +971</option>
+                  </select>
+                  <input
+                    type="tel"
+                    value={regPhoneRaw}
+                    onChange={(e) => setRegPhoneRaw(e.target.value)}
+                    placeholder="12-345 6789"
+                    className="flex-1 text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono"
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  Email Address
+                  Email Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
                 </label>
                 <input
                   type="email"
@@ -2147,15 +2444,25 @@ export default function ClinicDashboard() {
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
                   Gender
                 </label>
-                <select
-                  value={regIcGender ?? regGender}
-                  disabled={Boolean(regIcGender)}
-                  onChange={(e) => setRegGender(e.target.value as "Female" | "Male")}
-                  className="w-full text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
-                >
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                </select>
+                {regIdType === "nric" && regIcGender ? (
+                  <select
+                    value={regIcGender}
+                    disabled
+                    className="w-full text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-bold text-[var(--blue)] cursor-not-allowed"
+                  >
+                    <option value={regIcGender}>{regIcGender} (from IC)</option>
+                  </select>
+                ) : (
+                  <select
+                    value={regGender}
+                    onChange={(e) => setRegGender(e.target.value as "Female" | "Male" | "Other")}
+                    className="w-full text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-medium"
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
+                )}
               </div>
 
               <div>
@@ -2221,7 +2528,7 @@ export default function ClinicDashboard() {
                     Immediately Issue Queue Ticket
                   </span>
                   <span className="text-[0.68rem] text-[var(--muted)]">
-                    Saves a queue ticket in the clinic database. No message is sent.
+                    Saves a queue ticket in the clinic database upon registration.
                   </span>
                 </div>
                 <input
@@ -2231,7 +2538,6 @@ export default function ClinicDashboard() {
                   className="w-4 h-4 accent-[var(--blue)] cursor-pointer"
                 />
               </div>
-
             </div>
 
             <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
@@ -2257,56 +2563,272 @@ export default function ClinicDashboard() {
           closeLabel="Close Check-In Dialog"
           onClose={() => setCheckInModalOpen(false)}
         >
-          <form onSubmit={handleCheckInExisting} className="space-y-4">
+          <div className="space-y-4">
             <div className="pb-2 border-b border-[var(--line)]">
               <span className="badge badge-blue mb-1">FRONT DESK QUEUE DISPATCH</span>
               <h2 id="checkin-modal-title" className="text-lg font-extrabold text-[var(--navy)]">
                 Issue Queue Ticket (Check-In)
               </h2>
               <p className="text-xs text-[var(--muted)]">
-                Search this browser&apos;s patient data to create a demo queue ticket. Message delivery is not configured.
+                Select or search a registered patient from the directory to issue an active queue ticket.
+              </p>
+            </div>
+
+            {/* Interactive Search Box */}
+            <div className="relative">
+              <input
+                type="text"
+                value={checkInSearch}
+                onChange={(e) => setCheckInSearch(e.target.value)}
+                placeholder="Search patient by name, MRN, or phone number..."
+                className="w-full text-xs p-2.5 pl-8 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] focus:bg-[var(--surface)]"
+              />
+              <span className="absolute left-2.5 top-2.5 text-xs text-[var(--muted)]">🔍</span>
+            </div>
+
+            {/* Clickable Patient Cards Directory */}
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {(() => {
+                const filtered = store.patients.filter((p) =>
+                  !checkInSearch.trim() ||
+                  p.name.toLowerCase().includes(checkInSearch.toLowerCase()) ||
+                  (p.medicalRecordNumber ?? "").toLowerCase().includes(checkInSearch.toLowerCase()) ||
+                  p.phone.includes(checkInSearch)
+                );
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-6 text-center rounded-xl border border-dashed border-[var(--line)] text-xs text-[var(--muted)] space-y-2">
+                      <p>No patients matched &ldquo;{checkInSearch}&rdquo;.</p>
+                      <button
+                        type="button"
+                        className="btn-primary text-xs py-1.5 px-3"
+                        onClick={() => {
+                          setCheckInModalOpen(false);
+                          setRegModalOpen(true);
+                        }}
+                      >
+                        ➕ Register New Patient Instead
+                      </button>
+                    </div>
+                  );
+                }
+
+                return filtered.map((pat) => {
+                  const inQueue = store.queue.find(
+                    (q) => q.patientId === pat.id && (q.status === "WAITING" || q.status === "CALLED_TO_ROOM" || q.status === "IN_CONSULTATION" || q.status === "DISPENSARY" || q.status === "PAYMENT")
+                  );
+
+                  return (
+                    <div
+                      key={pat.id}
+                      className={`p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
+                        inQueue
+                          ? "bg-[var(--surface-2)]/50 border-[var(--line)] opacity-70"
+                          : checkInPatientId === pat.id
+                          ? "bg-[var(--blue-soft)] border-[var(--blue)] shadow-xs"
+                          : "bg-[var(--surface)] border-[var(--line)] hover:border-[var(--blue)] hover:bg-[var(--surface-2)] cursor-pointer"
+                      }`}
+                      onClick={() => {
+                        if (!inQueue) setCheckInPatientId(pat.id);
+                      }}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <strong className="text-xs text-[var(--ink)] block truncate">{pat.name}</strong>
+                          <span className="text-[0.65rem] font-mono font-bold text-[var(--blue-on-soft)] bg-[var(--blue-soft)] px-1.5 py-0.2 rounded">
+                            {pat.medicalRecordNumber || "—"}
+                          </span>
+                        </div>
+                        <span className="text-[0.7rem] text-[var(--muted)] block truncate">
+                          {pat.phone ? `📞 ${pat.phone}` : "No phone"} • {pat.age} yrs • {pat.gender}
+                        </span>
+                      </div>
+
+                      <div>
+                        {inQueue ? (
+                          <span className="badge badge-amber text-[0.65rem] whitespace-nowrap">
+                            In Queue ({inQueue.ticketNumber})
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-primary text-xs py-1.5 px-3 whitespace-nowrap flex items-center gap-1 shadow-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCheckInExisting(pat.id);
+                            }}
+                          >
+                            <span>🎫</span>
+                            <span>Issue Ticket</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="pt-3 border-t border-[var(--line)] flex justify-between items-center">
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={() => {
+                  setCheckInModalOpen(false);
+                  setRegModalOpen(true);
+                }}
+              >
+                ➕ Register New Patient
+              </button>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={() => setCheckInModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ==================== MODAL: RECEIVE INVENTORY BATCH (STOCK IN) ==================== */}
+      {stockInModalOpen && (
+        <Modal
+          labelledBy="stockin-modal-title"
+          closeLabel="Close Stock In Dialog"
+          onClose={() => setStockInModalOpen(false)}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!stockInItemId) {
+                notify("Select an inventory item to stock in.", "error");
+                return;
+              }
+              if (!stockInBatchNumber.trim()) {
+                notify("Enter a batch / lot number.", "error");
+                return;
+              }
+              if (!stockInExpiryDate) {
+                notify("Specify an expiry date for this batch.", "error");
+                return;
+              }
+              if (stockInQuantity <= 0) {
+                notify("Quantity must be greater than zero.", "error");
+                return;
+              }
+              store.receiveStockBatch({
+                itemId: stockInItemId,
+                batchNumber: stockInBatchNumber.trim().toUpperCase(),
+                expiryDate: stockInExpiryDate,
+                quantity: Number(stockInQuantity),
+                supplier: stockInSupplier.trim(),
+              });
+              setStockInModalOpen(false);
+              setStockInBatchNumber("");
+              setStockInSupplier("");
+            }}
+            className="space-y-4"
+          >
+            <div className="pb-2 border-b border-[var(--line)]">
+              <span className="badge badge-mint mb-1">DISPENSARY INVENTORY</span>
+              <h2 id="stockin-modal-title" className="text-lg font-extrabold text-[var(--navy)]">
+                Receive Stock Batch (Stock In)
+              </h2>
+              <p className="text-xs text-[var(--muted)]">
+                Record newly received batches from distributors. FEFO engine tracks earliest expiry automatically.
               </p>
             </div>
 
             <div>
               <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                Select Patient <span className="text-[var(--danger)]">*</span>
+                Select Item <span className="text-[var(--danger)]">*</span>
               </label>
               <select
                 required
-                value={checkInPatientId}
-                onChange={(e) => setCheckInPatientId(e.target.value)}
-                className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-medium"
+                value={stockInItemId}
+                onChange={(e) => setStockInItemId(e.target.value)}
+                className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-semibold"
               >
-                <option value="">-- Choose Patient from Directory --</option>
-                {store.patients.map((p) => {
-                  const inQueue = store.queue.some(
-                    (q) => q.patientId === p.id && (q.status === "WAITING" || q.status === "CALLED_TO_ROOM" || q.status === "IN_CONSULTATION" || q.status === "DISPENSARY" || q.status === "PAYMENT")
-                  );
-                  return (
-                    <option key={p.id} value={p.id} disabled={inQueue}>
-                      {p.name} ({p.medicalRecordNumber || "—"}) - {p.phone} {inQueue ? "[ALREADY IN QUEUE]" : ""}
-                    </option>
-                  );
-                })}
+                <option value="">-- Choose Stock Item --</option>
+                {store.inventory.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    [{item.sku}] {item.name} ({item.category})
+                  </option>
+                ))}
               </select>
             </div>
 
-            <div className="p-3 bg-[var(--surface-2)] rounded-lg text-xs text-[var(--muted)] space-y-1">
-              <p className="font-bold text-[var(--ink)]">Queue ticket:</p>
-              <p>Persisted to this clinic branch. Practitioner assignment and messaging are not configured.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                  Batch / Lot Number <span className="text-[var(--danger)]">*</span>
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={stockInBatchNumber}
+                  onChange={(e) => setStockInBatchNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g. LOT-2026-X89"
+                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                  Expiry Date (FEFO) <span className="text-[var(--danger)]">*</span>
+                </label>
+                <input
+                  required
+                  type="date"
+                  value={stockInExpiryDate}
+                  onChange={(e) => setStockInExpiryDate(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                  Quantity Received (Units) <span className="text-[var(--danger)]">*</span>
+                </label>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  value={stockInQuantity}
+                  onChange={(e) => setStockInQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                  Supplier / Distributor <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={stockInSupplier}
+                  onChange={(e) => setStockInSupplier(e.target.value)}
+                  placeholder="e.g. Zuellig Pharma / Apex"
+                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
+                />
+              </div>
             </div>
 
             <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
               <button
                 type="button"
                 className="btn-secondary text-xs"
-                onClick={() => setCheckInModalOpen(false)}
+                onClick={() => setStockInModalOpen(false)}
               >
                 Cancel
               </button>
               <button type="submit" className="btn-primary text-xs">
-                Issue Ticket & Enqueue
+                📥 Receive & Stock In
               </button>
             </div>
           </form>

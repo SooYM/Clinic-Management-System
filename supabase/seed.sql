@@ -4,7 +4,7 @@ BEGIN;
 INSERT INTO public.clinics (id, name, country_code, timezone, currency, settings)
 VALUES (
   'c0000000-0000-4000-8000-000000000001',
-  'Kumo Clinic HQ',
+  'Clinic HQ',
   'MY',
   'Asia/Kuala_Lumpur',
   'MYR',
@@ -24,11 +24,11 @@ VALUES (
 
 -- Auth users
 INSERT INTO auth.users (id, email) VALUES
-  ('00000000-0000-4000-8000-000000000001', 'admin@kumo.clinic'),
-  ('00000000-0000-4000-8000-000000000002', 'doctor@kumo.clinic'),
-  ('00000000-0000-4000-8000-000000000003', 'marcus@kumo.clinic'),
-  ('00000000-0000-4000-8000-000000000004', 'reception@kumo.clinic'),
-  ('00000000-0000-4000-8000-000000000005', 'nurse@kumo.clinic')
+  ('00000000-0000-4000-8000-000000000001', 'admin@clinic.local'),
+  ('00000000-0000-4000-8000-000000000002', 'doctor@clinic.local'),
+  ('00000000-0000-4000-8000-000000000003', 'marcus@clinic.local'),
+  ('00000000-0000-4000-8000-000000000004', 'reception@clinic.local'),
+  ('00000000-0000-4000-8000-000000000005', 'nurse@clinic.local')
 ON CONFLICT (id) DO NOTHING;
 
 -- Staff members

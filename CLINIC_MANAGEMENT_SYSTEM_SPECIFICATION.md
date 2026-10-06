@@ -1,12 +1,12 @@
 # CLINIC MANAGEMENT SYSTEM (CMS) - ENTERPRISE SPECIFICATION & ARCHITECTURE
-**Benchmark**: Kumo Clinic System | **UI Aesthetic**: Pastel Blue & Slate | **Standards**: OOP (SOLID/DDD) & Human-Computer Interaction (HCI)
+**Benchmark**: Enterprise Clinical Management System | **UI Aesthetic**: Pastel Blue & Slate | **Standards**: OOP (SOLID/DDD) & Human-Computer Interaction (HCI)
 
 ---
 
 ## 1. EXECUTIVE OPERATIONAL CHARTER & COO BRIEF
 
 ### 1.1 Objective & System Scope
-Cloud-native enterprise **Clinic Management System (CMS)** built upon the operational architecture of **Kumo Clinic / KumoCare**. Designed for multi-branch general practices, specialized outpatient centers, dental clinics, and aesthetic medical centers.
+Cloud-native enterprise **Clinic Management System (CMS)** designed for multi-branch general practices, specialized outpatient centers, dental clinics, and aesthetic medical centers.
 
 The system automates core clinic operations across four operational pillars:
 1. **Intake, Queue & Scheduling**: Real-time queue tracking, consultation room allocation displays, multi-channel automated WhatsApp/email alert pipelines (bookings, live queue bumps, post-visit medication refills).
@@ -19,9 +19,9 @@ The system automates core clinic operations across four operational pillars:
 
 ---
 
-## 2. BENCHMARK ANALYSIS: KUMO CLINIC PARITY MATRIX
+## 2. BENCHMARK ANALYSIS: CLINICAL SYSTEM PARITY MATRIX
 
-| Kumo Core Feature | CMS Architecture Solution | Operational Value |
+| Core Operational Feature | CMS Architecture Solution | Operational Value |
 | :--- | :--- | :--- |
 | **Real-Time Queue & Room Allocation** | Aggregate Root `QueueTicket` + WebSocket Room Dispatch Engine | Dynamic waiting room TV board; live mobile queue position |
 | **Automated Patient Alerting** | Observer & Strategy Pattern `ClinicAlertDispatcher` (WhatsApp & Email) | Zero-friction booking confirmations, queue bump alerts, proactive 3-day refill reminders |
@@ -271,7 +271,7 @@ classDiagram
   - Chime alert audio tone triggers on room call.
 - **Automated WhatsApp and Email Notification Pipeline**:
   - **Appointment Booking Confirmations**: Dispatched immediately upon scheduling. Contains practitioner name, date/time, Google/Apple calendar `.ics` link, and Google Maps clinic directions.
-  - **Live Queue Status Alerts**: Triggered when patient is 2-3 turns away ("*You are 2 turns away at Kumo Clinic! Please head to the waiting lounge.*") and upon room allocation ("*Please proceed to Room 02 to see Dr. Tan.*").
+  - **Live Queue Status Alerts**: Triggered when patient is 2-3 turns away ("*You are 2 turns away at the Clinic! Please head to the waiting lounge.*") and upon room allocation ("*Please proceed to Room 02 to see Dr. Tan.*").
   - **Post-Visit Medication Refill Reminders**: Scheduled cron job scans prescription durations and automatically messages patients 3 days before medication supply ends ("*Your supply of Amlodipine 5mg runs out in 3 days. Tap here to request a repeat prescription or book a follow-up consultation.*").
 
 ### 5.2 Subsystem B: Digital Clinical Documents & Certification Engine
@@ -400,7 +400,7 @@ CREATE INDEX idx_lab_orders_patient ON lab_investigation_orders(patient_id, orde
 ├────────────────────────────────────────────────────────────────────────┤
 │ Workstream 4: Treatment Packages & FEFO Inventory                      │
 │ Lead Agent: agency-backend-architect                                   │
-│ Scope: Kumo package punch cards, FEFO batch depletion, split POS       │
+│ Scope: Treatment package punch cards, FEFO batch depletion, split POS   │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Workstream 5: Quality Assurance & Reality Checking                     │
 │ Lead Agent: agency-reality-checker                                     │

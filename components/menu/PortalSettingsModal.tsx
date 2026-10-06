@@ -34,6 +34,7 @@ export function PortalSettingsModal({
       legalEntityName: formData.legalEntityName.trim(),
       branchName: formData.branchName.trim(),
       addressLine: formData.addressLine.trim(),
+      customDuitNowQrImage: formData.customDuitNowQrImage,
     });
     setIsSaved(true);
     setTimeout(() => {
@@ -208,6 +209,77 @@ export function PortalSettingsModal({
                 placeholder="e.g. Kuala Lumpur, Malaysia"
                 className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] focus:bg-[var(--surface)] focus:border-[var(--blue)] font-medium"
               />
+            </div>
+
+            {/* 6. Clinic DuitNow QR Upload */}
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3.5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-[var(--navy)] block">
+                    Clinic DuitNow QR Code (POS Payment)
+                  </span>
+                  <span className="text-[0.68rem] text-[var(--muted)]">
+                    Upload your clinic's official DuitNow QR image to display at checkout.
+                  </span>
+                </div>
+                {formData.customDuitNowQrImage && (
+                  <span className="badge badge-mint text-[0.65rem]">Active Custom QR</span>
+                )}
+              </div>
+
+              {formData.customDuitNowQrImage ? (
+                <div className="flex items-center gap-4 bg-[var(--surface)] p-2.5 rounded-lg border border-[var(--line)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={formData.customDuitNowQrImage}
+                    alt="Custom DuitNow QR"
+                    className="w-16 h-16 object-contain rounded border border-[var(--line)] bg-white p-1"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-semibold text-[var(--ink)] block truncate">
+                      Custom DuitNow QR Image Loaded
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          customDuitNowQrImage: undefined,
+                        }))
+                      }
+                      className="text-[0.68rem] font-bold text-[var(--danger)] hover:underline mt-1 cursor-pointer"
+                    >
+                      Remove & Use System QR
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (evt) => {
+                        const base64 = evt.target?.result as string;
+                        if (base64) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            customDuitNowQrImage: base64,
+                          }));
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="w-full text-xs text-[var(--muted)] file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[var(--blue-soft)] file:text-[var(--blue)] hover:file:bg-[var(--blue)] hover:file:text-white file:cursor-pointer"
+                  />
+                  <span className="text-[0.65rem] text-[var(--muted)] mt-1 block">
+                    Upload PNG, JPG, or SVG image of your clinic's DuitNow QR code.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
