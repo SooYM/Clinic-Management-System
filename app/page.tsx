@@ -38,6 +38,7 @@ import {
   MEAL_TIMINGS,
   BLOOD_GROUPS,
   MEDICAL_SPECIALTIES,
+  MALAYSIAN_STATES,
 } from "../lib/config/dropdown-options";
 
 type Tab = "menu" | "queue" | "patients" | "consultation" | "documents" | "inventory" | "billing";
@@ -122,9 +123,16 @@ function ClinicDashboardContent() {
   // Form states for Patient Registration (Requirements 3 & 4)
   const [regIdType, setRegIdType] = useState<"nric" | "passport">("nric");
   const [regCountryCode, setRegCountryCode] = useState("+60");
+  const [regFirstName, setRegFirstName] = useState("");
+  const [regLastName, setRegLastName] = useState("");
   const [regName, setRegName] = useState("");
   const [regNric, setRegNric] = useState("");
   const [regNationality, setRegNationality] = useState("Malaysian");
+  const [regAddressLine1, setRegAddressLine1] = useState("");
+  const [regAddressLine2, setRegAddressLine2] = useState("");
+  const [regPostcode, setRegPostcode] = useState("");
+  const [regCity, setRegCity] = useState("");
+  const [regState, setRegState] = useState(MALAYSIAN_STATES[0] || "Wilayah Persekutuan Kuala Lumpur");
   const [regAddress, setRegAddress] = useState("");
   const [regPdpaConsent, setRegPdpaConsent] = useState(false);
   const [regPhoneRaw, setRegPhoneRaw] = useState("");
@@ -395,8 +403,9 @@ function ClinicDashboardContent() {
 
   async function handleRegisterPatient(e: React.FormEvent) {
     e.preventDefault();
-    if (!regName.trim() || !regNric.trim()) {
-      notify("Please fill in Name and Identification Number.", "error");
+    const fullName = [regFirstName.trim(), regLastName.trim()].filter(Boolean).join(" ") || regName.trim();
+    if (!fullName || !regNric.trim()) {
+      notify("Please fill in First Name / Last Name and Identification Number.", "error");
       return;
     }
 
@@ -415,6 +424,12 @@ function ClinicDashboardContent() {
 
     const finalPhone = regPhoneRaw.trim() ? `${regCountryCode} ${regPhoneRaw.trim()}` : "";
     const finalGender = regIdType === "nric" ? (regIcGender ?? regGender) : regGender;
+    const fullAddress = [
+      regAddressLine1.trim(),
+      regAddressLine2.trim(),
+      [regPostcode.trim(), regCity.trim()].filter(Boolean).join(" "),
+      regState.trim(),
+    ].filter(Boolean).join(", ");
 
     try {
       const allergiesList: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }> = [];
@@ -435,7 +450,9 @@ function ClinicDashboardContent() {
 
       await store.registerPatient({
         idType: regIdType,
-        name: regName.trim(),
+        firstName: regFirstName.trim(),
+        lastName: regLastName.trim(),
+        name: fullName,
         nric: regNric.trim().toUpperCase(),
         phone: finalPhone,
         countryCode: regCountryCode,
@@ -443,7 +460,12 @@ function ClinicDashboardContent() {
         dob: regDob,
         gender: finalGender,
         nationality: regIdType === "nric" ? "Malaysian" : regNationality,
-        address: regAddress.trim(),
+        addressLine1: regAddressLine1.trim(),
+        addressLine2: regAddressLine2.trim(),
+        postcode: regPostcode.trim(),
+        city: regCity.trim(),
+        state: regState.trim(),
+        address: fullAddress,
         bloodGroup: regBloodGroup,
         allergies: allergiesList,
         chronicConditions: conditionsList,
@@ -452,8 +474,15 @@ function ClinicDashboardContent() {
       });
 
       // Reset form
+      setRegFirstName("");
+      setRegLastName("");
       setRegName("");
       setRegNric("");
+      setRegAddressLine1("");
+      setRegAddressLine2("");
+      setRegPostcode("");
+      setRegCity("");
+      setRegState(MALAYSIAN_STATES[0] || "Wilayah Persekutuan Kuala Lumpur");
       setRegAddress("");
       setRegNationality("Malaysian");
       setRegDob("");
@@ -1056,6 +1085,8 @@ function ClinicDashboardContent() {
                 <span className="text-xs text-[var(--muted)] font-medium">
                   Showing {store.patients.filter((p) =>
                     p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
+                    (p.firstName ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
+                    (p.lastName ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
                     (p.medicalRecordNumber ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
                     (p.nric ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
                     p.phone.includes(patientSearch)
@@ -1079,6 +1110,8 @@ function ClinicDashboardContent() {
                     {store.patients
                       .filter((p) =>
                         p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
+                        (p.firstName ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
+                        (p.lastName ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
                         (p.medicalRecordNumber ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
                         (p.nric ?? "").toLowerCase().includes(patientSearch.toLowerCase()) ||
                         p.phone.includes(patientSearch)
@@ -1094,7 +1127,14 @@ function ClinicDashboardContent() {
                               #{pat.medicalRecordNumber || "—"}
                             </td>
                             <td className="py-3.5">
-                              <span className="font-extrabold text-[var(--ink)] block">{pat.name}</span>
+                              <span className="font-extrabold text-[var(--ink)] block">
+                                {pat.name}
+                                {pat.firstName && pat.lastName && (
+                                  <span className="text-[0.65rem] text-[var(--muted)] font-normal ml-1">
+                                    ({pat.firstName} {pat.lastName})
+                                  </span>
+                                )}
+                              </span>
                               <span className="text-[0.65rem] text-[var(--muted)] font-mono">
                                 IC/ID: {pat.nric || "—"} {pat.nationality ? `• ${pat.nationality}` : ""}
                               </span>
@@ -2777,44 +2817,66 @@ function ClinicDashboardContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  Full Name <span className="text-[var(--danger)]">*</span>
+                  First / Given Name <span className="text-[var(--danger)]">*</span>
                 </label>
                 <input
                   required
                   type="text"
-                  value={regName}
-                  onChange={(e) => setRegName(e.target.value)}
-                  placeholder="e.g. Tan Mei Ling"
+                  value={regFirstName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setRegFirstName(val);
+                    setRegName([val, regLastName].filter(Boolean).join(" "));
+                  }}
+                  placeholder="e.g. Mei Ling"
                   className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-semibold"
                 />
               </div>
 
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  {regIdType === "nric" ? "Malaysian IC (12 Digits)" : "Passport / Foreign ID No."} <span className="text-[var(--danger)]">*</span>
+                  Last Name / Surname <span className="text-[var(--danger)]">*</span>
                 </label>
                 <input
                   required
                   type="text"
-                  value={regNric}
+                  value={regLastName}
                   onChange={(e) => {
-                    const value = e.target.value.toUpperCase();
-                    setRegNric(value);
-                    if (regIdType === "nric") {
-                      const inferredGender = genderFromMalaysianIc(value);
-                      if (inferredGender) setRegGender(inferredGender);
-                    }
+                    const val = e.target.value;
+                    setRegLastName(val);
+                    setRegName([regFirstName, val].filter(Boolean).join(" "));
                   }}
-                  placeholder={regIdType === "nric" ? "e.g. 950101-10-1235" : "e.g. A12345678"}
-                  maxLength={regIdType === "nric" ? 14 : 30}
-                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
+                  placeholder="e.g. Tan"
+                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-semibold"
                 />
-                {regIdType === "nric" && (
-                  <span className="text-[0.65rem] text-[var(--muted)] mt-0.5 block">
-                    Gender is automatically derived from the last digit.
-                  </span>
-                )}
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                {regIdType === "nric" ? "Malaysian IC (12 Digits)" : "Passport / Foreign ID No."} <span className="text-[var(--danger)]">*</span>
+              </label>
+              <input
+                required
+                type="text"
+                value={regNric}
+                onChange={(e) => {
+                  const value = e.target.value.toUpperCase();
+                  setRegNric(value);
+                  if (regIdType === "nric") {
+                    const inferredGender = genderFromMalaysianIc(value);
+                    if (inferredGender) setRegGender(inferredGender);
+                  }
+                }}
+                placeholder={regIdType === "nric" ? "e.g. 950101-10-1235" : "e.g. A12345678"}
+                maxLength={regIdType === "nric" ? 14 : 30}
+                className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
+              />
+              {regIdType === "nric" && (
+                <span className="text-[0.65rem] text-[var(--muted)] mt-0.5 block">
+                  Gender is automatically derived from the last digit.
+                </span>
+              )}
             </div>
 
             {/* Phone & Contact Details (Nationality only shown for Foreign Passport) */}
@@ -2878,34 +2940,111 @@ function ClinicDashboardContent() {
               )}
             </div>
 
-            {/* Email Address & Residential Address */}
-            <div className={`grid grid-cols-1 ${regIdType === "passport" ? "sm:grid-cols-2" : ""} gap-3`}>
-              {regIdType === "passport" && (
+            {/* Email Address for Foreign Passport if not placed above */}
+            {regIdType === "passport" && (
+              <div>
+                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                  Email Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
+                </label>
+                <input
+                  type="email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  placeholder="patient@example.com"
+                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
+                />
+              </div>
+            )}
+
+            {/* Structured Residential Address */}
+            <div className="space-y-2.5">
+              <span className="text-xs font-bold text-[var(--muted)] uppercase block">
+                Residential Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                    Email Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
+                  <label className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block mb-1">
+                    Address Line 1 (Unit / Street)
                   </label>
                   <input
-                    type="email"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    placeholder="patient@example.com"
+                    type="text"
+                    value={regAddressLine1}
+                    onChange={(e) => {
+                      setRegAddressLine1(e.target.value);
+                      setRegAddress([e.target.value, regAddressLine2, [regPostcode, regCity].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
+                    }}
+                    placeholder="e.g. No. 12, Jalan Ampang"
                     className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
                   />
                 </div>
-              )}
+                <div>
+                  <label className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block mb-1">
+                    Address Line 2 (Area / Building)
+                  </label>
+                  <input
+                    type="text"
+                    value={regAddressLine2}
+                    onChange={(e) => {
+                      setRegAddressLine2(e.target.value);
+                      setRegAddress([regAddressLine1, e.target.value, [regPostcode, regCity].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
+                    }}
+                    placeholder="e.g. Bukit Bintang (Optional)"
+                    className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
+                  />
+                </div>
+              </div>
 
-              <div>
-                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  Residential Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={regAddress}
-                  onChange={(e) => setRegAddress(e.target.value)}
-                  placeholder="e.g. No. 12, Jalan Ampang, Kuala Lumpur"
-                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block mb-1">
+                    Postcode
+                  </label>
+                  <input
+                    type="text"
+                    value={regPostcode}
+                    maxLength={10}
+                    onChange={(e) => {
+                      setRegPostcode(e.target.value);
+                      setRegAddress([regAddressLine1, regAddressLine2, [e.target.value, regCity].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
+                    }}
+                    placeholder="e.g. 50450"
+                    className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block mb-1">
+                    City / Town
+                  </label>
+                  <input
+                    type="text"
+                    value={regCity}
+                    onChange={(e) => {
+                      setRegCity(e.target.value);
+                      setRegAddress([regAddressLine1, regAddressLine2, [regPostcode, e.target.value].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
+                    }}
+                    placeholder="e.g. Kuala Lumpur"
+                    className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block mb-1">
+                    State
+                  </label>
+                  <select
+                    value={regState}
+                    onChange={(e) => {
+                      setRegState(e.target.value);
+                      setRegAddress([regAddressLine1, regAddressLine2, [regPostcode, regCity].filter(Boolean).join(" "), e.target.value].filter(Boolean).join(", "));
+                    }}
+                    className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-semibold"
+                  >
+                    {MALAYSIAN_STATES.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -3340,7 +3479,8 @@ function ClinicDashboardContent() {
                     {patient.name}
                   </h2>
                   <p className="text-xs text-[var(--muted)]">
-                    NRIC: <span className="font-mono font-bold text-[var(--ink)]">{viewPatientNric ?? (viewPatientNricError ? "Unavailable" : "Loading…")}</span> • DOB: {patient.dob} ({patient.age} yrs, {patient.gender})
+                    {patient.firstName ? <span className="font-semibold text-[var(--ink)] mr-1">[{patient.firstName} {patient.lastName}]</span> : null}
+                    IC/ID: <span className="font-mono font-bold text-[var(--ink)]">{patient.nric || viewPatientNric || "—"}</span> • DOB: {patient.dob} ({patient.age} yrs, {patient.gender}) • <span className="font-semibold">{patient.nationality || "Malaysian"}</span>
                   </p>
                 </div>
                 {activeTicket ? (
@@ -3350,7 +3490,7 @@ function ClinicDashboardContent() {
                 )}
               </div>
 
-              {/* Contact info */}
+              {/* Contact & Residential info */}
               <div className="grid grid-cols-2 gap-3 text-xs bg-[var(--surface-2)] p-3 rounded-xl border border-[var(--line)]">
                 <div>
                   <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">Mobile Phone</span>
@@ -3373,6 +3513,24 @@ function ClinicDashboardContent() {
                   ) : (
                     <span className="badge badge-mint text-[0.65rem]">NKDA</span>
                   )}
+                </div>
+
+                <div className="col-span-2 pt-2 border-t border-[var(--line)]">
+                  <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block mb-0.5">Residential Address</span>
+                  <div className="font-medium text-[var(--ink)]">
+                    {patient.addressLine1 ? (
+                      <>
+                        <div className="font-semibold">{patient.addressLine1}</div>
+                        {patient.addressLine2 && <div>{patient.addressLine2}</div>}
+                        <div className="text-[var(--muted)] text-[0.7rem]">
+                          {[patient.postcode, patient.city].filter(Boolean).join(" ")}
+                          {patient.state ? `, ${patient.state}` : ""}
+                        </div>
+                      </>
+                    ) : (
+                      patient.address || "Not recorded"
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -21,7 +21,10 @@ export interface StoredStaffAccount {
 export interface StoredPatient {
   id: string;
   medicalRecordNumber: string;
+  idType?: "nric" | "passport";
   nric: string;
+  firstName?: string;
+  lastName?: string;
   name: string;
   phone: string;
   email: string;
@@ -29,6 +32,12 @@ export interface StoredPatient {
   age: number;
   gender: "Female" | "Male" | "Other" | "Unknown";
   nationality: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postcode?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   address: string;
   bloodGroup: string;
   allergies: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }>;

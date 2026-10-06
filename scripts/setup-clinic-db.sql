@@ -145,8 +145,12 @@ CREATE TABLE IF NOT EXISTS public.patients (
   clinic_id uuid NOT NULL,
   branch_id uuid NOT NULL,
   medical_record_number text NOT NULL,
+  id_type text NOT NULL DEFAULT 'nric' CHECK(id_type IN ('nric','passport')),
+  ic_number text,
   national_id_ciphertext text,
   national_id_hash bytea,
+  first_name text NOT NULL DEFAULT '',
+  last_name text NOT NULL DEFAULT '',
   full_name text NOT NULL,
   date_of_birth date,
   gender text CHECK(gender IN ('female','male','other','unknown')),
@@ -155,17 +159,37 @@ CREATE TABLE IF NOT EXISTS public.patients (
   blood_group text CHECK(blood_group IN ('A+','A-','B+','B-','AB+','AB-','O+','O-','unknown')),
   allergies jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(allergies)='array'),
   chronic_conditions jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(chronic_conditions)='array'),
+  address_line_1 text,
+  address_line_2 text,
+  postcode text,
+  city text,
+  state text,
+  country text NOT NULL DEFAULT 'Malaysia',
+  nationality text NOT NULL DEFAULT 'Malaysian',
   pdpa_consent_at timestamptz,
   pdpa_consent_version text,
   created_by uuid REFERENCES public.staff_members(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  archarchived_at timestamptz,
   archived_at timestamptz,
   UNIQUE(clinic_id, branch_id, medical_record_number),
   UNIQUE(id, clinic_id, branch_id),
   FOREIGN KEY(branch_id, clinic_id) REFERENCES public.branches(id, clinic_id) ON DELETE RESTRICT
 );
+
+-- Idempotent column migrations for existing databases
+ALTER TABLE public.patients
+  ADD COLUMN IF NOT EXISTS id_type text DEFAULT 'nric',
+  ADD COLUMN IF NOT EXISTS ic_number text,
+  ADD COLUMN IF NOT EXISTS first_name text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS last_name text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS address_line_1 text,
+  ADD COLUMN IF NOT EXISTS address_line_2 text,
+  ADD COLUMN IF NOT EXISTS postcode text,
+  ADD COLUMN IF NOT EXISTS city text,
+  ADD COLUMN IF NOT EXISTS state text,
+  ADD COLUMN IF NOT EXISTS country text DEFAULT 'Malaysia',
+  ADD COLUMN IF NOT EXISTS nationality text DEFAULT 'Malaysian';
 
 -- 5. Appointments & Queue Tickets
 CREATE TABLE IF NOT EXISTS public.appointments (

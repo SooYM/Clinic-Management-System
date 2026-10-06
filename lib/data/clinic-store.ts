@@ -92,14 +92,24 @@ export const DEFAULT_PORTAL_CONFIG: ClinicPortalConfig = {
 export interface PatientRecord {
   id: string;
   medicalRecordNumber?: string;
+  idType?: "nric" | "passport";
   nric: string;
+  firstName?: string;
+  lastName?: string;
   name: string;
   phone: string;
+  countryCode?: string;
   email: string;
   dob: string;
   age: number;
   gender: "Female" | "Male" | "Other" | "Unknown";
   nationality?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postcode?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   address?: string;
   bloodGroup: string;
   allergies: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }>;
@@ -909,6 +919,8 @@ export function useClinicStore(isAuthenticated = false) {
   async function registerPatient(params: {
     idType?: "nric" | "passport";
     nric: string;
+    firstName?: string;
+    lastName?: string;
     name: string;
     phone?: string;
     countryCode?: string;
@@ -916,6 +928,12 @@ export function useClinicStore(isAuthenticated = false) {
     dob: string;
     gender: "Female" | "Male" | "Other";
     nationality?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    postcode?: string;
+    city?: string;
+    state?: string;
+    country?: string;
     address?: string;
     bloodGroup: string;
     allergies: Array<{ substance: string; severity: "MILD" | "MODERATE" | "SEVERE" }>;
@@ -949,6 +967,11 @@ export function useClinicStore(isAuthenticated = false) {
           ...payload.patient,
           medicalRecordNumber: payload.patient.medicalRecordNumber || assignedMrn,
           nationality: params.nationality || payload.patient.nationality,
+          addressLine1: params.addressLine1 || payload.patient.addressLine1,
+          addressLine2: params.addressLine2 || payload.patient.addressLine2,
+          postcode: params.postcode || payload.patient.postcode,
+          city: params.city || payload.patient.city,
+          state: params.state || payload.patient.state,
           address: params.address || payload.patient.address,
         };
       } else {
@@ -962,10 +985,20 @@ export function useClinicStore(isAuthenticated = false) {
         ? Math.max(0, today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0))
         : 0;
 
+      const fullAddr = params.address?.trim() || [
+        params.addressLine1,
+        params.addressLine2,
+        [params.postcode, params.city].filter(Boolean).join(" "),
+        params.state,
+      ].filter(Boolean).join(", ") || "—";
+
       savedPatient = {
         id: crypto.randomUUID(),
         medicalRecordNumber: assignedMrn,
+        idType: params.idType || "nric",
         nric: params.nric,
+        firstName: params.firstName || "",
+        lastName: params.lastName || "",
         name: params.name.trim(),
         phone: phone || "—",
         email: params.email.trim(),
@@ -973,7 +1006,13 @@ export function useClinicStore(isAuthenticated = false) {
         age: calculatedAge,
         gender: effectiveGender,
         nationality: params.nationality || (isNric ? "Malaysian" : "Foreign"),
-        address: params.address?.trim() || "—",
+        addressLine1: params.addressLine1 || "",
+        addressLine2: params.addressLine2 || "",
+        postcode: params.postcode || "",
+        city: params.city || "",
+        state: params.state || "",
+        country: params.country || "Malaysia",
+        address: fullAddr,
         bloodGroup: params.bloodGroup,
         allergies: params.allergies,
         chronicConditions: params.chronicConditions,

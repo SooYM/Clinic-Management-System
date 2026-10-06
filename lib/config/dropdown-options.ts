@@ -4,6 +4,7 @@ import dosingFrequenciesData from "../../config/dropdowns/dosing-frequencies.jso
 import mealTimingsData from "../../config/dropdowns/meal-timings.json";
 import bloodGroupsData from "../../config/dropdowns/blood-groups.json";
 import specialtiesData from "../../config/dropdowns/specialties.json";
+import malaysianStatesData from "../../config/dropdowns/malaysian-states.json";
 
 export interface CountryCodeOption {
   code: string;
@@ -17,3 +18,4 @@ export const DOSING_FREQUENCIES: string[] = dosingFrequenciesData;
 export const MEAL_TIMINGS: string[] = mealTimingsData;
 export const BLOOD_GROUPS: string[] = bloodGroupsData;
 export const MEDICAL_SPECIALTIES: string[] = specialtiesData;
+export const MALAYSIAN_STATES: string[] = malaysianStatesData;
