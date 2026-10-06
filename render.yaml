@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: clinic-management-system
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: NEXT_PUBLIC_CLINIC_DEMO_MODE
+        value: "true"
+      - key: PATIENT_NRIC_ENCRYPTION_KEY
+        generateValue: true
+      - key: PATIENT_NRIC_HASH_KEY
+        generateValue: true
+      - key: DOCUMENT_QR_SIGNING_KEY
+        generateValue: true
+      - key: APP_BASE_URL
+        sync: false
