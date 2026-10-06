@@ -8,6 +8,7 @@ projects:
       name: Clinic Management System
       runtime: node
       repo: https://github.com/SooYM/Clinic-Management-System
+      branch: main
       plan: free
       region: oregon
       buildCommand: npm install && npm run build
