@@ -210,11 +210,7 @@ export interface StaffUserRecord {
 }
 
 export const INITIAL_STAFF: StaffUserRecord[] = [
-  { id: "staff-1", username: "admin", fullName: "Operations Director", email: "admin@clinic.local", role: "manager", specialty: "Clinical Governance & Operations", isActive: true, createdAt: "2026-01-01" },
-  { id: "staff-2", username: "doctor", fullName: "Dr. Alicia Tan", email: "doctor@clinic.local", role: "doctor", specialty: "General Medicine & Chronic Care", licenseNumber: "MMC-48219", isActive: true, createdAt: "2026-01-01" },
-  { id: "staff-3", username: "marcus", fullName: "Dr. Marcus Wong", email: "marcus@clinic.local", role: "doctor", specialty: "Pediatrics & Minor Surgery", licenseNumber: "MMC-51022", isActive: true, createdAt: "2026-01-15" },
-  { id: "staff-4", username: "reception", fullName: "Sarah Lim", email: "reception@clinic.local", role: "receptionist", specialty: "Front Desk & Patient Services", isActive: true, createdAt: "2026-01-10" },
-  { id: "staff-5", username: "nurse", fullName: "Chloe Lim", email: "nurse@clinic.local", role: "nurse", specialty: "Clinical Nursing & Dispensary", licenseNumber: "NC-88219", isActive: true, createdAt: "2026-01-12" },
+  { id: "staff-1", username: "admin", fullName: "Clinic Administrator", email: "admin@clinic.local", role: "manager", specialty: "Clinic Administration & Operations", isActive: true, createdAt: "2026-01-01" },
 ];
 
 export interface NotificationLogData {
@@ -227,132 +223,16 @@ export interface NotificationLogData {
   sentAt: string;
 }
 
-const INITIAL_PATIENTS: PatientRecord[] = [
-  {
-    id: "pat-1",
-    medicalRecordNumber: "1",
-    nric: "880412-10-1234",
-    name: "Patricia Koh",
-    phone: "+60 12-345 6789",
-    email: "patricia.koh@example.com",
-    dob: "1988-04-12",
-    age: 38,
-    gender: "Female",
-    nationality: "Malaysian",
-    address: "12 Jalan Ampang, 50450 Kuala Lumpur",
-    bloodGroup: "O+",
-    allergies: [
-      { substance: "Penicillin", severity: "SEVERE" },
-      { substance: "Aspirin", severity: "MODERATE" },
-    ],
-    chronicConditions: ["Hypertension", "Borderline HbA1c"],
-  },
-  {
-    id: "pat-2",
-    medicalRecordNumber: "2",
-    nric: "920825-14-1235",
-    name: "Marcus Lee Wei Jie",
-    phone: "+60 12-876 5432",
-    email: "marcus.lee@example.com",
-    dob: "1992-08-25",
-    age: 34,
-    gender: "Male",
-    nationality: "Malaysian",
-    address: "45 Jalan Bukit Bintang, 55100 Kuala Lumpur",
-    bloodGroup: "A+",
-    allergies: [],
-    chronicConditions: ["Allergic Rhinitis"],
-  },
-  {
-    id: "pat-3",
-    medicalRecordNumber: "3",
-    nric: "751103-10-1237",
-    name: "Ahmad Bin Razali",
-    phone: "+60 13-234 5678",
-    email: "ahmad.razali@example.com",
-    dob: "1975-11-03",
-    age: 51,
-    gender: "Male",
-    nationality: "Malaysian",
-    address: "88 Jalan Bangsar, 59100 Kuala Lumpur",
-    bloodGroup: "B+",
-    allergies: [{ substance: "Sulfa Drugs", severity: "MODERATE" }],
-    chronicConditions: ["Type 2 Diabetes", "Hyperlipidemia"],
-  },
-  {
-    id: "pat-4",
-    medicalRecordNumber: "4",
-    nric: "960214-10-1246",
-    name: "Elena Tan Su-Lyn",
-    phone: "+60 14-345 6789",
-    email: "elena.tan@example.com",
-    dob: "1996-02-14",
-    age: 30,
-    gender: "Female",
-    nationality: "Singaporean",
-    address: "10 Mont Kiara, 50480 Kuala Lumpur",
-    bloodGroup: "AB+",
-    allergies: [],
-    chronicConditions: ["Acne Vulgaris"],
-  },
-];
+const INITIAL_NOTIFICATIONS: NotificationLogData[] = [];
+
+const INITIAL_PATIENTS: PatientRecord[] = [];
 
 const INITIAL_ROOMS: ConsultationRoomData[] = [
-  { id: "rm-1", name: "Room 01", practitionerName: "Dr. Alicia Tan", specialty: "Family Medicine & General Practice", isOccupied: false },
-  { id: "rm-2", name: "Room 02", practitionerName: "Dr. Marcus Wong", specialty: "Pediatrics & Minor Surgery", isOccupied: false },
-  { id: "rm-3", name: "Suite A", practitionerName: "Therapist Chloe Lim", specialty: "Laser & Skin Rejuvenation", isOccupied: false },
+  { id: "rm-1", name: "Room 01", practitionerName: "Unassigned", specialty: "General Practice", isOccupied: false },
+  { id: "rm-2", name: "Room 02", practitionerName: "Unassigned", specialty: "General Practice", isOccupied: false },
 ];
 
-const INITIAL_QUEUE: QueueTicketData[] = [
-  {
-    id: "q-1",
-    ticketNumber: "Q-101",
-    patientId: "pat-1",
-    patientName: "Patricia Koh",
-    phone: "+60 12-345 6789",
-    email: "patricia.koh@example.com",
-    status: "WAITING",
-    practitionerName: "Dr. Alicia Tan",
-    registeredAt: "09:15 AM",
-    waitTimeMinutes: 12,
-  },
-  {
-    id: "q-2",
-    ticketNumber: "Q-102",
-    patientId: "pat-2",
-    patientName: "Marcus Lee Wei Jie",
-    phone: "+60 12-876 5432",
-    email: "marcus.lee@example.com",
-    status: "WAITING",
-    practitionerName: "Dr. Marcus Wong",
-    registeredAt: "09:22 AM",
-    waitTimeMinutes: 18,
-  },
-  {
-    id: "q-3",
-    ticketNumber: "Q-103",
-    patientId: "pat-3",
-    patientName: "Ahmad Bin Razali",
-    phone: "+60 13-234 5678",
-    email: "ahmad.razali@example.com",
-    status: "WAITING",
-    practitionerName: "Dr. Alicia Tan",
-    registeredAt: "09:35 AM",
-    waitTimeMinutes: 25,
-  },
-  {
-    id: "q-4",
-    ticketNumber: "Q-104",
-    patientId: "pat-4",
-    patientName: "Elena Tan Su-Lyn",
-    phone: "+60 14-345 6789",
-    email: "elena.tan@example.com",
-    status: "WAITING",
-    practitionerName: "Therapist Chloe Lim",
-    registeredAt: "09:40 AM",
-    waitTimeMinutes: 30,
-  },
-];
+const INITIAL_QUEUE: QueueTicketData[] = [];
 
 const INITIAL_INVENTORY: InventoryItemData[] = [
   {
@@ -444,26 +324,7 @@ const INITIAL_INVENTORY: InventoryItemData[] = [
   },
 ];
 
-const INITIAL_NOTIFICATIONS: NotificationLogData[] = [
-  {
-    id: "notif-1",
-    channel: "WHATSAPP",
-    template: "BOOKING_CONFIRMATION",
-    recipient: "+60 12-345 6789",
-    patientName: "Patricia Koh",
-    messagePreview: "Confirmed: Follow-up Appointment with Dr. Alicia Tan on Mon 10:00 AM.",
-    sentAt: "Today 08:30 AM",
-  },
-  {
-    id: "notif-2",
-    channel: "WHATSAPP",
-    template: "QUEUE_ALERT",
-    recipient: "+60 12-345 6789",
-    patientName: "Patricia Koh",
-    messagePreview: "You are 2 turns away (Ticket Q-101). Please prepare to enter Consultation Room 01.",
-    sentAt: "Today 09:25 AM",
-  },
-];
+
 
 const EMPTY_PATIENT: PatientRecord = { id: "", nric: "", name: "No patient selected", phone: "", email: "", dob: "", age: 0, gender: "Unknown", bloodGroup: "", allergies: [], chronicConditions: [] };
 
@@ -502,16 +363,16 @@ export function useClinicStore(isAuthenticated = false) {
         if (cancelled || !res.ok || !res.data) return;
 
         const d = res.data;
-        if (d.patients && Array.isArray(d.patients) && d.patients.length > 0) setPatients(d.patients);
+        if (d.patients && Array.isArray(d.patients)) setPatients(d.patients);
         if (d.queue && Array.isArray(d.queue)) {
           setQueue(d.queue.map((t: QueueTicketData) => ({
             ...t,
             waitTimeMinutes: t.waitTimeMinutes ?? 0,
           })));
         }
-        if (d.rooms && Array.isArray(d.rooms) && d.rooms.length > 0) setRooms(d.rooms);
+        if (d.rooms && Array.isArray(d.rooms)) setRooms(d.rooms);
         if (d.staff && Array.isArray(d.staff) && d.staff.length > 0) setStaffList(d.staff);
-        if (d.inventory && Array.isArray(d.inventory) && d.inventory.length > 0) setInventory(d.inventory);
+        if (d.inventory && Array.isArray(d.inventory)) setInventory(d.inventory);
         if (d.digitalMcs && Array.isArray(d.digitalMcs)) setDigitalMcs(d.digitalMcs);
         if (d.referrals && Array.isArray(d.referrals)) setReferrals(d.referrals);
         if (d.labOrders && Array.isArray(d.labOrders)) setLabOrders(d.labOrders);
