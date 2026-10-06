@@ -754,12 +754,7 @@ function ClinicDashboardContent() {
 
       {store.operationalLoadError && (
         <div role="alert" className="mx-auto mt-4 max-w-7xl rounded-lg border border-[var(--danger)]/30 bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
-          Patient and queue records could not be loaded from PostgreSQL: {store.operationalLoadError}
-        </div>
-      )}
-      {!store.demoMode && (
-        <div role="status" className="mx-auto mt-4 max-w-7xl rounded-lg border border-[var(--amber)]/30 bg-[var(--amber-soft)] px-4 py-3 text-sm text-[var(--amber-ink)]">
-          PostgreSQL-backed now: patient registration, directory, queue tickets, and queue status history. Encounters, rooms, clinical documents, receipts, inventory, billing, notifications, and role-permission editing are not persisted yet.
+          Clinic database records could not be loaded: {store.operationalLoadError}
         </div>
       )}
 
