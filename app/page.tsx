@@ -442,7 +442,7 @@ function ClinicDashboardContent() {
         email: regEmail.trim(),
         dob: regDob,
         gender: finalGender,
-        nationality: regNationality,
+        nationality: regIdType === "nric" ? "Malaysian" : regNationality,
         address: regAddress.trim(),
         bloodGroup: regBloodGroup,
         allergies: allergiesList,
@@ -2749,7 +2749,11 @@ function ClinicDashboardContent() {
                       ? "bg-[var(--surface)] text-[var(--blue)] shadow-xs font-extrabold"
                       : "text-[var(--muted)] hover:text-[var(--ink)]"
                   }`}
-                  onClick={() => setRegIdType("nric")}
+                  onClick={() => {
+                    setRegIdType("nric");
+                    setRegNationality("Malaysian");
+                    setRegCountryCode("+60");
+                  }}
                 >
                   🇲🇾 Malaysian IC (MyKad)
                 </button>
@@ -2760,7 +2764,10 @@ function ClinicDashboardContent() {
                       ? "bg-[var(--surface)] text-[var(--blue)] shadow-xs font-extrabold"
                       : "text-[var(--muted)] hover:text-[var(--ink)]"
                   }`}
-                  onClick={() => setRegIdType("passport")}
+                  onClick={() => {
+                    setRegIdType("passport");
+                    if (regNationality === "Malaysian") setRegNationality("Singaporean");
+                  }}
                 >
                   🌐 Foreign Passport / ID
                 </button>
@@ -2810,7 +2817,7 @@ function ClinicDashboardContent() {
               </div>
             </div>
 
-            {/* Flexible Phone Input with Comprehensive World Country Codes */}
+            {/* Phone & Contact Details (Nationality only shown for Foreign Passport) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
@@ -2838,38 +2845,55 @@ function ClinicDashboardContent() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  Nationality <span className="text-[var(--danger)]">*</span>
-                </label>
-                <select
-                  value={regNationality}
-                  onChange={(e) => setRegNationality(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-semibold"
-                >
-                  {NATIONALITIES.map((nat) => (
-                    <option key={nat} value={nat}>
-                      {nat}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {regIdType === "passport" ? (
+                <div>
+                  <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                    Nationality <span className="text-[var(--danger)]">*</span>
+                  </label>
+                  <select
+                    value={regNationality}
+                    onChange={(e) => setRegNationality(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-semibold"
+                  >
+                    {NATIONALITIES.map((nat) => (
+                      <option key={nat} value={nat}>
+                        {nat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                    Email Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    placeholder="patient@example.com"
+                    className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Email Address & Residential Address */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                  Email Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
-                </label>
-                <input
-                  type="email"
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="patient@example.com"
-                  className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
-                />
-              </div>
+            <div className={`grid grid-cols-1 ${regIdType === "passport" ? "sm:grid-cols-2" : ""} gap-3`}>
+              {regIdType === "passport" && (
+                <div>
+                  <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
+                    Email Address <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    placeholder="patient@example.com"
+                    className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
