@@ -31,86 +31,16 @@ interface PrescribedDrugItem {
   remarks?: string;
 }
 
-const WORLD_COUNTRY_CODES = [
-  { code: "+60", label: "🇲🇾 Malaysia (+60)" },
-  { code: "+65", label: "🇸🇬 Singapore (+65)" },
-  { code: "+62", label: "🇮🇩 Indonesia (+62)" },
-  { code: "+673", label: "🇧🇳 Brunei (+673)" },
-  { code: "+66", label: "🇹🇭 Thailand (+66)" },
-  { code: "+63", label: "🇵🇭 Philippines (+63)" },
-  { code: "+84", label: "🇻🇳 Vietnam (+84)" },
-  { code: "+95", label: "🇲🇲 Myanmar (+95)" },
-  { code: "+855", label: "🇰🇭 Cambodia (+855)" },
-  { code: "+856", label: "🇱🇦 Laos (+856)" },
-  { code: "+86", label: "🇨🇳 China (+86)" },
-  { code: "+852", label: "🇭🇰 Hong Kong (+852)" },
-  { code: "+886", label: "🇹🇼 Taiwan (+886)" },
-  { code: "+81", label: "🇯🇵 Japan (+81)" },
-  { code: "+82", label: "🇰🇷 South Korea (+82)" },
-  { code: "+91", label: "🇮🇳 India (+91)" },
-  { code: "+61", label: "🇦🇺 Australia (+61)" },
-  { code: "+64", label: "🇳🇿 New Zealand (+64)" },
-  { code: "+44", label: "🇬🇧 United Kingdom (+44)" },
-  { code: "+1", label: "🇺🇸/🇨🇦 USA & Canada (+1)" },
-  { code: "+971", label: "🇦🇪 UAE (+971)" },
-  { code: "+966", label: "🇸🇦 Saudi Arabia (+966)" },
-  { code: "+974", label: "🇶🇦 Qatar (+974)" },
-  { code: "+49", label: "🇩🇪 Germany (+49)" },
-  { code: "+33", label: "🇫🇷 France (+33)" },
-  { code: "+39", label: "🇮🇹 Italy (+39)" },
-  { code: "+34", label: "🇪🇸 Spain (+34)" },
-  { code: "+31", label: "🇳🇱 Netherlands (+31)" },
-  { code: "+41", label: "🇨🇭 Switzerland (+41)" },
-  { code: "+46", label: "🇸🇪 Sweden (+46)" },
-  { code: "+47", label: "🇳🇴 Norway (+47)" },
-  { code: "+45", label: "🇩🇰 Denmark (+45)" },
-  { code: "+358", label: "🇫🇮 Finland (+358)" },
-  { code: "+353", label: "🇮🇪 Ireland (+353)" },
-  { code: "+7", label: "🇷🇺 Russia (+7)" },
-  { code: "+55", label: "🇧🇷 Brazil (+55)" },
-  { code: "+27", label: "🇿🇦 South Africa (+27)" },
-  { code: "+20", label: "🇪🇬 Egypt (+20)" },
-  { code: "+92", label: "🇵🇰 Pakistan (+92)" },
-  { code: "+880", label: "🇧🇩 Bangladesh (+880)" },
-  { code: "+94", label: "🇱🇰 Sri Lanka (+94)" },
-  { code: "+977", label: "🇳🇵 Nepal (+977)" },
-  { code: "+90", label: "🇹🇷 Turkey (+90)" },
-];
+import {
+  NATIONALITIES,
+  COUNTRY_CODES as WORLD_COUNTRY_CODES,
+  DOSING_FREQUENCIES,
+  MEAL_TIMINGS,
+  BLOOD_GROUPS,
+  MEDICAL_SPECIALTIES,
+} from "../lib/config/dropdown-options";
 
-const NATIONALITIES = [
-  "Malaysian",
-  "Singaporean",
-  "Indonesian",
-  "Bruneian",
-  "Thai",
-  "Vietnamese",
-  "Filipino",
-  "Myanmar / Burmese",
-  "Cambodian",
-  "Chinese",
-  "Taiwanese",
-  "Hong Konger",
-  "Japanese",
-  "South Korean",
-  "Indian",
-  "British",
-  "American",
-  "Australian",
-  "New Zealander",
-  "Canadian",
-  "German",
-  "French",
-  "Italian",
-  "Spanish",
-  "Dutch",
-  "Swiss",
-  "Saudi",
-  "Emirati",
-  "Russian",
-  "Other / Foreign National",
-];
-
-type Tab = "menu" | "queue" | "patients" | "consultation" | "documents" | "packages" | "inventory" | "billing";
+type Tab = "menu" | "queue" | "patients" | "consultation" | "documents" | "inventory" | "billing";
 
 export default function ClinicDashboard() {
   const { user, isLoaded } = useSession();
@@ -169,7 +99,6 @@ function ClinicDashboardContent() {
   const [mcModalOpen, setMcModalOpen] = useState(false);
   const [referralModalOpen, setReferralModalOpen] = useState(false);
   const [labModalOpen, setLabModalOpen] = useState(false);
-  const [redeemModalOpen, setRedeemModalOpen] = useState<string | null>(null);
   const [dispenseModalOpen, setDispenseModalOpen] = useState<string | null>(null);
   const [stockInModalOpen, setStockInModalOpen] = useState(false);
   const [editDrugModal, setEditDrugModal] = useState<InventoryItemData | null>(null);
@@ -393,7 +322,7 @@ function ClinicDashboardContent() {
         },
         {
           heading: "Items",
-          items: ["Doctor consultation — RM 45.00", "Medication — RM 18.00", "Laser session — covered by prepaid package"],
+          items: ["Doctor consultation — RM 45.00", "Medication — RM 18.00"],
         },
         { heading: "Total", paragraphs: ["RM 63.00"] },
       ],
@@ -445,9 +374,6 @@ function ClinicDashboardContent() {
   const [labPanels, setLabPanels] = useState<string[]>(demoMode ? ["Full Blood Count", "Lipid Profile"] : []);
   const [labSpecimen, setLabSpecimen] = useState<"BLOOD" | "URINE" | "SWAB" | "BIOPSY">("BLOOD");
   const [labFasting, setLabFasting] = useState(true);
-
-  // Form states for Package Redemption
-  const [redeemNotes, setRedeemNotes] = useState(demoMode ? "Skin condition evaluated; 755nm fractional mode applied on cheeks." : "");
 
   // Form states for Dispensing
   const [dispenseQty, setDispenseQty] = useState(30);
@@ -691,8 +617,7 @@ function ClinicDashboardContent() {
                 {tab === "patients" && "Patient Directory"}
                 {tab === "consultation" && "Doctor EMR Charting"}
                 {tab === "documents" && "Digital MC & Referrals"}
-                {tab === "packages" && "Treatment Packages"}
-                {tab === "inventory" && "Dispensary FEFO Stock"}
+                {tab === "inventory" && (inventorySubTab === "drugs" ? "Master Drug List & Clinic Formulary" : "Pharmacy FEFO Stock")}
                 {tab === "billing" && (billingSubTab === "commission" ? "Practitioner Commission Ledger" : "POS Billing & Checkout")}
               </span>
             </div>
@@ -834,7 +759,7 @@ function ClinicDashboardContent() {
       )}
       {!store.demoMode && (
         <div role="status" className="mx-auto mt-4 max-w-7xl rounded-lg border border-[var(--amber)]/30 bg-[var(--amber-soft)] px-4 py-3 text-sm text-[var(--amber-ink)]">
-          PostgreSQL-backed now: patient registration, directory, queue tickets, and queue status history. Encounters, rooms, clinical documents, receipts, packages, inventory, billing, notifications, and role-permission editing are not persisted yet.
+          PostgreSQL-backed now: patient registration, directory, queue tickets, and queue status history. Encounters, rooms, clinical documents, receipts, inventory, billing, notifications, and role-permission editing are not persisted yet.
         </div>
       )}
 
@@ -1370,17 +1295,50 @@ function ClinicDashboardContent() {
 
                     <div className="p-3 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] space-y-3">
                       <div>
-                        <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block mb-1">
-                          Medicine / Drug Name <span className="text-[var(--danger)]">*</span>
-                        </span>
-                        <input
-                          list="clinic-formulary-datalist"
-                          type="text"
-                          value={prescribedMed}
-                          onChange={(e) => setPrescribedMed(e.target.value)}
-                          placeholder="Type or select drug (e.g. Paracetamol 500mg, Amoxicillin 500mg...)"
-                          className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] font-bold text-[var(--ink)]"
-                        />
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase">
+                            Medicine / Drug Name <span className="text-[var(--danger)]">*</span>
+                          </span>
+                          {prescribedMed && (
+                            <button
+                              type="button"
+                              onClick={() => setPrescribedMed("")}
+                              className="text-[0.65rem] text-[var(--danger)] hover:underline font-bold flex items-center gap-0.5 cursor-pointer"
+                            >
+                              ✕ Clear / Change Drug
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                          <input
+                            list="clinic-formulary-datalist"
+                            type="text"
+                            value={prescribedMed}
+                            onChange={(e) => setPrescribedMed(e.target.value)}
+                            placeholder="Type drug name or select from list..."
+                            className="flex-1 text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] font-bold text-[var(--ink)]"
+                          />
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                setPrescribedMed(e.target.value);
+                              }
+                            }}
+                            className="w-full sm:w-48 text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] font-medium text-[var(--ink)] cursor-pointer"
+                            aria-label="Select from approved clinic formulary"
+                          >
+                            <option value="">▼ Pick Formulary...</option>
+                            {store.inventory.map((inv) => {
+                              const fullName = `${inv.name}${inv.strength ? ` ${inv.strength}` : ""}`;
+                              return (
+                                <option key={inv.id} value={fullName}>
+                                  {fullName}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
                         <datalist id="clinic-formulary-datalist">
                           {store.inventory.map((inv) => (
                             <option key={inv.id} value={`${inv.name}${inv.strength ? ` ${inv.strength}` : ""}`} />
@@ -1398,14 +1356,9 @@ function ClinicDashboardContent() {
                             onChange={(e) => setPrescribedFreq(e.target.value)}
                             className="w-full text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] font-medium"
                           >
-                            <option value="Once daily (OD)">Once daily (OD)</option>
-                            <option value="Twice daily (BD)">Twice daily (BD)</option>
-                            <option value="3 times daily (TDS)">3 times daily (TDS)</option>
-                            <option value="4 times daily (QDS / prn)">4 times daily (QDS / prn)</option>
-                            <option value="Every 4-6 hours as needed (PRN)">Every 4-6 hours as needed (PRN)</option>
-                            <option value="At bedtime (ON)">At bedtime (ON)</option>
-                            <option value="Once weekly">Once weekly</option>
-                            <option value="As directed by doctor">As directed by doctor</option>
+                            {DOSING_FREQUENCIES.map((freq) => (
+                              <option key={freq} value={freq}>{freq}</option>
+                            ))}
                           </select>
                         </div>
 
@@ -1418,11 +1371,9 @@ function ClinicDashboardContent() {
                             onChange={(e) => setPrescribedTiming(e.target.value)}
                             className="w-full text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] font-medium"
                           >
-                            <option value="After meals">After meals</option>
-                            <option value="Before meals (Empty stomach)">Before meals (Empty stomach)</option>
-                            <option value="With meals / food">With meals / food</option>
-                            <option value="At bedtime">At bedtime</option>
-                            <option value="Anytime / As needed">Anytime / As needed</option>
+                            {MEAL_TIMINGS.map((timing) => (
+                              <option key={timing} value={timing}>{timing}</option>
+                            ))}
                           </select>
                         </div>
 
@@ -1607,114 +1558,7 @@ function ClinicDashboardContent() {
           </div>
         )}
 
-        {/* ==================== TAB 4: TREATMENT PACKAGES ==================== */}
-        {tab === "packages" && (
-          <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[var(--line)]">
-              <div>
-                <h1 className="text-2xl font-extrabold tracking-tight text-[var(--navy)]">
-                  Treatment Packages & Prepaid Credits
-                </h1>
-                <p className="text-xs text-[var(--muted)] mt-1">
-                  Multi-session aesthetic & therapy packages with 1-tap session redemption.
-                </p>
-              </div>
-
-              <span className="badge badge-blue">
-                Active Packages: {store.packages.length}
-              </span>
-            </div>
-
-            <div data-guide="packages-list" className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {store.packages.map((pkg) => (
-                <div key={pkg.id} className="clinic-card package-card space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">
-                        Patient: {pkg.patientName}
-                      </span>
-                      <h3 className="text-base font-extrabold text-[var(--ink)]">
-                        {pkg.packageName}
-                      </h3>
-                    </div>
-                    <span className="badge badge-mint">
-                      Exp: {pkg.expiryDate}
-                    </span>
-                  </div>
-
-                  {/* Visual Punch-Card Meter */}
-                  <div className="space-y-1.5 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]">
-                    <div className="flex justify-between text-xs font-bold text-[var(--ink)]">
-                      <span>Completed: {pkg.completedSessions} / {pkg.totalSessions} Sessions</span>
-                      <span className="text-[var(--blue)]">
-                        {pkg.totalSessions - pkg.completedSessions} Remaining
-                      </span>
-                    </div>
-
-                    <div className="punch-card mt-2">
-                      {Array.from({ length: pkg.totalSessions }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`punch-dot ${
-                            i < pkg.completedSessions ? "completed-mint" : ""
-                          }`}
-                          title={`Session ${i + 1}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Session History Log */}
-                  <div className="space-y-2">
-                    <span className="text-[0.65rem] font-bold text-[var(--muted)] uppercase block">
-                      Redemption History:
-                    </span>
-                    <div className="max-h-28 overflow-y-auto space-y-1 text-xs">
-                      {pkg.history.map((h, idx) => (
-                        <div key={idx} className="flex justify-between p-1.5 rounded bg-[var(--surface)] text-[0.7rem] border border-[var(--line)]">
-                          <span>
-                            <b>Session {h.sessionNumber}</b> ({h.date}) - {h.practitionerName}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-[var(--line)] flex justify-between items-center gap-2">
-                    <span className="text-xs font-bold text-[var(--muted)]">
-                      Prepaid: RM {pkg.pricePaid.toFixed(2)}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="btn-secondary text-xs text-[var(--danger)] hover:bg-[var(--danger-soft)] flex items-center gap-1 py-1 px-2.5"
-                        onClick={() => {
-                          if (confirm(`Remove treatment package "${pkg.packageName}" for ${pkg.patientName}?`)) {
-                            store.removeTreatmentPackage(pkg.id);
-                            notify(`Treatment package removed.`, "success");
-                          }
-                        }}
-                        title="Remove Treatment Package"
-                      >
-                        <Trash2 size={13} />
-                        <span>Remove</span>
-                      </button>
-                      <button
-                        className="btn-primary text-xs"
-                        disabled={pkg.completedSessions >= pkg.totalSessions}
-                        onClick={() => setRedeemModalOpen(pkg.id)}
-                      >
-                        {pkg.completedSessions >= pkg.totalSessions ? "Package Completed" : "Redeem 1 Session"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ==================== TAB 5: PHARMACY, DRUG LIST & FEFO INVENTORY ==================== */}
+        {/* ==================== TAB 4: PHARMACY, DRUG LIST & FEFO INVENTORY ==================== */}
         {tab === "inventory" && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[var(--line)]">
@@ -1949,7 +1793,7 @@ function ClinicDashboardContent() {
                 <p className="text-xs text-[var(--muted)] mt-1">
                   {billingSubTab === "commission"
                     ? "Real-time doctor & therapist service commission attribution and monthly payout ledger."
-                    : "Multi-rail cashier checkout, treatment package deductions, and instant payment receipt issuance."}
+                    : "Multi-rail cashier checkout and instant payment receipt issuance."}
                 </p>
               </div>
 
@@ -2004,10 +1848,6 @@ function ClinicDashboardContent() {
                     <div className="flex justify-between py-2 border-b border-[var(--line)]">
                       <span>Amlodipine Besylate 5mg (30 Tablets)</span>
                       <span className="font-bold">RM 18.00</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-[var(--line)]">
-                      <span>Pico Laser Session 4 (Redeemed via 5x Package)</span>
-                      <span className="font-bold text-[var(--success)]">Covered by prepaid package</span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-[var(--line)]">
                       <span>Tax / SST</span>
@@ -2290,8 +2130,8 @@ function ClinicDashboardContent() {
                       </div>
                       <div className="flex justify-between p-2 rounded-lg bg-[var(--surface-2)]">
                         <div>
-                          <strong className="block text-[var(--ink)]">Package Upsell Bonus</strong>
-                          <span className="text-[0.68rem] text-[var(--muted)]">5% package acquisition incentive</span>
+                          <strong className="block text-[var(--ink)]">Skincare Retail Incentive</strong>
+                          <span className="text-[0.68rem] text-[var(--muted)]">5% retail sales bonus</span>
                         </div>
                         <span className="font-bold text-[var(--muted)]">RM 0.00</span>
                       </div>
@@ -2717,65 +2557,7 @@ function ClinicDashboardContent() {
         </Modal>
       )}
 
-      {/* ==================== MODAL: REDEEM PACKAGE SESSION ==================== */}
-      {redeemModalOpen && (
-        <Modal
-          labelledBy="redeem-modal-title"
-          closeLabel="Close Redeem Dialog"
-          onClose={() => setRedeemModalOpen(null)}
-        >
-          <div className="space-y-4">
-            <div className="pb-2 border-b border-[var(--line)]">
-              <span className="badge badge-mint mb-1">TREATMENT PACKAGE REDEMPTION</span>
-              <h2 id="redeem-modal-title" className="text-lg font-extrabold text-[var(--navy)]">
-                Redeem Treatment Session
-              </h2>
-            </div>
 
-            <div>
-              <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                Attending Therapist / Practitioner
-              </label>
-              <input
-                disabled
-                value="Therapist Chloe Lim"
-                className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
-                Session Treatment Notes
-              </label>
-              <textarea
-                value={redeemNotes}
-                onChange={(e) => setRedeemNotes(e.target.value)}
-                rows={3}
-                className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
-              />
-            </div>
-
-            <div className="p-3 bg-[var(--surface-2)] rounded-lg text-xs text-[var(--muted)]">
-              ✓ Patient e-signature verification captured on treatment room tablet.
-            </div>
-
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
-              <button className="btn-secondary text-xs" onClick={() => setRedeemModalOpen(null)}>
-                Cancel
-              </button>
-              <button
-                className="btn-primary text-xs"
-                onClick={() => {
-                  store.redeemPackageSession(redeemModalOpen, redeemNotes);
-                  setRedeemModalOpen(null);
-                }}
-              >
-                Confirm Session Sign-Off
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
 
       {/* ==================== MODAL: DISPENSE PHARMACY STOCK (FEFO) ==================== */}
       {dispenseModalOpen && (
@@ -3521,7 +3303,6 @@ function ClinicDashboardContent() {
       {viewPatientModal && (() => {
         const patient = store.patients.find((p) => p.id === viewPatientModal);
         if (!patient) return null;
-        const patientPkgs = store.packages.filter((pkg) => pkg.patientId === patient.id);
         const activeTicket = store.queue.find(
           (q) => q.patientId === patient.id && (q.status === "WAITING" || q.status === "CALLED_TO_ROOM" || q.status === "IN_CONSULTATION")
         );
@@ -3574,32 +3355,6 @@ function ClinicDashboardContent() {
                     <span className="badge badge-mint text-[0.65rem]">NKDA</span>
                   )}
                 </div>
-              </div>
-
-              {/* Active packages */}
-              <div>
-                <h4 className="text-xs font-bold text-[var(--navy)] uppercase mb-1.5">
-                  Prepaid Treatment Packages ({patientPkgs.length})
-                </h4>
-                {patientPkgs.length === 0 ? (
-                  <p className="text-xs text-[var(--muted)] italic">No active prepaid packages on file.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {patientPkgs.map((pkg) => (
-                      <div key={pkg.id} className="p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] text-xs flex justify-between items-center">
-                        <div>
-                          <span className="font-bold text-[var(--ink)]">{pkg.packageName}</span>
-                          <span className="text-[0.68rem] text-[var(--muted)] block">
-                            {pkg.completedSessions} of {pkg.totalSessions} sessions completed • Expires: {pkg.expiryDate}
-                          </span>
-                        </div>
-                        <span className="badge badge-blue">
-                          {pkg.totalSessions - pkg.completedSessions} remaining
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* Dedicated Actions */}
@@ -3658,6 +3413,8 @@ function ClinicDashboardContent() {
           onClose={() => setUserManagementModalOpen(false)}
           staffList={store.staffList}
           onRegisterStaff={store.registerStaffUser}
+          onResetPassword={store.resetStaffUserPassword}
+          onToggleStatus={store.toggleStaffStatus}
         />
       )}
 

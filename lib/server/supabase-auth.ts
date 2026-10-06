@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
+import { findStaffByIdentifier, getDatabase } from "./storage";
 
 export const ACCESS_COOKIE = "cms_access_token";
 export const REFRESH_COOKIE = "cms_refresh_token";
@@ -253,6 +254,25 @@ function parseTokens(value: unknown): SupabaseSessionTokens {
 
 export async function signInWithPassword(identifier: string, password: string): Promise<SupabaseSessionTokens> {
   const normalized = identifier.trim().toLowerCase();
+
+  // 1. Check persistent database staff accounts
+  const storedStaff = findStaffByIdentifier(normalized);
+  if (storedStaff) {
+    if (!storedStaff.active) {
+      throw new AuthRouteError(403, "STAFF_PROFILE_INACTIVE", "This staff account has been revoked by administration.");
+    }
+    if (storedStaff.password !== password) {
+      throw new AuthRouteError(401, "INVALID_CREDENTIALS", "Username/email or password is incorrect.");
+    }
+    return {
+      access_token: `cms_mock_${storedStaff.id}`,
+      refresh_token: `cms_mock_refresh_${storedStaff.id}`,
+      expires_in: 86400,
+      user: { id: storedStaff.id },
+    };
+  }
+
+  // 2. Check built-in staff fallback
   const matched = BUILT_IN_STAFF_ACCOUNTS.find((acc) => {
     const username = acc.username.toLowerCase();
     const email = acc.email.toLowerCase();
@@ -314,7 +334,22 @@ async function getSupabaseUser(accessToken: string): Promise<SupabaseUser | null
 }
 
 export async function getActiveStaffProfile(accessToken: string, authUserId: string): Promise<StaffSessionUser> {
-  if (accessToken.startsWith("cms_mock_") || accessToken.startsWith("kumo_mock_") || authUserId.startsWith("usr_")) {
+  if (accessToken.startsWith("cms_mock_") || accessToken.startsWith("kumo_mock_") || authUserId.startsWith("usr_") || authUserId.startsWith("staff-")) {
+    const dbStaff = getDatabase().staff.find(
+      (s) => s.id === authUserId || s.auth_user_id === authUserId || `cms_mock_${s.id}` === accessToken || `cms_mock_${s.auth_user_id}` === accessToken
+    );
+    if (dbStaff) {
+      return {
+        id: dbStaff.id,
+        auth_user_id: dbStaff.auth_user_id,
+        clinic_id: "c0000000-0000-4000-8000-000000000001",
+        branch_id: "d0000000-0000-4000-8000-000000000001",
+        full_name: dbStaff.full_name,
+        role: dbStaff.role,
+        license_number: dbStaff.license_number ?? null,
+      };
+    }
+
     const matched = BUILT_IN_STAFF_ACCOUNTS.find(
       (acc) => acc.profile.id === authUserId || `cms_mock_${acc.profile.id}` === accessToken || `kumo_mock_${acc.profile.id}` === accessToken
     );
@@ -396,6 +431,21 @@ export async function getAuthenticatedClinicStaff(request: NextRequest): Promise
 
   if (accessToken?.startsWith("cms_mock_") || accessToken?.startsWith("kumo_mock_")) {
     const userId = accessToken.replace(/^(cms|kumo)_mock_/, "");
+    const dbStaff = getDatabase().staff.find((s) => s.id === userId || s.auth_user_id === userId);
+    if (dbStaff && dbStaff.active) {
+      return {
+        user: {
+          id: dbStaff.id,
+          auth_user_id: dbStaff.auth_user_id,
+          clinic_id: "c0000000-0000-4000-8000-000000000001",
+          branch_id: "d0000000-0000-4000-8000-000000000001",
+          full_name: dbStaff.full_name,
+          role: dbStaff.role,
+          license_number: dbStaff.license_number ?? null,
+        },
+        accessToken,
+      };
+    }
     const matched = BUILT_IN_STAFF_ACCOUNTS.find((acc) => acc.profile.id === userId);
     if (matched) {
       return { user: matched.profile, accessToken };

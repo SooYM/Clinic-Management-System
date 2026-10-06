@@ -72,20 +72,16 @@ export function GuideModal({ onClose }: { onClose: () => void }) {
           <div>
             <h3 className="font-extrabold text-[var(--navy)] mb-2 flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-xs bg-[var(--warning)]" />
-              Treatment, Pharmacy & Finance
+              Pharmacy, Dispensary & Finance
             </h3>
             <div className="grid grid-cols-2 gap-2">
               <div className="p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] flex items-center justify-between">
-                <span>Treatment Packages</span>
+                <span>Drug List & Formulary</span>
                 <kbd className="font-mono font-bold bg-[var(--surface)] px-2 py-0.5 rounded border border-[var(--line)] text-[var(--ink)]">9</kbd>
               </div>
               <div className="p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] flex items-center justify-between">
                 <span>Dispensary FEFO Stock</span>
                 <kbd className="font-mono font-bold bg-[var(--surface)] px-2 py-0.5 rounded border border-[var(--line)] text-[var(--ink)]">0</kbd>
-              </div>
-              <div className="p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] flex items-center justify-between">
-                <span>Drug List & Formulary</span>
-                <kbd className="font-mono font-bold bg-[var(--surface)] px-2 py-0.5 rounded border border-[var(--line)] text-[var(--ink)]">D</kbd>
               </div>
               <div className="p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] flex items-center justify-between">
                 <span>POS Billing & Checkout</span>

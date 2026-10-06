@@ -42,9 +42,9 @@ export const GROUPS: MenuGroup[] = [
   },
   {
     id: "treatment",
-    label: "Treatment & Pharmacy",
+    label: "Pharmacy & Formulary",
     hue: "amber",
-    blurb: "Prepaid aesthetic punch-cards & FEFO inventory dispensing",
+    blurb: "Master drug formulary & FEFO inventory dispensing",
   },
   {
     id: "finance",
@@ -64,7 +64,7 @@ export interface MenuItem {
   icon: LucideIcon;
   shortcut: string;
   actionType: "route" | "modal";
-  routeTarget?: "queue" | "patients" | "consultation" | "documents" | "packages" | "inventory" | "billing";
+  routeTarget?: "queue" | "patients" | "consultation" | "documents" | "inventory" | "billing";
   modalTarget?: "register" | "ticket" | "mc" | "referral" | "lab" | "alerts" | "permissions" | "portal_settings" | "users";
   allowedRoles?: RoleType[];
   adminOnly?: boolean;
@@ -160,16 +160,17 @@ export const MENU: MenuItem[] = [
     allowedRoles: ["doctor", "manager"],
   },
 
-  // Treatment & Pharmacy
+  // Pharmacy & Formulary
   {
-    key: "packages",
+    key: "drugs",
     group: "treatment",
-    label: "Treatment Packages",
-    description: "Prepaid treatment punch-cards & sessions",
-    icon: Sparkles,
+    label: "Drug List & Formulary",
+    description: "Master list of available clinic medicines (can edit)",
+    icon: Pill,
     shortcut: "9",
     actionType: "route",
-    routeTarget: "packages",
+    routeTarget: "inventory",
+    allowedRoles: ["doctor", "nurse", "manager"],
   },
   {
     key: "inventory",
@@ -180,17 +181,7 @@ export const MENU: MenuItem[] = [
     shortcut: "0",
     actionType: "route",
     routeTarget: "inventory",
-    allowedRoles: ["nurse", "manager"],
-  },
-  {
-    key: "drugs",
-    group: "treatment",
-    label: "Drug List & Formulary",
-    description: "Master list of available clinic medicines (can edit)",
-    icon: Pill,
-    shortcut: "D",
-    actionType: "route",
-    routeTarget: "inventory",
+    allowedRoles: ["doctor", "nurse", "manager"],
   },
 
   // Billing & Admin

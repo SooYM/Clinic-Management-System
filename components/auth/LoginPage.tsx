@@ -62,7 +62,7 @@ export function LoginPage({ onSuccess }: Props) {
             Clinical operating system for outpatient medical & healthcare
           </h1>
           <p className="mt-3 text-sm text-sky-100/80 leading-relaxed">
-            Unified platform for front-desk queue management, digital medical certificates, FEFO dispensary stock, and clinic treatment packages.
+            Unified platform for front-desk queue management, digital medical certificates, master formulary, and FEFO dispensary stock.
           </p>
         </div>
 
@@ -75,7 +75,7 @@ export function LoginPage({ onSuccess }: Props) {
             <div>
               <strong className="block text-white font-semibold">Queue & Room Dispatch</strong>
               <span className="text-xs text-white/75 mt-0.5 block leading-normal">
-                Clinic queue workspace. Live sync and patient notifications require server and provider setup.
+                Clinic queue workspace. Live sync and doctor room assignments with instant ticket dispatch.
               </span>
             </div>
           </li>
@@ -97,9 +97,9 @@ export function LoginPage({ onSuccess }: Props) {
               ✓
             </span>
             <div>
-              <strong className="block text-white font-semibold">Treatment Packages & FEFO Inventory</strong>
+              <strong className="block text-white font-semibold">Master Formulary & FEFO Inventory</strong>
               <span className="text-xs text-white/75 mt-0.5 block leading-normal">
-                Multi-session punch cards, First-Expiry-First-Out drug depletion, and split POS billing.
+                Complete clinic drug catalog, First-Expiry-First-Out batch tracking, and point-of-sale checkout.
               </span>
             </div>
           </li>

@@ -14,8 +14,7 @@ export type TourId =
   | "consultation"
   | "inventory"
   | "billing"
-  | "ledger"
-  | "packages";
+  | "ledger";
 
 /**
  * Top bar items available across module screens.
@@ -170,14 +169,6 @@ export const TOURS: Record<TourId, GuideStep[]> = {
       target: "ledger-overview",
       label: "Practitioner Commission Ledger",
       body: "Automated revenue attribution for doctors and aesthetic therapists based on consultation shares and procedural commissions.",
-    },
-    ...TOP_BAR,
-  ],
-  packages: [
-    {
-      target: "packages-list",
-      label: "Treatment Package Punch-Cards",
-      body: "Prepaid aesthetic courses (e.g. 5x Pico Laser, 10x Facials) with session tracking and one-click redemption.",
     },
     ...TOP_BAR,
   ],
