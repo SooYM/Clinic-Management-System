@@ -1,11 +1,19 @@
-services:
-  - type: web
-    name: clinic-management-system
-    env: node
-    plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
-    envVars:
+version: "1"
+projects:
+- name: Clinic Management System
+  environments:
+  - name: Production
+    services:
+    - type: web
+      name: Clinic Management System
+      runtime: node
+      repo: https://github.com/SooYM/Clinic-Management-System
+      plan: free
+      region: oregon
+      buildCommand: npm install && npm run build
+      startCommand: npm run start
+      autoDeployTrigger: commit
+      envVars:
       - key: NODE_VERSION
         value: 22.14.0
       - key: NEXT_PUBLIC_CLINIC_DEMO_MODE
