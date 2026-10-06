@@ -2292,7 +2292,7 @@ function ClinicDashboardContent() {
               />
             </div>
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+            <div className="modal-footer">
               <button className="btn-secondary text-xs" onClick={() => setMcModalOpen(false)}>
                 Cancel
               </button>
@@ -2427,7 +2427,7 @@ function ClinicDashboardContent() {
               />
             </div>
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+            <div className="modal-footer">
               <button className="btn-secondary text-xs" onClick={() => setReferralModalOpen(false)}>
                 Cancel
               </button>
@@ -2532,7 +2532,7 @@ function ClinicDashboardContent() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+            <div className="modal-footer">
               <button className="btn-secondary text-xs" onClick={() => setLabModalOpen(false)}>
                 Cancel
               </button>
@@ -2585,7 +2585,7 @@ function ClinicDashboardContent() {
               System will automatically deduct from the earliest expiry batch first (FEFO invariant).
             </div>
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+            <div className="modal-footer">
               <button className="btn-secondary text-xs" onClick={() => setDispenseModalOpen(null)}>
                 Cancel
               </button>
@@ -2726,7 +2726,7 @@ function ClinicDashboardContent() {
           onClose={() => setRegModalOpen(false)}
         >
           <form onSubmit={handleRegisterPatient} className="space-y-4">
-            <div className="pb-2 border-b border-[var(--line)]">
+            <div className="pb-2 border-b border-[var(--line)] pr-8 sm:pr-0">
               <span className="badge badge-blue mb-1">FRONT DESK WORKFLOW</span>
               <h2 id="reg-modal-title" className="text-lg font-extrabold text-[var(--navy)]">
                 Register New Patient
@@ -2816,11 +2816,11 @@ function ClinicDashboardContent() {
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
                   Mobile Phone <span className="font-normal text-[var(--muted)] normal-case">(optional)</span>
                 </label>
-                <div className="flex gap-1.5">
+                <div className="flex flex-col sm:flex-row gap-1.5">
                   <select
                     value={regCountryCode}
                     onChange={(e) => setRegCountryCode(e.target.value)}
-                    className="w-36 text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
+                    className="w-full sm:w-36 text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono font-bold"
                   >
                     {WORLD_COUNTRY_CODES.map((item) => (
                       <option key={item.code} value={item.code}>
@@ -2833,7 +2833,7 @@ function ClinicDashboardContent() {
                     value={regPhoneRaw}
                     onChange={(e) => setRegPhoneRaw(e.target.value)}
                     placeholder="12-345 6789"
-                    className="flex-1 text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono"
+                    className="flex-1 min-w-0 text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono"
                   />
                 </div>
               </div>
@@ -2885,7 +2885,7 @@ function ClinicDashboardContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div>
                 <label className="text-xs font-bold text-[var(--muted)] uppercase block mb-1">
                   Date of Birth <span className="text-[var(--danger)]">*</span>
@@ -2999,7 +2999,7 @@ function ClinicDashboardContent() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+            <div className="modal-footer">
               <button
                 type="button"
                 className="btn-secondary text-xs"
@@ -3278,7 +3278,7 @@ function ClinicDashboardContent() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+            <div className="modal-footer">
               <button
                 type="button"
                 className="btn-secondary text-xs"
@@ -3562,7 +3562,7 @@ function ClinicDashboardContent() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+            <div className="modal-footer">
               <button
                 type="button"
                 className="btn-secondary text-xs"

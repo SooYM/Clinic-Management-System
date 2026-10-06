@@ -207,7 +207,7 @@ export function UserManagementModal({
         )}
 
         {/* Tab Controls */}
-        <div className="flex items-center gap-2 border-b border-[var(--line)] pb-2">
+        <div className="flex items-center gap-2 border-b border-[var(--line)] pb-2 overflow-x-auto whitespace-nowrap">
           <button
             type="button"
             className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
@@ -466,7 +466,7 @@ export function UserManagementModal({
               </div>
             )}
 
-            <div className="pt-3 border-t border-[var(--line)] flex justify-between items-center">
+            <div className="modal-footer justify-between">
               <button
                 type="button"
                 className="btn-secondary text-xs"
@@ -528,7 +528,7 @@ export function UserManagementModal({
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[var(--line)] flex justify-end gap-2">
+              <div className="modal-footer">
                 <button
                   type="button"
                   className="btn-secondary text-xs"
