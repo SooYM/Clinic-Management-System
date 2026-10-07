@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–014.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–015.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -232,7 +232,7 @@ Normal application builds continue to use authenticated HTTP requests and MySQL 
 
 Demo account switching illustrates screens and role grants; it is not server authentication or an authorization boundary.
 Demo operations simulate workflows without actual database transactions, external messages, payment authorization or cryptographically issued documents.
-PDF/receipt links lead to a clear unavailable explanation. Live SSE is disabled; local refresh reads browser state.
+Receipt samples preview in-page; PDF downloads remain unavailable. Live SSE is disabled; local refresh reads browser state.
 The demo must contain sample data only. Browser session restoration may retain tab storage; explicit reset clears it.
 No real patient information, provider secrets or database credentials belong in its bundle.
 
@@ -246,3 +246,9 @@ Patient phone numbers accept Malaysian and foreign formatting, including country
 ## Task sections and scrolling
 
 Operational modules separate lists, entry forms and history into named sections. Section navigation stays available while scrolling and wraps on phones. Only the selected task area is visible. Switching sections within a module retains unsaved form values; successful registration, booking, checkout and check-in clear completed forms as before. Leaving a module or reloading is not a draft-save operation. Patient/allergy context remains outside clinical task sections. Guided walkthroughs open the section containing the highlighted control. Single-task password and notification screens remain focused.
+
+## Settings lifecycle and receipts
+
+Administrators edit staff names and branch name/address. Settings lists expose Remove and Restore, hiding removed entries by default with Show removed controls. Room removal deletes unreferenced rooms and archives historical rooms; busy rooms and upcoming bookings block removal. Branch removal archives, preserving history; selected branch, final active branch and active staff home assignments are protected. Restoring staff access requires an active home branch. Catalog and inventory removal archives choices; used stock identity rules remain unchanged. Role/status codes remain fixed domain rules.
+
+Receipt preview uses clinic/branch header, patient name and IC/passport, receipt/date, itemized quantities/prices/amounts, total, recorded payment breakdown, cashier and MYT issue time. No copied logo, registration number, tax or discount is invented. New invoices capture immutable receipt metadata; existing invoices use current records and checkout audit fallback. Browser demo previews are labeled sample receipts and do not provide real PDF/payment verification.

@@ -1,5 +1,6 @@
 import { catalogKinds } from '../shared/catalogs';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
+import { buildReceiptView } from '../shared/receipt-view';
 import { schemas } from '../server/validation';
 import {
   ClinicalEncounter,
@@ -17,6 +18,7 @@ import {
   type RoleId,
 } from '../shared/module-permissions';
 import { idSchema } from '../shared/identifiers';
+import { z } from 'zod';
 import postcodes from '../server/data/postcodes.json';
 
 /** Browser-only simulation. These checks demonstrate workflows, never provide backend security. */
@@ -394,6 +396,10 @@ function seed(): State {
     medicationDoses: [],
     audit: [],
   };
+  for (const branch of rows.branches) {
+    branch.active = true;
+    branch.version = 1;
+  }
   for (const item of rows.inventory) {
     item.active = true;
     item.version = 1;
@@ -480,6 +486,10 @@ export class DemoClinic {
     if (!this.state.rows.catalogs) {
       this.state.rows.catalogs = sampleCatalogs();
       this.state.counters.catalogs = this.state.rows.catalogs.length;
+    }
+    for (const branch of this.state.rows.branches) {
+      branch.active ??= true;
+      branch.version ??= 1;
     }
     for (const item of this.state.rows.inventory) {
       item.active ??= true;
@@ -657,10 +667,11 @@ export class DemoClinic {
     if (route.startsWith('/verify/'))
       fail('Demo certificates are not signed or verifiable. Use the MySQL application.', 503);
     const user = this.actor(),
-      branch = idSchema.parse(
-        branchId || Number(url.searchParams.get('branchId')) || user.branchId,
-      );
-    if (!user.branchIds.includes(branch))
+      branch = idSchema.parse(branchId ?? url.searchParams.get('branchId') ?? user.branchId);
+    if (
+      !user.branchIds.includes(branch) ||
+      !this.state.rows.branches.some((b) => b.id === branch && b.active)
+    )
       fail('This demo account has no access to that branch.', 403);
     const modules = this.modules(user);
     if (/^\/(packages|commissions|photos)(\/|$)/.test(route)) fail('Feature retired.', 410);
@@ -717,12 +728,16 @@ export class DemoClinic {
         tenant: this.state.rows.tenants[0],
         user: this.publicUser(user),
         branchId: branch,
-        branches: this.state.rows.branches.filter((b) => user.branchIds.includes(b.id)),
+        branches: this.state.rows.branches.filter((b) => b.active && user.branchIds.includes(b.id)),
         rooms: this.scoped('rooms', branch).filter((r) => r.active),
         practitioners: this.state.rows.users
           .filter((u) => u.active && u.role === 'DOCTOR' && u.branchIds.includes(branch))
           .map((u) => this.publicUser(u)),
         modules,
+      };
+    if (route === '/references/branches' && method === 'GET')
+      return {
+        data: this.state.rows.branches.filter((b) => b.active && user.branchIds.includes(b.id)),
       };
     if (route === '/auth/change-password') {
       if (user.password !== body.currentPassword) fail('Current demo password is incorrect.', 401);
@@ -1428,6 +1443,27 @@ export class DemoClinic {
       this.record('patients', v.patientId, branch);
       return this.add('deposits', v, branch);
     }
+    if (/^\/invoices\/\d+\/receipt-view$/.test(route) && method === 'GET') {
+      const invoice = this.record('invoices', id!, branch),
+        patient = this.record('patients', invoice.patientId, branch),
+        clinicBranch = this.state.rows.branches.find((b) => b.id === branch)!;
+      return buildReceiptView({
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        createdAt: invoice.createdAt,
+        clinicName: this.state.rows.tenants[0].name,
+        branchName: clinicBranch.name,
+        clinicAddress: clinicBranch.address,
+        patientName: patient.name,
+        nationalId: patient.nationalId,
+        receivedBy: '',
+        receiptSnapshot: invoice.receiptSnapshot,
+        lines: invoice.lines,
+        totalCents: invoice.totalCents,
+        payments: invoice.payments,
+        simulated: true,
+      });
+    }
     if (route === '/invoices' && method === 'POST') {
       const v = schemas.invoice.parse(body),
         hash = JSON.stringify(v),
@@ -1436,7 +1472,8 @@ export class DemoClinic {
         if (prior.requestHash !== hash) fail('Payment key has different details.', 409);
         return this.enrich(prior);
       }
-      this.record('patients', v.patientId, branch);
+      const patient = this.record('patients', v.patientId, branch),
+        clinicBranch = this.state.rows.branches.find((b) => b.id === branch)!;
       this.doctor(v.practitionerId, branch);
       const total = v.lines.reduce(
         (sum, l) => sum + new Money(l.unitPriceCents).multiply(l.quantity).cents,
@@ -1454,7 +1491,20 @@ export class DemoClinic {
       if (used > balance) fail('Insufficient deposit.');
       const invoice = this.add(
         'invoices',
-        { ...v, requestHash: hash, totalCents: total, status: 'PAID' },
+        {
+          ...v,
+          requestHash: hash,
+          totalCents: total,
+          status: 'PAID',
+          receiptSnapshot: {
+            clinicName: this.state.rows.tenants[0].name,
+            branchName: clinicBranch.name,
+            clinicAddress: clinicBranch.address,
+            patientName: patient.name,
+            nationalId: patient.nationalId,
+            receivedBy: user.name,
+          },
+        },
         branch,
       );
       invoice.invoiceNumber = 'DEMO-INV-' + invoice.id;
@@ -1567,7 +1617,8 @@ export class DemoClinic {
       if (body.role === 'DOCTOR' && !body.licenseNumber) fail('GP registration number required.');
       if (
         !this.state.rows.branches.some(
-          (b) => b.id === idSchema.parse(body.branchId) && user.branchIds.includes(b.id),
+          (b) =>
+            b.id === idSchema.parse(body.branchId) && b.active && user.branchIds.includes(b.id),
         )
       )
         fail('Choose an accessible branch.');
@@ -1585,30 +1636,97 @@ export class DemoClinic {
       return this.publicUser(u);
     }
     if (/^\/admin\/users\/\d+$/.test(route) && method === 'PUT') {
+      const input = z
+        .object({
+          name: z.string().trim().min(1).max(150).optional(),
+          active: z.boolean().optional(),
+        })
+        .strict()
+        .refine(
+          (v) => v.name !== undefined || v.active !== undefined,
+          'Provide name or active status.',
+        )
+        .parse(body);
       const target =
         this.state.rows.users.find((u) => u.id === Number(route.split('/').at(-1))) ||
         fail('User not found.', 404);
-      if (target.id === user.id && !body.active)
+      if (target.id === user.id && input.active === false)
         fail('Cannot deactivate your own demo account.', 409);
-      target.active = Boolean(body.active);
-      return this.publicUser(target);
+      if (
+        input.active === false &&
+        target.role === 'ADMIN' &&
+        this.state.rows.users.filter((u) => u.role === 'ADMIN' && u.active).length <= 1
+      )
+        fail('Keep at least one active administrator.', 409);
+      if (
+        input.active === true &&
+        !this.state.rows.branches.some((b) => b.id === target.branchId && b.active)
+      )
+        fail('Restore the home branch before activating staff.', 409);
+      Object.assign(target, input);
+      return { id: target.id, name: target.name, active: target.active };
     }
     if (route === '/admin/branches' && method === 'POST') {
-      if (!body.name?.trim()) fail('Branch name required.');
-      const b = this.add('branches', body, 0);
+      const input = z
+        .object({ name: z.string().trim().min(1).max(150), address: z.string().trim().max(1000) })
+        .strict()
+        .parse(body);
+      const b = this.add('branches', { ...input, active: true }, 0);
       b.branchId = b.id;
       b.branchNumber = b.id;
       user.branchIds.push(b.id);
       return b;
     }
+    if (/^\/admin\/branches\/\d+$/.test(route) && method === 'PUT') {
+      const input = z
+        .object({
+          name: z.string().trim().min(1).max(150),
+          address: z.string().trim().max(1000),
+          active: z.boolean(),
+          version: z.number().int().positive(),
+        })
+        .strict()
+        .parse(body);
+      const target =
+        this.state.rows.branches.find((b) => b.id === id && b.tenantId === 1) ||
+        fail('Branch not found.', 404);
+      if (target.version !== input.version) fail('Branch changed. Reload before saving.', 409);
+      if (!input.active) {
+        if (target.id === branch) fail('Switch to another branch before archiving this one.', 409);
+        if (this.state.rows.branches.filter((b) => b.active).length <= 1)
+          fail('Keep at least one active branch.', 409);
+        if (this.state.rows.users.some((u) => u.active && u.branchId === target.id))
+          fail('Move or deactivate staff assigned to this home branch first.', 409);
+      }
+      Object.assign(target, input, { version: target.version + 1, updatedAt: now() });
+      return target;
+    }
     if (route === '/admin/rooms' && method === 'POST') {
       const b = this.state.rows.branches.find((b) => b.id === idSchema.parse(body.branchId));
-      if (!b || !user.branchIds.includes(b.id)) fail('Choose accessible branch.');
-      if (!body.name?.trim()) fail('Room name required.');
-      return this.add('rooms', { name: body.name, active: true }, b!.id);
+      if (!b || !b.active || !user.branchIds.includes(b.id))
+        fail('Choose accessible active branch.');
+      const input = z
+        .object({ name: z.string().trim().min(1).max(100), branchId: idSchema })
+        .strict()
+        .parse(body);
+      return this.add('rooms', { name: input.name, active: true }, b!.id);
     }
-    if (/^\/admin\/rooms\/\d+$/.test(route) && method === 'PUT') {
+    if (/^\/admin\/rooms\/\d+$/.test(route) && ['PUT', 'DELETE'].includes(method)) {
       const room = this.record('rooms', idSchema.parse(route.split('/').at(-1)), branch);
+      const input =
+        method === 'PUT'
+          ? z
+              .object({
+                name: z.string().trim().min(1).max(100).optional(),
+                active: z.boolean().optional(),
+              })
+              .strict()
+              .refine(
+                (v) => v.name !== undefined || v.active !== undefined,
+                'Provide name or active status.',
+              )
+              .parse(body)
+          : { active: false };
       if (
         this.scoped('queue', branch).some(
           (q) => q.roomId === room.id && ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(q.status),
@@ -1616,20 +1734,27 @@ export class DemoClinic {
       )
         fail('Room occupied.', 409);
       if (
-        body.active === false &&
+        input.active === false &&
         this.scoped('appointments', branch).some(
           (a) => a.roomId === room.id && a.status === 'BOOKED' && a.endsAt > now(),
         )
       )
         fail('Room has upcoming bookings.', 409);
-      if (body.name !== undefined && !body.name.trim()) fail('Room name required.');
-      Object.assign(room, body);
+      if (method === 'DELETE') {
+        const historical =
+          this.scoped('queue', branch).some((q) => q.roomId === room.id) ||
+          this.scoped('appointments', branch).some((a) => a.roomId === room.id);
+        if (historical) room.active = false;
+        else this.state.rows.rooms = this.state.rows.rooms.filter((r) => r.id !== room.id);
+        return { id: room.id, removed: historical ? 'archived' : 'deleted' };
+      }
+      Object.assign(room, input);
       return room;
     }
     if (route === '/admin/users')
       return { data: this.state.rows.users.map((u) => this.publicUser(u)) };
     if (route === '/admin/branches')
-      return { data: this.state.rows.branches.filter((b) => user.branchIds.includes(b.id)) };
+      return { data: this.state.rows.branches.filter((b) => b.tenantId === 1) };
     if (route === '/admin/rooms')
       return {
         data: this.scoped('rooms', branch).map((r) => ({

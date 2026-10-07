@@ -658,6 +658,323 @@ describe('browser-session demo simulation', () => {
       }),
     ).rejects.toBeDefined();
   });
+  it('renames, archives and restores branches with active context and staff-home safeguards', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const branch = (await request(clinic, '/admin/branches')).data.find((b: any) => b.id === 2);
+    const renamed = await request(clinic, '/admin/branches/2', 'PUT', {
+      name: 'QA Kajang Renamed',
+      address: 'Fictional branch address',
+      active: true,
+      version: branch.version,
+    });
+    expect(renamed).toMatchObject({ id: 2, name: 'QA Kajang Renamed', active: true, version: 2 });
+    await expect(
+      request(clinic, '/admin/branches/2', 'PUT', {
+        name: 'Stale',
+        address: '',
+        active: true,
+        version: 1,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    const staff = await request(clinic, '/admin/users', 'POST', {
+      email: 'branchstaff@example.test',
+      name: 'QA Branch Staff',
+      role: 'NURSE',
+      password: 'test-password-long',
+      branchId: 2,
+    });
+    await expect(
+      request(clinic, '/admin/branches/2', 'PUT', {
+        name: renamed.name,
+        address: renamed.address,
+        active: false,
+        version: 2,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    await request(clinic, '/admin/users/' + staff.id, 'PUT', { active: false });
+    const archived = await request(clinic, '/admin/branches/2', 'PUT', {
+      name: renamed.name,
+      address: renamed.address,
+      active: false,
+      version: 2,
+    });
+    expect(archived).toMatchObject({ active: false, version: 3 });
+    expect(
+      (await request(clinic, '/admin/branches')).data.find((b: any) => b.id === 2).active,
+    ).toBe(false);
+    expect((await request(clinic, '/bootstrap')).branches.map((b: any) => b.id)).toEqual([1]);
+    expect((await request(clinic, '/references/branches')).data.map((b: any) => b.id)).toEqual([1]);
+    await expect(request(clinic, '/patients', 'GET', undefined, 2)).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(
+      request(clinic, '/admin/rooms', 'POST', { name: 'Archived branch room', branchId: 2 }),
+    ).rejects.toBeDefined();
+    await expect(
+      request(clinic, '/admin/users', 'POST', {
+        email: 'inactivebranch@example.test',
+        name: 'Inactive Branch Staff',
+        role: 'NURSE',
+        password: 'test-password-long',
+        branchId: 2,
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      request(clinic, '/admin/users/' + staff.id, 'PUT', { active: true }),
+    ).rejects.toMatchObject({ status: 409 });
+    await request(clinic, '/admin/branches/2', 'PUT', {
+      name: renamed.name,
+      address: renamed.address,
+      active: true,
+      version: 3,
+    });
+    await request(clinic, '/admin/users/' + staff.id, 'PUT', { active: true });
+    const current = (await request(clinic, '/admin/branches')).data.find((b: any) => b.id === 1);
+    await expect(
+      request(clinic, '/admin/branches/1', 'PUT', {
+        name: current.name,
+        address: current.address,
+        active: false,
+        version: current.version,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect((await request(clinic, '/bootstrap')).branches.map((b: any) => b.id)).toEqual([1, 2]);
+    await login(clinic, 'gp');
+    await expect(
+      request(clinic, '/admin/branches/2', 'PUT', {
+        name: 'Unauthorized',
+        address: '',
+        active: true,
+        version: 4,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('upgrades prior-session branch defaults without resetting records or authentication', async () => {
+    const storage = new MemoryStorage(),
+      clinic = new DemoClinic(storage);
+    await login(clinic);
+    const patient = await request(
+      clinic,
+      '/patients',
+      'POST',
+      patientPayload('BRANCH-UPGRADE-PATIENT'),
+    );
+    const [key, raw] = [...storage.entries][0],
+      state = JSON.parse(raw);
+    for (const b of state.rows.branches) {
+      delete b.active;
+      delete b.version;
+    }
+    storage.setItem(key, JSON.stringify(state));
+    const restored = new DemoClinic(storage),
+      bootstrap = await request(restored, '/bootstrap');
+    expect(bootstrap.user.id).toBe(1);
+    expect(bootstrap.branches.every((b: any) => b.active === true && b.version === 1)).toBe(true);
+    expect((await request(restored, '/patients')).data.some((p: any) => p.id === patient.id)).toBe(
+      true,
+    );
+    await expect(request(restored, '/patients', 'GET', undefined, 0)).rejects.toBeDefined();
+  });
+  it('renames staff without status, role or credential changes and protects self-deactivation', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const self = await request(clinic, '/admin/users/1', 'PUT', {
+      name: 'QA Administrator Renamed',
+    });
+    expect(self).toEqual({ id: 1, name: 'QA Administrator Renamed', active: true });
+    await expect(request(clinic, '/admin/users/1', 'PUT', { active: false })).rejects.toMatchObject(
+      { status: 409 },
+    );
+    await expect(request(clinic, '/admin/users/2', 'PUT', { role: 'ADMIN' })).rejects.toBeDefined();
+    await expect(request(clinic, '/admin/users/2', 'PUT', {})).rejects.toBeDefined();
+    await request(clinic, '/admin/users/2', 'PUT', { name: 'QA GP Renamed' });
+    const gp = (await request(clinic, '/admin/users')).data.find((u: any) => u.id === 2);
+    expect(gp).toMatchObject({
+      name: 'QA GP Renamed',
+      active: true,
+      role: 'DOCTOR',
+      licenseNumber: 'DEMO-NOT-A-LICENSE',
+    });
+    expect(gp).not.toHaveProperty('password');
+    await login(clinic, 'gp');
+    expect((await request(clinic, '/auth/me')).user.name).toBe('QA GP Renamed');
+    await expect(
+      request(clinic, '/admin/users/3', 'PUT', { name: 'Unauthorized' }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('deletes unused rooms but archives historical rooms without losing appointments', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const unused = await request(clinic, '/admin/rooms', 'POST', {
+      name: 'Unused QA Room',
+      branchId: 1,
+    });
+    expect(await request(clinic, '/admin/rooms/' + unused.id, 'DELETE')).toEqual({
+      id: unused.id,
+      removed: 'deleted',
+    });
+    await expect(
+      request(clinic, '/admin/rooms/' + unused.id, 'PUT', { active: true }),
+    ).rejects.toMatchObject({ status: 404 });
+    const historic = await request(clinic, '/admin/rooms', 'POST', {
+      name: 'Historical QA Room',
+      branchId: 1,
+    });
+    const visit = await request(clinic, '/appointments', 'POST', {
+      patientId: 1,
+      practitionerId: 2,
+      roomId: historic.id,
+      startsAt: '2020-01-01T01:00:00Z',
+      endsAt: '2020-01-01T01:30:00Z',
+      reason: 'Fictional historical visit',
+    });
+    expect(await request(clinic, '/admin/rooms/' + historic.id, 'DELETE')).toEqual({
+      id: historic.id,
+      removed: 'archived',
+    });
+    expect(
+      (await request(clinic, '/admin/rooms')).data.find((r: any) => r.id === historic.id),
+    ).toMatchObject({ active: false });
+    expect(
+      (await request(clinic, '/appointments')).data.find((a: any) => a.id === visit.id),
+    ).toMatchObject({ roomId: historic.id, roomName: 'Historical QA Room' });
+    expect((await request(clinic, '/bootstrap')).rooms.some((r: any) => r.id === historic.id)).toBe(
+      false,
+    );
+    await request(clinic, '/admin/rooms/' + historic.id, 'PUT', { active: true });
+    expect((await request(clinic, '/bootstrap')).rooms.some((r: any) => r.id === historic.id)).toBe(
+      true,
+    );
+    await expect(request(clinic, '/admin/rooms/3', 'DELETE')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+  it('rejects removing booked or occupied rooms without changing history', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    await request(clinic, '/appointments', 'POST', {
+      patientId: 1,
+      practitionerId: 2,
+      roomId: 1,
+      startsAt: '2035-02-01T01:00:00Z',
+      endsAt: '2035-02-01T01:30:00Z',
+      reason: 'Fictional future room booking',
+    });
+    await expect(request(clinic, '/admin/rooms/1', 'DELETE')).rejects.toMatchObject({
+      status: 409,
+    });
+    const ticket = (await request(clinic, '/queue')).data[0];
+    await request(clinic, '/queue/' + ticket.id + '/transition', 'POST', {
+      status: 'CALLED_TO_ROOM',
+      roomId: 2,
+      practitionerId: 2,
+      version: ticket.version,
+    });
+    await expect(request(clinic, '/admin/rooms/2', 'DELETE')).rejects.toMatchObject({
+      status: 409,
+    });
+    await expect(
+      request(clinic, '/admin/rooms/2', 'PUT', { name: 'Busy Rename' }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect((await request(clinic, '/admin/rooms')).data.find((r: any) => r.id === 2)).toMatchObject(
+      { name: 'Room 02', active: true },
+    );
+  });
+  it('keeps receipt snapshots after metadata edits and branch removal/restoration', async () => {
+    const storage = new MemoryStorage(),
+      clinic = new DemoClinic(storage);
+    await login(clinic);
+    const patient = await request(
+      clinic,
+      '/patients',
+      'POST',
+      patientPayload('RECEIPT-PASSPORT'),
+      2,
+    );
+    const invoice = await request(
+      clinic,
+      '/invoices',
+      'POST',
+      {
+        patientId: patient.id,
+        practitionerId: 2,
+        lines: [
+          {
+            description: 'Fictional consultation',
+            quantity: 2,
+            unitPriceCents: 1250,
+            category: 'SERVICE',
+          },
+        ],
+        payments: [
+          { method: 'CASH', amountCents: 1000, reference: '' },
+          { method: 'CARD', amountCents: 1500, reference: 'FICTIONAL-CARD' },
+        ],
+        idempotencyKey: 'demo-receipt-snapshot',
+      },
+      2,
+    );
+    const path = '/invoices/' + invoice.id + '/receipt-view',
+      before = await request(clinic, path, 'GET', undefined, 2);
+    expect(before).toMatchObject({
+      id: invoice.id,
+      patientName: patient.name,
+      nationalId: 'RECEIPT-PASSPORT',
+      totalCents: 2500,
+      simulated: true,
+    });
+    expect(before.lines[0].amountCents).toBe(2500);
+    expect(before.payments.reduce((sum: number, p: any) => sum + p.amountCents, 0)).toBe(2500);
+    for (const field of [
+      'requestHash',
+      'idempotencyKey',
+      'receiptSnapshot',
+      'tenantId',
+      'branchId',
+    ])
+      expect(before).not.toHaveProperty(field);
+    await request(
+      clinic,
+      '/patients/' + patient.id,
+      'PUT',
+      { ...patientPayload('RECEIPT-PASSPORT'), firstName: 'Changed', version: patient.version },
+      2,
+    );
+    await request(clinic, '/admin/users/1', 'PUT', { name: 'Changed Administrator' });
+    const branch = (await request(clinic, '/admin/branches')).data.find((b: any) => b.id === 2);
+    await request(clinic, '/admin/branches/2', 'PUT', {
+      name: 'Changed Branch',
+      address: 'Changed address',
+      active: false,
+      version: branch.version,
+    });
+    await expect(request(clinic, path, 'GET', undefined, 2)).rejects.toMatchObject({ status: 403 });
+    await request(clinic, '/admin/branches/2', 'PUT', {
+      name: 'Changed Branch',
+      address: 'Changed address',
+      active: true,
+      version: branch.version + 1,
+    });
+    expect(await request(new DemoClinic(storage), path, 'GET', undefined, 2)).toEqual(before);
+    await expect(request(clinic, path)).rejects.toMatchObject({ status: 404 });
+    await login(clinic, 'gp');
+    await expect(request(clinic, path, 'GET', undefined, 2)).rejects.toMatchObject({ status: 403 });
+  });
+  it('renders legacy receipts without mutating stored invoices and requires login', async () => {
+    const storage = new MemoryStorage(),
+      clinic = new DemoClinic(storage);
+    await expect(request(clinic, '/invoices/1/receipt-view')).rejects.toMatchObject({
+      status: 401,
+    });
+    await login(clinic);
+    const rawBefore = [...storage.entries][0][1],
+      view = await request(clinic, '/invoices/1/receipt-view');
+    expect(view).toMatchObject({ receivedBy: 'Not recorded', simulated: true, totalCents: 12000 });
+    expect(view.clinicName).toBe('Klinik Seri Harmoni');
+    expect([...storage.entries][0][1]).toBe(rawBefore);
+    expect(view.issuedTime).toMatch(/ MYT$/);
+  });
   it('admin catalog edits govern new lab choices while issued snapshots stay unchanged', async () => {
     const clinic = new DemoClinic(new MemoryStorage());
     await login(clinic);

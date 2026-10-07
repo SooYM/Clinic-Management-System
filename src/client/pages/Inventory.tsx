@@ -6,6 +6,7 @@ import { RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import {
   Empty,
+  ErrorNotice,
   Field,
   MutationForm,
   PageTitle,
@@ -38,6 +39,8 @@ interface PendingPrescription {
 }
 export default function Inventory() {
   const role = useRole();
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
   const [section, setSection] = useState('stock');
   const editorRef = useRef<HTMLDivElement>(null);
   const units = useResource<CatalogEntry[]>('/references/catalogs?kind=INVENTORY_UNIT');
@@ -72,6 +75,7 @@ export default function Inventory() {
   const selected = pending.data?.find((e) => e.id === Number(encounterId));
   const matchingPrescriptions = pending.data || [];
   const matchingItems = resource.data || [];
+  const catalogItems = matchingItems.filter((item) => showRemoved || item.active !== false);
   const receivingItem = resource.data?.find((item) => item.id === Number(receivingItemId));
   const optionalExpiry =
     receivingItem?.category === 'CONSUMABLE' || receivingItem?.category === 'RETAIL';
@@ -178,7 +182,10 @@ export default function Inventory() {
                         <option value="RETAIL">Retail products (e.g. lab coat)</option>
                       </select>
                     </Field>
-                    <Field label="Unit">
+                    <Field
+                      label="Stock unit"
+                      hint="How stock is counted, such as tablet, bottle or piece. Administrators manage these choices under Catalog choices → Inventory units."
+                    >
                       <select name="unit" required defaultValue={editingItem?.unit || ''}>
                         <option value="">Select configured unit</option>
                         {editingItem?.unit &&
@@ -193,8 +200,8 @@ export default function Inventory() {
                       </select>
                       {!units.data?.length && (
                         <small>
-                          Ask an administrator to add inventory units under Clinical and inventory
-                          choices.
+                          Add stock units in Administration → Catalog choices → Inventory units,
+                          then return here.
                         </small>
                       )}
                     </Field>
@@ -247,9 +254,10 @@ export default function Inventory() {
           </div>
           <Panel title="Stock catalogue">
             <p className="form-help">
-              Available excludes signed-prescription reservations and ineligible expired stock.
-              Signing reserves stock; dispensing deducts physical quantities once. Unexpired stock
-              includes non-expiring supplies.
+              Removal hides future choices; existing records stay preserved. Show removed items to
+              restore them. Available excludes signed-prescription reservations and ineligible
+              expired stock. Signing reserves stock; dispensing deducts physical quantities once.
+              Unexpired stock includes non-expiring supplies.
             </p>
             <div className="form-grid">
               <Field label="Search inventory">
@@ -269,8 +277,17 @@ export default function Inventory() {
                 </select>
               </Field>
             </div>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={showRemoved}
+                onChange={(event) => setShowRemoved(event.target.checked)}
+              />
+              Show removed inventory items
+            </label>
+            {catalogError && <ErrorNotice>{catalogError}</ErrorNotice>}
             <ResourceState {...resource}>
-              {matchingItems.length ? (
+              {catalogItems.length ? (
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -286,7 +303,7 @@ export default function Inventory() {
                       </tr>
                     </thead>
                     <tbody>
-                      {matchingItems.map((item) => (
+                      {catalogItems.map((item) => (
                         <tr key={item.id}>
                           <td>
                             <strong>{item.name}</strong>
@@ -328,6 +345,31 @@ export default function Inventory() {
                                 }}
                               >
                                 Edit item
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={async () => {
+                                  try {
+                                    setCatalogError('');
+                                    await api.put('/admin/inventory/' + item.id, {
+                                      name: item.name,
+                                      sku: item.sku,
+                                      ingredient: item.ingredient || '',
+                                      category: item.category || 'MEDICATION',
+                                      unit: item.unit,
+                                      priceCents: item.priceCents || 0,
+                                      reorderLevel: item.reorderLevel,
+                                      active: item.active === false,
+                                      version: item.version,
+                                    });
+                                    if (editingItem?.id === item.id) setEditingItem(undefined);
+                                    refresh();
+                                  } catch (failure) {
+                                    setCatalogError((failure as Error).message);
+                                  }
+                                }}
+                              >
+                                {item.active === false ? 'Restore' : 'Remove'}
                               </button>
                             </td>
                           )}

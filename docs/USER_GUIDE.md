@@ -139,3 +139,13 @@ Use the section buttons below each module title. The highlighted button identifi
 | User guide         | Visual walkthroughs; Written instructions                                               |
 
 Section switches keep entered values until you save or leave the module. They do not save drafts to the database. Add/edit buttons open the matching section. Show me automatically opens each walkthrough step’s section. Account security and Reports & delivery already contain one task and remain simple pages.
+
+## Rename or remove settings
+
+Administration provides Edit name for staff, Edit name / address for branches, and room rename/removal controls. Remove hides a setting from normal choices; Show removed reveals entries for Restore. Unused rooms are deleted; rooms with historical records are archived. Rooms in use or with upcoming bookings cannot be removed. Remove access disables staff login while preserving history.
+
+Switch away from a branch before removing it. Branches assigned as home branch to active staff must stay available; removal also keeps at least one active branch. Names can be edited while branches are active. Staff cannot restore access into a removed home branch. Catalog choices and inventory items have direct Remove/Restore buttons; used stock units/categories/ingredients remain protected.
+
+**Stock unit** means how one stock quantity is counted: tablet, capsule, bottle, vial, pair or piece. Configure choices in **Administration → Catalog choices → Inventory units**, then select one while adding an item. Received quantities and prescribed quantities use that unit; changing a used unit would reinterpret existing stock and is blocked.
+
+In Billing → Invoice history, select **Preview receipt**. The official-receipt layout shows actual clinic/patient details, itemized fees, totals, tender methods, cashier and issue time. The MySQL app provides separate printable PDF and Download PDF actions. Demo previews are sample receipts, with no real payment or PDF verification. New receipt identities stay fixed after later name edits; old invoices use existing current records.

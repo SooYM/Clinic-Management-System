@@ -1,3 +1,5 @@
+import { readReceipt } from './receipt-service.js';
+import { renderReceiptPdf } from './receipt-renderer.js';
 import { idSchema } from '../shared/identifiers.js';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import helmet from 'helmet';
@@ -86,9 +88,10 @@ export function createApp(service = new ClinicService()) {
     loginLimit,
     asyncRoute(async (req, res) => {
       const input = schemas.login.parse(req.body);
-      const { rows } = await pool.query('SELECT * FROM users WHERE lower(email)=$1 AND active', [
-        input.email,
-      ]);
+      const { rows } = await pool.query(
+        'SELECT u.* FROM users u JOIN branches b ON b.id=u.branch_id AND b.tenant_id=u.tenant_id WHERE lower(u.email)=$1 AND u.active=1 AND b.active=1',
+        [input.email],
+      );
       const encoded =
         rows[0]?.password_hash ||
         '00000000000000000000000000000000:00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000';
@@ -268,53 +271,24 @@ export function createApp(service = new ClinicService()) {
     (r, i) => service.revokeDocument(r.context, idSchema.parse(r.params.id), i.reason),
   );
   api.get(
+    '/invoices/:id/receipt-view',
+    asyncRoute(async (req, res) => {
+      res.json(await readReceipt(req.context, idSchema.parse(req.params.id)));
+    }),
+  );
+  api.get(
     '/invoices/:id/receipt',
     asyncRoute(async (req, res) => {
-      const id = idSchema.parse(req.params.id);
-      const invoice = (
-        await pool.query(
-          `SELECT i.*,p.name patient_name,b.name branch_name,b.address FROM invoices i JOIN patients p ON p.id=i.patient_id JOIN branches b ON b.id=i.branch_id WHERE i.id=$1 AND i.tenant_id=$2 AND i.branch_id=$3`,
-          [id, req.context.actor.tenantId, req.context.branchId],
-        )
-      ).rows[0];
-      if (!invoice) throw new DomainError('NOT_FOUND', 'Invoice not found.', 404);
-      const payments = (
-        await pool.query('SELECT method,amount_cents,reference FROM payments WHERE invoice_id=$1', [
-          id,
-        ])
-      ).rows;
-      const doc = new PDFDocument({ size: 'A4', margin: 55 });
+      const receipt = await readReceipt(req.context, idSchema.parse(req.params.id));
+      const doc = new PDFDocument({ size: 'A4', margin: 45 });
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoice_number}.pdf"`);
+      res.setHeader(
+        'Content-Disposition',
+        `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${receipt.invoiceNumber}.pdf"`,
+      );
       doc.pipe(res);
-      const currency = (cents: number) => `RM ${(cents / 100).toFixed(2)}`;
-      doc
-        .fontSize(22)
-        .text(invoice.branch_name)
-        .fontSize(10)
-        .text(invoice.address)
-        .moveDown()
-        .fontSize(18)
-        .text('Payment Receipt')
-        .fontSize(11)
-        .text(`Invoice: ${invoice.invoice_number}`)
-        .text(`Patient: ${invoice.patient_name}`)
-        .text(`Issued: ${camel(invoice.created_at)}`)
-        .moveDown();
-      for (const line of invoice.lines)
-        doc.text(
-          `${line.description} — ${line.quantity} x ${currency(line.unitPriceCents)} = ${currency(line.quantity * line.unitPriceCents)}`,
-        );
-      doc
-        .moveDown()
-        .fontSize(15)
-        .text(`Total: ${currency(invoice.total_cents)}`)
-        .fontSize(11);
-      for (const payment of payments)
-        doc.text(
-          `${payment.method}: ${currency(payment.amount_cents)}${payment.reference ? ` (${payment.reference})` : ''}`,
-        );
-      doc.moveDown().text('Payment methods are staff-recorded settlement references.').end();
+      renderReceiptPdf(doc, receipt);
+      doc.end();
     }),
   );
   api.get(

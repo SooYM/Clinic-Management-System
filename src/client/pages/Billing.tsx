@@ -1,3 +1,4 @@
+import ReceiptPreview from '../ReceiptPreview';
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
@@ -39,6 +40,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
   const invoices = useResource<Invoice[]>('/invoices');
   const patients = useResource<Patient[]>('/references/patients');
   const [section, setSection] = useState('invoices');
+  const [previewInvoice, setPreviewInvoice] = useState<number>();
   const [depositRevision, setDepositRevision] = useState(0);
   const [lines, setLines] = useState<Line[]>([
     { description: '', quantity: 1, unitPriceCents: 0, category: 'SERVICE' },
@@ -78,6 +80,13 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
           label="Invoice history"
           description="Review issued invoices, recorded payments and receipts."
         >
+          {previewInvoice && (
+            <ReceiptPreview
+              key={previewInvoice}
+              invoiceId={previewInvoice}
+              onClose={() => setPreviewInvoice(undefined)}
+            />
+          )}
           <Panel title="Invoices">
             <ResourceState {...invoices}>
               {invoices.data?.length ? (
@@ -109,14 +118,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                             <Status value={i.status} />
                           </td>
                           <td>
-                            <a
-                              href={api.url(`/invoices/${i.id}/receipt`)}
-                              className="button secondary"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Receipt
-                            </a>
+                            <button className="secondary" onClick={() => setPreviewInvoice(i.id)}>
+                              Preview receipt
+                            </button>
                           </td>
                         </tr>
                       ))}

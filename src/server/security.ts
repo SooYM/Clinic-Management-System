@@ -73,7 +73,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
           u.branch_id,
       );
     const access = await pool.query(
-      `SELECT 1 FROM user_branches ub JOIN branches b ON b.id=ub.branch_id WHERE ub.user_id=$1 AND ub.branch_id=$2 AND b.tenant_id=$3`,
+      `SELECT 1 FROM user_branches ub JOIN branches b ON b.id=ub.branch_id WHERE ub.user_id=$1 AND ub.branch_id=$2 AND b.tenant_id=$3 AND b.active=1`,
       [u.id, branchId, u.tenant_id],
     );
     if (!access.rowCount)

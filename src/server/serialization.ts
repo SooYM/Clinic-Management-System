@@ -7,6 +7,7 @@ const jsonColumns = new Set([
   'lines',
   'payload',
   'metadata',
+  'receipt_snapshot',
 ]);
 export function camel(row: any): any {
   if (Array.isArray(row)) return row.map(camel);

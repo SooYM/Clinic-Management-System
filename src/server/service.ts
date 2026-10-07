@@ -96,7 +96,7 @@ export class ClinicService {
   }
   async bootstrap(ctx: Context) {
     const branches = await this.db.query(
-      `SELECT b.id,b.id branch_number,b.name,b.address FROM branches b JOIN user_branches ub ON ub.branch_id=b.id WHERE ub.user_id=$1 AND b.tenant_id=$2 ORDER BY b.name`,
+      `SELECT b.id,b.id branch_number,b.name,b.address,b.active,b.version FROM branches b JOIN user_branches ub ON ub.branch_id=b.id WHERE ub.user_id=$1 AND b.tenant_id=$2 AND b.active=1 ORDER BY b.name`,
       [ctx.actor.id, ctx.actor.tenantId],
     );
     const rooms = await this.db.query(
@@ -964,8 +964,23 @@ export class ClinicService {
           );
         return camel(prior.rows[0]);
       }
-      await this.patient(db, ctx, input.patientId);
+      const patient = await this.patient(db, ctx, input.patientId);
       await this.practitioner(db, ctx, input.practitionerId);
+      const branding = (
+        await db.query(
+          'SELECT t.name clinic_name,b.name branch_name,b.address FROM tenants t JOIN branches b ON b.tenant_id=t.id WHERE t.id=$1 AND b.id=$2',
+          [ctx.actor.tenantId, ctx.branchId],
+        )
+      ).rows[0];
+      if (!branding) throw missing();
+      const receiptSnapshot = {
+        clinicName: branding.clinic_name,
+        branchName: branding.branch_name,
+        clinicAddress: branding.address,
+        patientName: patient.name,
+        nationalId: patient.national_id,
+        receivedBy: ctx.actor.name,
+      };
       const total = input.lines.reduce(
         (sum: Money, l: any) => sum.add(new Money(l.unitPriceCents).multiply(l.quantity)),
         new Money(0),
@@ -991,7 +1006,7 @@ export class ClinicService {
           throw new DomainError('INSUFFICIENT_DEPOSIT', 'Patient deposit balance is insufficient.');
       }
       const { rows } = await db.query(
-        `INSERT INTO invoices(tenant_id,branch_id,patient_id,practitioner_id,invoice_number,\`lines\`,total_cents,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        `INSERT INTO invoices(tenant_id,branch_id,patient_id,practitioner_id,invoice_number,\`lines\`,total_cents,idempotency_key,request_hash,receipt_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [
           ctx.actor.tenantId,
           ctx.branchId,
@@ -1002,6 +1017,7 @@ export class ClinicService {
           total,
           input.idempotencyKey,
           requestHash,
+          JSON.stringify(receiptSnapshot),
         ],
       );
       for (const payment of input.payments)

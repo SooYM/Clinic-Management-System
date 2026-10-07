@@ -43,3 +43,5 @@ Use `npm run build` plus `npm start`, or `npm run dev`, with the MySQL schema an
 The Blueprint was checked against Render's current published JSON schema. Run the demo build, typecheck, automated tests, and HTTP/browser smoke tests before release. GitHub publication and a valid Blueprint do not prove a successful Render sync or deploy. The deployed HTTPS URL must be checked after Render finishes.
 
 V1's recovery Git tag preserves prior source. Reverting a main commit restores source configuration but does not transfer browser session data to any database. Never reset local MySQL to repair the demo.
+
+The browser demo includes settings lifecycle parity and in-page official-receipt samples. Receipt PDFs and actual payment verification remain unavailable in demo mode. The normal MySQL application now requires migrations through 015.

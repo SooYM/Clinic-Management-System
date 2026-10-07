@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-014, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-015, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -55,9 +55,13 @@ CREATE TABLE `branches` (
   `tenant_id` bigint unsigned NOT NULL,
   `name` varchar(200) NOT NULL,
   `address` varchar(2000) NOT NULL DEFAULT '',
+  `active` tinyint(1) NOT NULL DEFAULT '1',
+  `version` int NOT NULL DEFAULT '1',
+  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`id`),
-  CONSTRAINT `branches_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`)
+  CONSTRAINT `branches_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
+  CONSTRAINT `branches_chk_1` CHECK ((`version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `clinical_documents` (
@@ -286,6 +290,7 @@ CREATE TABLE `invoices` (
   `idempotency_key` varchar(200) NOT NULL,
   `request_hash` varchar(2000) NOT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `receipt_snapshot` json DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `invoice_number` (`invoice_number`),
   UNIQUE KEY `branch_id` (`branch_id`,`idempotency_key`),

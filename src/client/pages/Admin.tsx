@@ -21,6 +21,11 @@ import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
 interface Staff extends User {
   active: boolean;
 }
+interface AdminBranch extends Reference {
+  address: string;
+  active: boolean;
+  version: number;
+}
 interface Audit {
   id: number;
   action: string;
@@ -37,11 +42,19 @@ export default function Admin({
   onBranchCreated: () => void;
 }) {
   const users = useResource<Staff[]>('/admin/users');
+  const branchRecords = useResource<AdminBranch[]>('/admin/branches');
+  const [editingBranch, setEditingBranch] = useState<AdminBranch>();
+  const [editingStaff, setEditingStaff] = useState<Staff>();
   const rooms =
     useResource<(Reference & { branchName?: string; active: boolean })[]>('/admin/rooms');
   const audit = useResource<Audit[]>('/admin/audit');
+  const [showRemovedStaff, setShowRemovedStaff] = useState(false);
+  const [showRemovedBranches, setShowRemovedBranches] = useState(false);
+  const [showRemovedRooms, setShowRemovedRooms] = useState(false);
   const [section, setSection] = useState('staff');
-  const [error, setError] = useState('');
+  const [staffError, setStaffError] = useState('');
+  const [branchError, setBranchError] = useState('');
+  const [roomError, setRoomError] = useState('');
   const [staffRole, setStaffRole] = useState('RECEPTIONIST');
   const [editingRoom, setEditingRoom] = useState<Reference & { active: boolean }>();
   return (
@@ -76,7 +89,7 @@ export default function Admin({
             >
               <div className="form-grid">
                 <Field label="Full name">
-                  <input name="name" required />
+                  <input name="name" required maxLength={150} />
                 </Field>
                 <Field label="Email">
                   <input name="email" type="email" required />
@@ -118,9 +131,46 @@ export default function Admin({
             </MutationForm>
           </Panel>
           <Panel title="Staff access">
-            {error && <ErrorNotice>{error}</ErrorNotice>}
+            {staffError && <ErrorNotice>{staffError}</ErrorNotice>}
+            {editingStaff && (
+              <MutationForm
+                key={editingStaff.id}
+                label="Save staff name"
+                onSuccess={() => {
+                  users.refresh();
+                  setEditingStaff(undefined);
+                  onBranchCreated();
+                }}
+                onSubmit={(form) =>
+                  api.put('/admin/users/' + editingStaff.id, { name: formText(form, 'name') })
+                }
+              >
+                <Field label="Staff name">
+                  <input name="name" maxLength={150} required defaultValue={editingStaff.name} />
+                </Field>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setEditingStaff(undefined)}
+                >
+                  Cancel editing
+                </button>
+              </MutationForm>
+            )}
+            <p className="form-help">
+              Removal hides future choices; existing records stay preserved. Remove access disables
+              sign-in and preserves staff history. Restore access to reactivate an account.
+            </p>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={showRemovedStaff}
+                onChange={(event) => setShowRemovedStaff(event.target.checked)}
+              />
+              Show removed staff accounts
+            </label>
             <ResourceState {...users}>
-              {users.data?.length ? (
+              {users.data?.some((user) => showRemovedStaff || user.active) ? (
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -134,34 +184,42 @@ export default function Admin({
                       </tr>
                     </thead>
                     <tbody>
-                      {users.data.map((u) => (
-                        <tr key={u.id}>
-                          <td>#{u.id}</td>
-                          <td>{u.name}</td>
-                          <td>{u.email}</td>
-                          <td>{u.role === 'DOCTOR' ? 'GP' : u.role}</td>
-                          <td>
-                            <Status value={u.active ? 'ACTIVE' : 'INACTIVE'} />
-                          </td>
-                          <td>
-                            <button
-                              className="secondary"
-                              onClick={async () => {
-                                try {
-                                  setError('');
-                                  await api.put(`/admin/users/${u.id}`, { active: !u.active });
-                                  users.refresh();
-                                  onBranchCreated();
-                                } catch (e) {
-                                  setError((e as Error).message);
-                                }
-                              }}
-                            >
-                              {u.active ? 'Deactivate' : 'Reactivate'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {users.data
+                        .filter((user) => showRemovedStaff || user.active)
+                        .map((u) => (
+                          <tr key={u.id}>
+                            <td>#{u.id}</td>
+                            <td>{u.name}</td>
+                            <td>{u.email}</td>
+                            <td>{u.role === 'DOCTOR' ? 'GP' : u.role}</td>
+                            <td>
+                              <Status value={u.active ? 'ACTIVE' : 'INACTIVE'} />
+                            </td>
+                            <td>
+                              <div className="actions">
+                                <button className="secondary" onClick={() => setEditingStaff(u)}>
+                                  Edit name
+                                </button>
+                                <button
+                                  className="secondary"
+                                  onClick={async () => {
+                                    try {
+                                      setStaffError('');
+                                      await api.put(`/admin/users/${u.id}`, { active: !u.active });
+                                      if (editingStaff?.id === u.id) setEditingStaff(undefined);
+                                      users.refresh();
+                                      onBranchCreated();
+                                    } catch (e) {
+                                      setStaffError((e as Error).message);
+                                    }
+                                  }}
+                                >
+                                  {u.active ? 'Remove access' : 'Restore access'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -182,7 +240,10 @@ export default function Admin({
           <Panel title="Create branch">
             <MutationForm
               label="Create branch"
-              onSuccess={onBranchCreated}
+              onSuccess={() => {
+                branchRecords.refresh();
+                onBranchCreated();
+              }}
               onSubmit={(f) =>
                 api.post('/admin/branches', {
                   name: formText(f, 'name'),
@@ -191,20 +252,104 @@ export default function Admin({
               }
             >
               <Field label="Branch name">
-                <input name="name" required />
+                <input name="name" required maxLength={150} />
               </Field>
               <Field label="Address">
-                <textarea name="address" required />
+                <textarea name="address" required maxLength={1000} />
               </Field>
             </MutationForm>
           </Panel>
           <Panel title="Branch record IDs">
-            {branches.map((branch) => (
-              <div className="list-row" key={branch.id}>
-                <strong>{branch.name}</strong>
-                <p>Branch ID #{branch.id}</p>
-              </div>
-            ))}
+            <p className="form-help">
+              Remove archives a branch and preserves its records. Switch to another branch first.
+              Branches assigned as home branch to active staff must stay available.
+            </p>
+            {branchError && <ErrorNotice>{branchError}</ErrorNotice>}
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={showRemovedBranches}
+                onChange={(event) => setShowRemovedBranches(event.target.checked)}
+              />
+              Show removed branches
+            </label>
+            <ResourceState {...branchRecords}>
+              {branchRecords.data
+                ?.filter((branch) => showRemovedBranches || branch.active)
+                .map((branch) => (
+                  <div className="list-row" key={branch.id}>
+                    <strong>{branch.name}</strong>
+                    <p>
+                      Branch ID #{branch.id} · {branch.address}
+                    </p>
+                    <div className="actions">
+                      <Status value={branch.active ? 'ACTIVE' : 'ARCHIVED'} />
+                      <button className="secondary" onClick={() => setEditingBranch(branch)}>
+                        Edit name / address
+                      </button>
+                      <button
+                        className="secondary"
+                        onClick={async () => {
+                          try {
+                            setBranchError('');
+                            await api.put('/admin/branches/' + branch.id, {
+                              name: branch.name,
+                              address: branch.address,
+                              active: !branch.active,
+                              version: branch.version,
+                            });
+                            if (editingBranch?.id === branch.id) setEditingBranch(undefined);
+                            branchRecords.refresh();
+                            onBranchCreated();
+                          } catch (failure) {
+                            setBranchError((failure as Error).message);
+                          }
+                        }}
+                      >
+                        {branch.active ? 'Remove' : 'Restore'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </ResourceState>
+            {editingBranch && (
+              <MutationForm
+                key={editingBranch.id + ':' + editingBranch.version}
+                label="Save branch details"
+                onSuccess={() => {
+                  branchRecords.refresh();
+                  setEditingBranch(undefined);
+                  onBranchCreated();
+                }}
+                onSubmit={(form) =>
+                  api.put('/admin/branches/' + editingBranch.id, {
+                    name: formText(form, 'name'),
+                    address: formText(form, 'address'),
+                    active: editingBranch.active,
+                    version: editingBranch.version,
+                  })
+                }
+              >
+                <Field label="Branch name">
+                  <input name="name" required maxLength={150} defaultValue={editingBranch.name} />
+                </Field>
+                <Field label="Address">
+                  <textarea
+                    name="address"
+                    required
+                    maxLength={1000}
+                    defaultValue={editingBranch.address}
+                  />
+                </Field>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setEditingBranch(undefined)}
+                >
+                  Cancel editing
+                </button>
+              </MutationForm>
+            )}
           </Panel>
         </WorkspaceSection>
         <WorkspaceSection
@@ -213,6 +358,10 @@ export default function Admin({
           description="Create, rename or archive rooms in this branch."
         >
           <Panel title="Consultation rooms">
+            <p className="form-help">
+              Remove deletes unused rooms or archives rooms with history. Busy rooms and rooms with
+              upcoming bookings cannot be removed.
+            </p>
             <MutationForm
               label="Create room"
               onSuccess={() => {
@@ -228,44 +377,56 @@ export default function Admin({
             >
               <div className="form-grid">
                 <Field label="Room name">
-                  <input name="name" required placeholder="Room 01" />
+                  <input name="name" required maxLength={100} placeholder="Room 01" />
                 </Field>
                 <SelectReference items={branches} name="branchId" label="Branch" />
               </div>
             </MutationForm>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={showRemovedRooms}
+                onChange={(event) => setShowRemovedRooms(event.target.checked)}
+              />
+              Show removed rooms
+            </label>
             <ResourceState {...rooms}>
-              {rooms.data?.map((r) => (
-                <div key={r.id} className="list-row">
-                  <strong>{r.name}</strong>
-                  <p>
-                    Room ID #{r.id} · Branch ID #{r.branchId} ·{' '}
-                    {r.branchName || branches.find((b) => b.id === r.branchId)?.name}
-                  </p>
-                  <div className="actions">
-                    <Status value={r.active ? 'ACTIVE' : 'ARCHIVED'} />
-                    <button className="secondary" onClick={() => setEditingRoom(r)}>
-                      Rename
-                    </button>
-                    <button
-                      className="secondary"
-                      onClick={async () => {
-                        try {
-                          setError('');
-                          await api.put(`/admin/rooms/${r.id}`, { active: !r.active });
-                          rooms.refresh();
-                          onBranchCreated();
-                        } catch (e) {
-                          setError((e as Error).message);
-                        }
-                      }}
-                    >
-                      {r.active ? 'Archive' : 'Restore'}
-                    </button>
+              {rooms.data
+                ?.filter((room) => showRemovedRooms || room.active)
+                .map((r) => (
+                  <div key={r.id} className="list-row">
+                    <strong>{r.name}</strong>
+                    <p>
+                      Room ID #{r.id} · Branch ID #{r.branchId} ·{' '}
+                      {r.branchName || branches.find((b) => b.id === r.branchId)?.name}
+                    </p>
+                    <div className="actions">
+                      <Status value={r.active ? 'ACTIVE' : 'ARCHIVED'} />
+                      <button className="secondary" onClick={() => setEditingRoom(r)}>
+                        Rename
+                      </button>
+                      <button
+                        className="secondary"
+                        onClick={async () => {
+                          try {
+                            setRoomError('');
+                            if (r.active) await api.request(`/admin/rooms/${r.id}`, 'DELETE');
+                            else await api.put(`/admin/rooms/${r.id}`, { active: true });
+                            if (editingRoom?.id === r.id) setEditingRoom(undefined);
+                            rooms.refresh();
+                            onBranchCreated();
+                          } catch (e) {
+                            setRoomError((e as Error).message);
+                          }
+                        }}
+                      >
+                        {r.active ? 'Remove' : 'Restore'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
             </ResourceState>
-            {error && <ErrorNotice>{error}</ErrorNotice>}
+            {roomError && <ErrorNotice>{roomError}</ErrorNotice>}
             {editingRoom && (
               <MutationForm
                 key={editingRoom.id}
@@ -280,7 +441,7 @@ export default function Admin({
                 }
               >
                 <Field label="Room name">
-                  <input name="name" required defaultValue={editingRoom.name} />
+                  <input name="name" required maxLength={100} defaultValue={editingRoom.name} />
                 </Field>
                 <button
                   className="text-button"

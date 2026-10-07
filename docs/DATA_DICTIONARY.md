@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–014. No records or credentials are included.
+Schema-only reference after migrations001–015. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -38,12 +38,15 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## branches
 
-| Column    | Type            | Nullable | Default | Extra / generated expression |
-| --------- | --------------- | -------- | ------- | ---------------------------- |
-| id        | bigint unsigned | NO       | NULL    | auto_increment               |
-| tenant_id | bigint unsigned | NO       | NULL    |                              |
-| name      | varchar(200)    | NO       | NULL    |                              |
-| address   | varchar(2000)   | NO       |         |                              |
+| Column     | Type            | Nullable | Default              | Extra / generated expression |
+| ---------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id         | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id  | bigint unsigned | NO       | NULL                 |                              |
+| name       | varchar(200)    | NO       | NULL                 |                              |
+| address    | varchar(2000)   | NO       |                      |                              |
+| active     | tinyint(1)      | NO       | 1                    |                              |
+| version    | int             | NO       | 1                    |                              |
+| updated_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
 ## clinical_documents
 
@@ -197,20 +200,21 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## invoices
 
-| Column          | Type            | Nullable | Default              | Extra / generated expression |
-| --------------- | --------------- | -------- | -------------------- | ---------------------------- |
-| id              | bigint unsigned | NO       | NULL                 | auto_increment               |
-| tenant_id       | bigint unsigned | NO       | NULL                 |                              |
-| branch_id       | bigint unsigned | NO       | NULL                 |                              |
-| patient_id      | bigint unsigned | NO       | NULL                 |                              |
-| practitioner_id | bigint unsigned | NO       | NULL                 |                              |
-| invoice_number  | varchar(200)    | NO       | NULL                 |                              |
-| lines           | json            | NO       | NULL                 |                              |
-| total_cents     | int             | NO       | NULL                 |                              |
-| status          | varchar(30)     | NO       | PAID                 |                              |
-| idempotency_key | varchar(200)    | NO       | NULL                 |                              |
-| request_hash    | varchar(2000)   | NO       | NULL                 |                              |
-| created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| Column           | Type            | Nullable | Default              | Extra / generated expression |
+| ---------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id               | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id        | bigint unsigned | NO       | NULL                 |                              |
+| branch_id        | bigint unsigned | NO       | NULL                 |                              |
+| patient_id       | bigint unsigned | NO       | NULL                 |                              |
+| practitioner_id  | bigint unsigned | NO       | NULL                 |                              |
+| invoice_number   | varchar(200)    | NO       | NULL                 |                              |
+| lines            | json            | NO       | NULL                 |                              |
+| total_cents      | int             | NO       | NULL                 |                              |
+| status           | varchar(30)     | NO       | PAID                 |                              |
+| idempotency_key  | varchar(200)    | NO       | NULL                 |                              |
+| request_hash     | varchar(2000)   | NO       | NULL                 |                              |
+| created_at       | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| receipt_snapshot | json            | YES      | NULL                 |                              |
 
 ## notification_outbox
 

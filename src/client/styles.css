@@ -1692,3 +1692,120 @@ dd {
     padding: 10px 12px;
   }
 }
+.receipt-letter {
+  margin: 20px 0;
+  padding: 28px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #111827;
+}
+.receipt-heading h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+.receipt-heading p {
+  margin: 4px 0;
+  white-space: pre-line;
+}
+.receipt-title {
+  text-align: center;
+  margin: 24px 0;
+  font-size: 1rem;
+}
+.receipt-identity {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 24px;
+  margin: 24px 0;
+}
+.receipt-identity > div {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px;
+}
+.receipt-letter dt {
+  font-weight: 600;
+}
+.receipt-letter dd {
+  margin: 0;
+}
+.receipt-letter p,
+.receipt-letter dd,
+.receipt-letter td {
+  overflow-wrap: anywhere;
+}
+.receipt-fees th,
+.receipt-fees td {
+  padding: 12px 8px;
+}
+.receipt-mobile-unit {
+  display: none;
+}
+.receipt-fees th:not(:first-child),
+.receipt-fees td:not(:first-child) {
+  text-align: right;
+}
+.receipt-total {
+  border-top: 1px solid #9ca3af;
+  padding-top: 16px;
+  text-align: right;
+  font-weight: 700;
+}
+.receipt-payments {
+  margin-left: auto;
+  max-width: 400px;
+}
+.receipt-payments > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 10px 0;
+}
+.receipt-payments small {
+  display: block;
+  font-weight: 400;
+}
+.receipt-fees td:last-child,
+.receipt-payments dd {
+  white-space: nowrap;
+}
+.receipt-payments dd {
+  flex-shrink: 0;
+}
+.receipt-payments dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.receipt-footer {
+  border-top: 1px solid #9ca3af;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+@media (max-width: 600px) {
+  .receipt-letter {
+    padding: 16px;
+  }
+  .receipt-identity {
+    grid-template-columns: 1fr;
+  }
+  .receipt-identity > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .receipt-fees {
+    min-width: 0;
+    width: 100%;
+  }
+  .receipt-fees th:nth-child(2),
+  .receipt-fees td:nth-child(2),
+  .receipt-fees th:nth-child(3),
+  .receipt-fees td:nth-child(3) {
+    display: none;
+  }
+  .receipt-mobile-unit {
+    display: block;
+  }
+}

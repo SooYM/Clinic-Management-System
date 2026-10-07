@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `014_reference_catalogs.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `015_branch_settings.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -96,6 +96,7 @@ JSON item references are validated by application code because SQL FKs cannot co
 | 012       | Prescription reservations with scoped encounter/item/batch consistency                |
 | 013       | Patient medication-taking reports with numeric IDs, scoped references and retry keys  |
 | 014       | Branch reference catalogs and versioned active inventory metadata                     |
+| 015       | Versioned active branches and immutable new receipt metadata                          |
 
 Migration 009 delegates to `src/server/db/numeric-ids.ts`; executing its SQL marker alone does not perform conversion.
 It maps IDs and FKs, rewrites typed JSON references and preserves arbitrary vitals/allergy/condition values.
@@ -146,3 +147,5 @@ Reservations subtract from eligible availability but not physical batch quantity
 Migration 014 adds numeric-ID reference_catalogs with tenant/branch scope, kind, label, active status, ordering and optimistic version. Scoped kind/label uniqueness prevents duplicate choices. Inventory items gain active status, version and update time. Existing items remain active; no local choices or business fixtures are inserted.
 
 Administrator edits are audited. Archival preserves history. New prescription writes capture database-authoritative item names, ingredients and units; signed clinical JSON remains immutable. Category/unit/ingredient changes are rejected after item history. Legacy prescriptions without metadata use catalog fallback.
+
+Migration 015 adds branch active/version/update time and nullable invoices.receipt_snapshot. Existing branches stay active and existing invoice snapshots remain null; no user rows or samples are rewritten. New checkout snapshots capture clinic/branch/address, patient name/identity and receiving cashier atomically. Financial lines and payment ledgers remain unchanged.

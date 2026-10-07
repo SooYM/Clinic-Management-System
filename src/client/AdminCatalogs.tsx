@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api } from './api';
 import {
   Empty,
+  ErrorNotice,
   Field,
   MutationForm,
   Panel,
@@ -19,14 +20,16 @@ export const catalogKinds = [
   ['REFERRAL_DESTINATION', 'Referral destinations'],
 ] as const;
 export default function AdminCatalogs() {
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [error, setError] = useState('');
   const [kind, setKind] = useState('LAB_PANEL');
   const [editing, setEditing] = useState<CatalogEntry>();
   const resource = useResource<CatalogEntry[]>(`/admin/catalogs?kind=${kind}`);
   return (
     <Panel title="Clinical and inventory choices">
       <p className="form-help">
-        Edit choices for future records. Archiving removes a choice from new forms; recorded
-        document details stay unchanged.
+        Edit choices for future records. Removal hides future choices; recorded document details
+        stay unchanged.
       </p>
       <Field label="Choice list">
         <select
@@ -92,8 +95,17 @@ export default function AdminCatalogs() {
           </button>
         )}
       </MutationForm>
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={showRemoved}
+          onChange={(event) => setShowRemoved(event.target.checked)}
+        />
+        Show removed choices
+      </label>
+      {error && <ErrorNotice>{error}</ErrorNotice>}
       <ResourceState {...resource}>
-        {resource.data?.length ? (
+        {resource.data?.some((entry) => showRemoved || entry.active) ? (
           <div className="table-wrap">
             <table>
               <thead>
@@ -105,23 +117,47 @@ export default function AdminCatalogs() {
                 </tr>
               </thead>
               <tbody>
-                {resource.data.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>
-                      {entry.label}
-                      <small>Choice ID #{entry.id}</small>
-                    </td>
-                    <td>{entry.sortOrder}</td>
-                    <td>
-                      <Status value={entry.active ? 'ACTIVE' : 'ARCHIVED'} />
-                    </td>
-                    <td>
-                      <button className="secondary" onClick={() => setEditing(entry)}>
-                        Edit choice
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {resource.data
+                  .filter((entry) => showRemoved || entry.active)
+                  .map((entry) => (
+                    <tr key={entry.id}>
+                      <td>
+                        {entry.label}
+                        <small>Choice ID #{entry.id}</small>
+                      </td>
+                      <td>{entry.sortOrder}</td>
+                      <td>
+                        <Status value={entry.active ? 'ACTIVE' : 'ARCHIVED'} />
+                      </td>
+                      <td>
+                        <div className="actions">
+                          <button className="secondary" onClick={() => setEditing(entry)}>
+                            Edit choice
+                          </button>
+                          <button
+                            className="secondary"
+                            onClick={async () => {
+                              try {
+                                setError('');
+                                await api.put('/admin/catalogs/' + entry.id, {
+                                  label: entry.label,
+                                  sortOrder: entry.sortOrder,
+                                  active: !entry.active,
+                                  version: entry.version,
+                                });
+                                resource.refresh();
+                                if (editing?.id === entry.id) setEditing(undefined);
+                              } catch (failure) {
+                                setError((failure as Error).message);
+                              }
+                            }}
+                          >
+                            {entry.active ? 'Remove' : 'Restore'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>

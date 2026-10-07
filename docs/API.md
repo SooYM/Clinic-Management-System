@@ -89,7 +89,7 @@ Human-facing sequential references are `tenantNumber`, `branchNumber` and `patie
 
 The separate browser demo does not expose or call this server API. Its client adapter simulates compatible payloads in sessionStorage.
 Demo credentials are sample-only; session cookies, CSRF enforcement, MySQL transactions and clinical signatures described here apply to the real server.
-Demo PDF/receipt links open `/demo-unavailable`; they do not generate signed clinical documents.
+Demo supports in-page receipt samples; PDF downloads and signed clinical documents remain unavailable.
 Fictional workflow fixtures exist only in the demo store and reset to their initial state. The real bootstrap does not create patient/business fixtures.
 
 ## Search, reservations and general inventory
@@ -127,3 +127,11 @@ Reports are append-only clinical records. They do not change inventory or confir
 ADMIN reads/creates `/api/admin/catalogs` and edits `/api/admin/catalogs/:id` with label, active, sortOrder and version. Creation also requires kind: LAB_PANEL, SPECIMEN_TYPE, INVENTORY_UNIT or REFERRAL_DESTINATION. Label limits respectively are 200, 100, 50 and 200 characters. Stale versions return 409. `/api/references/catalogs?kind=...` supplies active choices to authorized modules. Configured kinds require active matches; completely empty kinds preserve legacy API free text.
 
 ADMIN edits `/api/admin/inventory/:id` with complete item metadata plus active/version. Category, ingredient and unit cannot change after stock or prescription history. `/api/references/medications?search=...` searches active items before the 200-result cap; explicit includeInactive=1 supports historical lookup. New prescriptions reject archived medications. Existing signed prescriptions remain dispensable. New writes capture server-authoritative medicine metadata; legacy records without snapshots retain catalog fallback.
+
+## Settings lifecycle and receipt preview
+
+ADMIN PUT /api/admin/users/:id accepts optional name and/or active, requiring at least one field. Name length is 1–150; existing self/final-admin protections and session revocation remain. ADMIN PUT /api/admin/branches/:id accepts name, address, active and version (150/1000 character limits). Branches expose active/version; stale updates return 409. Archive rejects current/final active branch or active home staff. Membership and authentication require active branches. Staff reactivation checks the home branch.
+
+ADMIN DELETE /api/admin/rooms/:id returns `{id,removed:"deleted"}` for unused rooms or `{id,removed:"archived"}` when history exists. Busy/upcoming-booked rooms return 409. Mutations remain scoped, CSRF protected and audited.
+
+Billing-module GET /api/invoices/:id/receipt-view returns safe ReceiptView metadata, line amounts, total and payments, without raw request hashes. GET /api/invoices/:id/receipt defaults to inline PDF; ?download=1 explicitly downloads. Both require authenticated tenant/branch scope. New invoice receiptSnapshot metadata wins over later renamed master records; legacy invoices use current metadata and historical checkout actor, with Not recorded when unavailable. Demo supports sample receipt-view, not real PDF.

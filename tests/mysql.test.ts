@@ -3228,4 +3228,202 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       await sql.query('DELETE FROM inventory_items WHERE id IN (?)', [values.map((v) => v[0])]);
     }
   });
+  it('renames branches with version and CSRF guards and archives without deleting history', async () => {
+    const b = await (
+      await adminHttp('/admin/branches', 'POST', {
+        name: 'QA Settings Branch',
+        address: 'QA Address',
+      })
+    ).json();
+    const edit = { name: 'QA Renamed Branch', address: 'QA New Address', active: true, version: 1 };
+    expect((await http(`/admin/branches/${b.id}`, 'PUT', edit)).status).toBe(403);
+    expect(
+      (
+        await http(`/admin/branches/${b.id}`, 'PUT', edit, {
+          Cookie: `cms_session=${adminToken}`,
+          'X-CSRF-Token': 'wrong',
+        })
+      ).status,
+    ).toBe(403);
+    expect(await (await adminHttp(`/admin/branches/${b.id}`, 'PUT', edit)).json()).toMatchObject({
+      ...edit,
+      version: 2,
+      id: b.id,
+    });
+    expect((await adminHttp(`/admin/branches/${b.id}`, 'PUT', edit)).status).toBe(409);
+    expect((await adminHttp(`/admin/branches/${fixtureId()}`, 'PUT', edit)).status).toBe(404);
+    expect(
+      (
+        await adminHttp(`/admin/branches/${branch}`, 'PUT', {
+          name: 'QA Main',
+          address: '',
+          active: false,
+          version: 1,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (await adminHttp(`/admin/branches/${b.id}`, 'PUT', { ...edit, active: false, version: 2 }))
+        .status,
+    ).toBe(200);
+    expect((await rows('SELECT active,version FROM branches WHERE id=?', [b.id]))[0]).toMatchObject(
+      { active: 0, version: 3 },
+    );
+    expect(
+      (await (await adminHttp('/bootstrap')).json()).branches.some((v: any) => v.id === b.id),
+    ).toBe(false);
+    expect(
+      (
+        await http('/bootstrap', 'GET', undefined, {
+          Cookie: `cms_session=${adminToken}`,
+          'X-Branch-ID': String(b.id),
+        })
+      ).status,
+    ).toBe(403);
+  });
+  it('protects active home staff during archive and requires branch restoration before staff activation', async () => {
+    const b = await (
+        await adminHttp('/admin/branches', 'POST', { name: 'QA Staff Home', address: '' })
+      ).json(),
+      userId = fixtureId();
+    await sql.query(
+      'INSERT INTO users(id,tenant_id,branch_id,email,name,password_hash,role) VALUES(?,?,?,?,?,?,?)',
+      [userId, tenant, b.id, randomUUID() + '@example.invalid', 'QA Staff', 'test-only', 'NURSE'],
+    );
+    const input = { name: b.name, address: '', active: false, version: 1 };
+    const denied = await adminHttp(`/admin/branches/${b.id}`, 'PUT', input);
+    expect(denied.status).toBe(409);
+    expect((await denied.json()).code).toBe('BRANCH_HAS_ACTIVE_STAFF');
+    expect(
+      await (await adminHttp(`/admin/users/${userId}`, 'PUT', { name: 'QA Renamed Staff' })).json(),
+    ).toMatchObject({ id: userId, name: 'QA Renamed Staff', active: true });
+    expect((await adminHttp(`/admin/users/${userId}`, 'PUT', {})).status).toBe(400);
+    expect((await adminHttp(`/admin/users/${userId}`, 'PUT', { active: false })).status).toBe(200);
+    expect((await adminHttp(`/admin/branches/${b.id}`, 'PUT', input)).status).toBe(200);
+    const deniedActivation = await adminHttp(`/admin/users/${userId}`, 'PUT', { active: true });
+    expect(deniedActivation.status).toBe(409);
+    expect((await deniedActivation.json()).code).toBe('INACTIVE_BRANCH');
+  });
+  it('deletes unused rooms, archives referenced rooms, and protects busy or future-booked rooms', async () => {
+    const create = async (name: string) =>
+      (await (await adminHttp('/admin/rooms', 'POST', { name, branchId: branch })).json()).id;
+    const unused = await create('QA Unused Removal');
+    expect((await http(`/admin/rooms/${unused}`, 'DELETE')).status).toBe(403);
+    expect(
+      (
+        await http(`/admin/rooms/${unused}`, 'DELETE', undefined, {
+          Cookie: `cms_session=${adminToken}`,
+          'X-CSRF-Token': 'wrong',
+        })
+      ).status,
+    ).toBe(403);
+    expect(await (await adminHttp(`/admin/rooms/${unused}`, 'DELETE')).json()).toEqual({
+      id: unused,
+      removed: 'deleted',
+    });
+    expect(await rows('SELECT id FROM rooms WHERE id=?', [unused])).toEqual([]);
+    const used = await create('QA Used Removal'),
+      p = await patient();
+    await sql.query(
+      "INSERT INTO appointments(tenant_id,branch_id,patient_id,practitioner_id,room_id,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,'COMPLETED')",
+      [tenant, branch, p.id, doctor, used, '2020-01-01 10:00:00', '2020-01-01 11:00:00'],
+    );
+    expect(await (await adminHttp(`/admin/rooms/${used}`, 'DELETE')).json()).toEqual({
+      id: used,
+      removed: 'archived',
+    });
+    expect((await rows('SELECT active FROM rooms WHERE id=?', [used]))[0].active).toBe(0);
+    const booked = await create('QA Booked Removal');
+    await sql.query(
+      "INSERT INTO appointments(tenant_id,branch_id,patient_id,practitioner_id,room_id,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,'BOOKED')",
+      [tenant, branch, p.id, doctor, booked, '2090-01-01 10:00:00', '2090-01-01 11:00:00'],
+    );
+    expect((await adminHttp(`/admin/rooms/${booked}`, 'DELETE')).status).toBe(409);
+    const busy = await create('QA Busy Removal'),
+      ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    await sql.query("UPDATE queue_tickets SET room_id=?,status='CALLED_TO_ROOM' WHERE id=?", [
+      busy,
+      ticket.id,
+    ]);
+    expect((await adminHttp(`/admin/rooms/${busy}`, 'DELETE')).status).toBe(409);
+    await sql.query("UPDATE queue_tickets SET status='COMPLETED' WHERE id=?", [ticket.id]);
+    expect(
+      (
+        await http(`/admin/rooms/${busy}`, 'DELETE', undefined, {
+          Cookie: `cms_session=${adminToken}`,
+          'X-Branch-ID': String(otherBranch),
+        })
+      ).status,
+    ).toBe(404);
+  });
+  it('keeps receipt snapshots immutable, exact split tender totals and scoped private-field-free previews', async () => {
+    const p = await patient({ name: 'QA Receipt Patient', nationalId: '900615-00-0001' }),
+      bill = await service.createInvoice(ctx, invoice(p.id));
+    expect(bill.receiptSnapshot).toMatchObject({
+      clinicName: 'QA Tenant',
+      branchName: 'QA Main',
+      patientName: 'QA Receipt Patient',
+      nationalId: '900615-00-0001',
+      receivedBy: 'QA Doctor',
+    });
+    await sql.query('UPDATE patients SET name=? WHERE id=?', ['QA Later Name', p.id]);
+    const response = await adminHttp(`/invoices/${bill.id}/receipt-view`);
+    expect(response.status).toBe(200);
+    const view = await response.json();
+    expect(view).toMatchObject({
+      id: bill.id,
+      clinicName: 'QA Tenant',
+      patientName: 'QA Receipt Patient',
+      nationalId: '900615-00-0001',
+      receivedBy: 'QA Doctor',
+      totalCents: 1000,
+      simulated: false,
+    });
+    expect(view.lines[0].amountCents).toBe(1000);
+    expect(view.payments.reduce((sum: number, p: any) => sum + p.amountCents, 0)).toBe(1000);
+    expect(JSON.stringify(view)).not.toMatch(/requestHash|idempotencyKey|password|tenantId/);
+    expect(
+      (await http(`/invoices/${bill.id}/receipt-view`, 'GET', undefined, { Cookie: '' })).status,
+    ).toBe(401);
+    expect(
+      (
+        await http(`/invoices/${bill.id}/receipt-view`, 'GET', undefined, {
+          Cookie: `cms_session=${adminToken}`,
+          'X-Branch-ID': String(otherBranch),
+        })
+      ).status,
+    ).toBe(404);
+    await sql.query(
+      "INSERT INTO role_module_permissions(tenant_id,role,modules) VALUES(?,'RECEPTIONIST',?) ON DUPLICATE KEY UPDATE modules=VALUES(modules)",
+      [tenant, JSON.stringify(['patients'])],
+    );
+    try {
+      expect((await http(`/invoices/${bill.id}/receipt-view`)).status).toBe(403);
+    } finally {
+      await sql.query(
+        "DELETE FROM role_module_permissions WHERE tenant_id=? AND role='RECEPTIONIST'",
+        [tenant],
+      );
+    }
+  });
+  it('renders receipt PDF inline or explicit attachment with actual receipt text', async () => {
+    const p = await patient({ name: 'QA PDF Receipt Patient', nationalId: 'QA-PASSPORT' }),
+      bill = await service.createInvoice(ctx, invoice(p.id));
+    const response = await http(`/invoices/${bill.id}/receipt`, 'GET', undefined, {
+      Cookie: `cms_session=${adminToken}`,
+      'X-CSRF-Token': '',
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain('inline;');
+    expect(response.headers.get('content-type')).toContain('application/pdf');
+    const text = pdfText(Buffer.from(await response.arrayBuffer()));
+    expect(text).toContain('OFFICIAL RECEIPT');
+    expect(text).toContain('QA PDF Receipt Patient');
+    expect(text).toContain('QA-PASSPORT');
+    expect(text).toContain('RM');
+    const download = await adminHttp(`/invoices/${bill.id}/receipt?download=1`);
+    expect(download.status).toBe(200);
+    expect(download.headers.get('content-disposition')).toContain('attachment;');
+    await download.arrayBuffer();
+  });
 });

@@ -170,7 +170,7 @@ export function administrationRouter() {
       const passwordHash = await hashPassword(input.password);
       const user = await transaction(async (db) => {
         const { rows } = await db.query(
-          'SELECT id FROM branches WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
+          'SELECT id FROM branches WHERE tenant_id=$1 AND id=$2 AND active=1 FOR UPDATE',
           [req.context.actor.tenantId, input.branchId],
         );
         if (!rows[0])
@@ -209,35 +209,81 @@ export function administrationRouter() {
     roles('ADMIN'),
     route(async (req, res) => {
       const id = idSchema.parse(req.params.id);
-      const input = z.object({ active: z.boolean() }).strict().parse(req.body);
-      if (id === req.context.actor.id && !input.active)
+      const input = z
+        .object({
+          active: z.boolean().optional(),
+          name: z.string().trim().min(1).max(150).optional(),
+        })
+        .strict()
+        .refine(
+          (value) => value.active !== undefined || value.name !== undefined,
+          'Provide staff name or active status.',
+        )
+        .parse(req.body);
+      if (id === req.context.actor.id && input.active === false)
         throw new DomainError(
           'SELF_DEACTIVATION',
           'Another administrator must deactivate your account.',
           409,
         );
-      await transaction(async (db) => {
+      const result = await transaction(async (db) => {
+        const home = (
+          await db.query('SELECT branch_id FROM users WHERE tenant_id=$1 AND id=$2', [
+            req.context.actor.tenantId,
+            id,
+          ])
+        ).rows[0];
+        if (!home) throw new DomainError('NOT_FOUND', 'Staff account not found.', 404);
+        const branch = (
+          await db.query('SELECT active FROM branches WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [
+            req.context.actor.tenantId,
+            home.branch_id,
+          ])
+        ).rows[0];
+        if (input.active === true && !branch?.active)
+          throw new DomainError(
+            'INACTIVE_BRANCH',
+            'Restore home branch before reactivating this staff account.',
+            409,
+          );
         // Lock all clinic admins consistently to protect the final active administrator.
         const admins = await db.query(
           "SELECT id FROM users WHERE tenant_id=$1 AND role='ADMIN' AND active=1 ORDER BY id FOR UPDATE",
           [req.context.actor.tenantId],
         );
         const target = await db.query(
-          'SELECT id,role FROM users WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
+          'SELECT id,role,name,active FROM users WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
           [req.context.actor.tenantId, id],
         );
         if (!target.rows[0]) throw new DomainError('NOT_FOUND', 'Staff account not found.', 404);
-        if (!input.active && target.rows[0].role === 'ADMIN' && admins.rows.length <= 1)
+        if (
+          input.active === false &&
+          target.rows[0].active &&
+          target.rows[0].role === 'ADMIN' &&
+          admins.rows.length <= 1
+        )
           throw new DomainError('LAST_ADMIN', 'Keep at least one active administrator.', 409);
-        await db.query('UPDATE users SET active=$3 WHERE tenant_id=$1 AND id=$2', [
+        await db.query('UPDATE users SET active=$3,name=$4 WHERE tenant_id=$1 AND id=$2', [
           req.context.actor.tenantId,
           id,
-          input.active,
+          input.active ?? Boolean(target.rows[0].active),
+          input.name ?? target.rows[0].name,
         ]);
-        if (!input.active) await db.query('DELETE FROM sessions WHERE user_id=$1', [id]);
-        await audit(db, req, 'USER_STATUS_CHANGED', 'user', id);
+        if (input.active === false) await db.query('DELETE FROM sessions WHERE user_id=$1', [id]);
+        await audit(
+          db,
+          req,
+          input.name !== undefined ? 'USER_UPDATED' : 'USER_STATUS_CHANGED',
+          'user',
+          id,
+        );
+        return {
+          id,
+          name: input.name ?? target.rows[0].name,
+          active: input.active ?? Boolean(target.rows[0].active),
+        };
       });
-      res.json({ id, active: input.active });
+      res.json(result);
     }),
   );
   router.post(
@@ -271,10 +317,10 @@ export function administrationRouter() {
     roles('ADMIN'),
     route(async (req, res) => {
       const { rows } = await pool.query(
-        'SELECT id,id branch_number,name,address FROM branches WHERE tenant_id=$1 ORDER BY name',
+        'SELECT id,id branch_number,name,address,active,version FROM branches WHERE tenant_id=$1 ORDER BY name',
         [req.context.actor.tenantId],
       );
-      res.json({ data: camel(rows) });
+      res.json({ data: camel(rows.map((row) => ({ ...row, active: Boolean(row.active) }))) });
     }),
   );
   router.post(
@@ -300,7 +346,9 @@ export function administrationRouter() {
       });
       const branch = (await pool.query('SELECT id branch_number FROM branches WHERE id=$1', [id]))
         .rows[0];
-      res.status(201).json({ id, branchNumber: branch.branch_number, ...input });
+      res
+        .status(201)
+        .json({ id, branchNumber: branch.branch_number, ...input, active: true, version: 1 });
     }),
   );
   router.get(
@@ -312,6 +360,70 @@ export function administrationRouter() {
         [req.context.actor.tenantId, req.context.branchId],
       );
       res.json({ data: camel(rows) });
+    }),
+  );
+  router.put(
+    '/admin/branches/:id',
+    roles('ADMIN'),
+    route(async (req, res) => {
+      const id = idSchema.parse(req.params.id),
+        input = z
+          .object({
+            name: z.string().trim().min(1).max(150),
+            address: z.string().trim().max(1000),
+            active: z.boolean(),
+            version: z.number().int().positive(),
+          })
+          .strict()
+          .parse(req.body);
+      const result = await transaction(async (db) => {
+        const branches = (
+          await db.query(
+            'SELECT id,name,address,active,version FROM branches WHERE tenant_id=$1 ORDER BY id FOR UPDATE',
+            [req.context.actor.tenantId],
+          )
+        ).rows;
+        const old = branches.find((branch) => branch.id === id);
+        if (!old) throw new DomainError('NOT_FOUND', 'Branch not found in your clinic.', 404);
+        if (old.version !== input.version)
+          throw new DomainError('VERSION_CONFLICT', 'Branch changed. Reload before saving.', 409);
+        if (!input.active) {
+          if (id === req.context.branchId)
+            throw new DomainError(
+              'CURRENT_BRANCH',
+              'Switch to another branch before removing this branch.',
+              409,
+            );
+          if (old.active && branches.filter((branch) => branch.active).length <= 1)
+            throw new DomainError('LAST_BRANCH', 'Keep at least one active clinic branch.', 409);
+          const homes = (
+            await db.query(
+              'SELECT id FROM users WHERE tenant_id=$1 AND branch_id=$2 AND active=1 LIMIT 1',
+              [req.context.actor.tenantId, id],
+            )
+          ).rows;
+          if (homes.length)
+            throw new DomainError(
+              'BRANCH_HAS_ACTIVE_STAFF',
+              'Deactivate or move active home-branch staff before removing this branch.',
+              409,
+            );
+        }
+        await db.query(
+          'UPDATE branches SET name=$2,address=$3,active=$4,version=version+1,updated_at=now() WHERE id=$1',
+          [id, input.name, input.address, input.active],
+        );
+        await audit(db, req, input.active ? 'BRANCH_UPDATED' : 'BRANCH_ARCHIVED', 'branch', id);
+        return {
+          id,
+          branchNumber: id,
+          name: input.name,
+          address: input.address,
+          active: input.active,
+          version: old.version + 1,
+        };
+      });
+      res.json(result);
     }),
   );
   router.get(
@@ -335,7 +447,7 @@ export function administrationRouter() {
         .parse(req.body);
       const id = await transaction(async (db) => {
         const branch = await db.query(
-          'SELECT b.id FROM branches b JOIN user_branches ub ON ub.branch_id=b.id WHERE b.id=$1 AND b.tenant_id=$2 AND ub.user_id=$3 FOR UPDATE',
+          'SELECT b.id FROM branches b JOIN user_branches ub ON ub.branch_id=b.id WHERE b.id=$1 AND b.tenant_id=$2 AND ub.user_id=$3 AND b.active=1 FOR UPDATE',
           [input.branchId, req.context.actor.tenantId, req.context.actor.id],
         );
         if (!branch.rows[0])
@@ -419,6 +531,56 @@ export function administrationRouter() {
           active: input.active ?? Boolean(room.active),
           branchId: room.branch_id,
         };
+      });
+      res.json(result);
+    }),
+  );
+  router.delete(
+    '/admin/rooms/:id',
+    roles('ADMIN'),
+    route(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      const result = await transaction(async (db) => {
+        const room = (
+          await db.query(
+            'SELECT id FROM rooms WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+            [id, req.context.actor.tenantId, req.context.branchId],
+          )
+        ).rows[0];
+        if (!room) throw new DomainError('NOT_FOUND', 'Room not found in selected branch.', 404);
+        if (
+          (
+            await db.query(
+              "SELECT id FROM queue_tickets WHERE room_id=$1 AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
+              [id],
+            )
+          ).rowCount
+        )
+          throw new DomainError(
+            'ROOM_BUSY',
+            'Finish or requeue the current consultation before removing this room.',
+            409,
+          );
+        if (
+          (
+            await db.query(
+              "SELECT id FROM appointments WHERE room_id=$1 AND status IN ('BOOKED','CHECKED_IN') AND ends_at>UTC_TIMESTAMP(3) LIMIT 1",
+              [id],
+            )
+          ).rowCount
+        )
+          throw new DomainError(
+            'ROOM_BOOKED',
+            'Cancel upcoming room appointments before removing this room.',
+            409,
+          );
+        const used =
+          (await db.query('SELECT id FROM appointments WHERE room_id=$1 LIMIT 1', [id])).rowCount ||
+          (await db.query('SELECT id FROM queue_tickets WHERE room_id=$1 LIMIT 1', [id])).rowCount;
+        if (used) await db.query('UPDATE rooms SET active=0 WHERE id=$1', [id]);
+        else await db.query('DELETE FROM rooms WHERE id=$1', [id]);
+        await audit(db, req, used ? 'ROOM_ARCHIVED' : 'ROOM_DELETED', 'room', id);
+        return { id, removed: used ? 'archived' : 'deleted' };
       });
       res.json(result);
     }),
