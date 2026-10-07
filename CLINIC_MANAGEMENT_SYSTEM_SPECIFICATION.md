@@ -242,3 +242,7 @@ No real patient information, provider secrets or database credentials belong in 
 Administrators edit drugs, supplies, rooms, lab panels, specimen types, inventory units and referral destinations. Choices are branch scoped and can be archived/restored. New prescribing uses active medication items. Used item categories, ingredients and units stay fixed. New signed prescriptions retain authoritative medicine snapshots; legacy records without snapshots use catalog fallback. Existing signed prescriptions remain dispensable after archival. Workflow statuses and role codes remain fixed application rules.
 
 Patient phone numbers accept Malaysian and foreign formatting, including country codes, up to 50 characters.
+
+## Task sections and scrolling
+
+Operational modules separate lists, entry forms and history into named sections. Section navigation stays available while scrolling and wraps on phones. Only the selected task area is visible. Switching sections within a module retains unsaved form values; successful registration, booking, checkout and check-in clear completed forms as before. Leaving a module or reloading is not a draft-save operation. Patient/allergy context remains outside clinical task sections. Guided walkthroughs open the section containing the highlighted control. Single-task password and notification screens remain focused.

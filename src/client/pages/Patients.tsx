@@ -18,6 +18,7 @@ import {
 } from '../components';
 import { type Patient, dateTime } from '../types';
 import PatientForm from './PatientForm';
+import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 interface Encounter {
   id: number;
   createdAt: string;
@@ -130,14 +131,17 @@ export default function Patients() {
   const [search, setSearch] = useState('');
   const searchTerm = useDebouncedValue(search.trim());
   const [selected, setSelected] = useState<Patient>();
-  const [register, setRegister] = useState(false);
+  const [section, setSection] = useState('directory');
+  const [registrationRevision, setRegistrationRevision] = useState(0);
   const [editing, setEditing] = useState(false);
   const resource = useResource<Patient[]>(`/patients?search=${encodeURIComponent(searchTerm)}`);
   function saved(patient: Patient) {
     resource.refresh();
-    setRegister(false);
+    setSection('directory');
+    setRegistrationRevision((value) => value + 1);
     setEditing(false);
-    if (selected) setSelected(patient);
+    if (editing && selected) setSelected(patient);
+    else setSelected(undefined);
   }
   return (
     <>
@@ -149,164 +153,184 @@ export default function Patients() {
             <button
               data-guide="open-registration"
               onClick={() => {
-                setRegister(!register);
-                setSelected(undefined);
-                setEditing(false);
+                if (section === 'registration' && !editing) setSection('directory');
+                else {
+                  setSection('registration');
+                  setSelected(undefined);
+                  setEditing(false);
+                }
               }}
             >
-              {register ? 'Close registration' : 'Register patient'}
+              {section === 'registration' && !editing ? 'Close registration' : 'Register patient'}
             </button>
           )
         }
       />
-      {register && (
-        <Panel title="Patient registration">
-          <PatientForm onSaved={saved} />
-        </Panel>
-      )}
-      {selected ? (
-        <>
-          <button
-            className="text-button"
-            onClick={() => {
-              setSelected(undefined);
-              setEditing(false);
-            }}
-          >
-            <ArrowLeft size={16} />
-            Back to patients
-          </button>
-          <div className="patient-banner">
-            <div>
-              <h2>{selected.name}</h2>
-              <p>
-                Patient ID #{selected.id} · {selected.nationalId} ·{' '}
-                {selected.dateOfBirth?.slice(0, 10)} · Blood group{' '}
-                {selected.bloodGroup || 'unknown'}
-              </p>
-            </div>
-            <div className="allergies">
-              {selected.allergies?.length
-                ? `Allergies: ${selected.allergies.join(', ')}`
-                : 'No allergies recorded'}
-            </div>
-          </div>
-          {editing && (
-            <Panel title="Edit patient details">
-              <PatientForm
-                key={`${selected.id}:${selected.version}`}
-                initial={selected}
-                onSaved={saved}
-              />
+      <WorkspaceSections label="Patient sections" value={section} onChange={setSection}>
+        <WorkspaceSection
+          id="directory"
+          label="Patient directory"
+          description="Find patients and review their recorded details and consultation history."
+        >
+          {selected ? (
+            <>
+              <button
+                className="text-button"
+                onClick={() => {
+                  setSelected(undefined);
+                  setEditing(false);
+                }}
+              >
+                <ArrowLeft size={16} />
+                Back to patients
+              </button>
+              <div className="patient-banner">
+                <div>
+                  <h2>{selected.name}</h2>
+                  <p>
+                    Patient ID #{selected.id} · {selected.nationalId} ·{' '}
+                    {selected.dateOfBirth?.slice(0, 10)} · Blood group{' '}
+                    {selected.bloodGroup || 'unknown'}
+                  </p>
+                </div>
+                <div className="allergies">
+                  {selected.allergies?.length
+                    ? `Allergies: ${selected.allergies.join(', ')}`
+                    : 'No allergies recorded'}
+                </div>
+              </div>
+              <div className="two-column">
+                <Panel
+                  title="Patient details"
+                  action={
+                    canEdit && (
+                      <button
+                        className="secondary"
+                        onClick={() => {
+                          setEditing(!editing);
+                          setSection(editing ? 'directory' : 'registration');
+                        }}
+                      >
+                        {editing ? 'Cancel edit' : 'Edit details'}
+                      </button>
+                    )
+                  }
+                >
+                  <dl>
+                    <dt>Phone</dt>
+                    <dd>{selected.phone || 'Not recorded'}</dd>
+                    <dt>Email</dt>
+                    <dd>{selected.email || 'Not recorded'}</dd>
+                    <dt>Chronic conditions</dt>
+                    <dd>{selected.conditions?.join(', ') || 'None recorded'}</dd>
+                    <dt>Notification consent</dt>
+                    <dd>{selected.notificationConsent ? 'Consented' : 'Not consented'}</dd>
+                  </dl>
+                </Panel>
+                <Panel title="Encounter history">
+                  <PatientHistory key={selected.id} patientId={selected.id} />
+                </Panel>
+              </div>
+            </>
+          ) : (
+            <Panel title="Patient directory">
+              <label htmlFor="patient-list-search">Search patient list</label>
+              <div className="search-field">
+                <Search size={18} />
+                <input
+                  id="patient-list-search"
+                  type="search"
+                  aria-label="Search patients"
+                  placeholder="Name, IC/passport, or phone"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button type="button" className="text-button" onClick={() => setSearch('')}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              <ResourceState {...resource}>
+                {resource.data?.length ? (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Patient ID</th>
+                          <th>Patient</th>
+                          <th>NRIC / passport</th>
+                          <th>Phone</th>
+                          <th>Allergies</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {resource.data.map((p) => (
+                          <tr key={p.id}>
+                            <td>#{p.id}</td>
+                            <td>
+                              <strong>{p.name}</strong>
+                              <small>{p.dateOfBirth?.slice(0, 10)}</small>
+                            </td>
+                            <td>{p.nationalId}</td>
+                            <td>{p.phone}</td>
+                            <td>
+                              {p.allergies?.length ? (
+                                <span className="status urgent">{p.allergies.join(', ')}</span>
+                              ) : (
+                                'None recorded'
+                              )}
+                            </td>
+                            <td>
+                              <button
+                                className="secondary"
+                                onClick={() => {
+                                  setSelected(p);
+                                  setSection('directory');
+                                  setEditing(false);
+                                }}
+                              >
+                                Open chart
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <Empty
+                    title={search ? 'No matching patients' : 'Your patient directory starts here'}
+                    description={
+                      search
+                        ? 'Try another name, ID, or phone number.'
+                        : 'Register your first patient to start their clinical record.'
+                    }
+                  />
+                )}
+              </ResourceState>
             </Panel>
           )}
-          <div className="two-column">
-            <Panel
-              title="Patient details"
-              action={
-                canEdit && (
-                  <button className="secondary" onClick={() => setEditing(!editing)}>
-                    {editing ? 'Cancel edit' : 'Edit details'}
-                  </button>
-                )
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="registration"
+          label={editing ? 'Edit patient' : 'Patient registration'}
+          description="Register a first visit or update the selected patient's demographic details."
+        >
+          <Panel title={editing && selected ? 'Edit patient details' : 'Patient registration'}>
+            <PatientForm
+              key={
+                editing && selected
+                  ? `${selected.id}:${selected.version}`
+                  : `new:${registrationRevision}`
               }
-            >
-              <dl>
-                <dt>Phone</dt>
-                <dd>{selected.phone || 'Not recorded'}</dd>
-                <dt>Email</dt>
-                <dd>{selected.email || 'Not recorded'}</dd>
-                <dt>Chronic conditions</dt>
-                <dd>{selected.conditions?.join(', ') || 'None recorded'}</dd>
-                <dt>Notification consent</dt>
-                <dd>{selected.notificationConsent ? 'Consented' : 'Not consented'}</dd>
-              </dl>
-            </Panel>
-            <Panel title="Encounter history">
-              <PatientHistory key={selected.id} patientId={selected.id} />
-            </Panel>
-          </div>
-        </>
-      ) : (
-        <Panel title="Patient directory">
-          <label htmlFor="patient-list-search">Search patient list</label>
-          <div className="search-field">
-            <Search size={18} />
-            <input
-              id="patient-list-search"
-              type="search"
-              aria-label="Search patients"
-              placeholder="Name, IC/passport, or phone"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              initial={editing ? selected : undefined}
+              onSaved={saved}
             />
-            {search && (
-              <button type="button" className="text-button" onClick={() => setSearch('')}>
-                Clear
-              </button>
-            )}
-          </div>
-          <ResourceState {...resource}>
-            {resource.data?.length ? (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Patient ID</th>
-                      <th>Patient</th>
-                      <th>NRIC / passport</th>
-                      <th>Phone</th>
-                      <th>Allergies</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resource.data.map((p) => (
-                      <tr key={p.id}>
-                        <td>#{p.id}</td>
-                        <td>
-                          <strong>{p.name}</strong>
-                          <small>{p.dateOfBirth?.slice(0, 10)}</small>
-                        </td>
-                        <td>{p.nationalId}</td>
-                        <td>{p.phone}</td>
-                        <td>
-                          {p.allergies?.length ? (
-                            <span className="status urgent">{p.allergies.join(', ')}</span>
-                          ) : (
-                            'None recorded'
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            className="secondary"
-                            onClick={() => {
-                              setSelected(p);
-                              setRegister(false);
-                              setEditing(false);
-                            }}
-                          >
-                            Open chart
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty
-                title={search ? 'No matching patients' : 'Your patient directory starts here'}
-                description={
-                  search
-                    ? 'Try another name, ID, or phone number.'
-                    : 'Register your first patient to start their clinical record.'
-                }
-              />
-            )}
-          </ResourceState>
-        </Panel>
-      )}
+          </Panel>
+        </WorkspaceSection>
+      </WorkspaceSections>
     </>
   );
 }

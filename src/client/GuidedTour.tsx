@@ -300,6 +300,11 @@ export function GuidedTour({
       let element = matches.find(
         (e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden',
       );
+      if (!element) {
+        const section = matches[0]?.closest<HTMLElement>('[data-workspace-section][hidden]');
+        const controlId = section?.getAttribute('aria-labelledby');
+        if (controlId) document.getElementById(controlId)?.click();
+      }
       if (element && element.offsetHeight > innerHeight * 0.45)
         element = element.querySelector<HTMLElement>('.panel-heading, .field') || element;
       if (!element && step.open && !prepared) {

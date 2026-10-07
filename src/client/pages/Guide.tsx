@@ -1,5 +1,6 @@
 import { PageTitle, Panel, useModules, useRole } from '../components';
 import { startTour, tourNames } from '../GuidedTour';
+import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 const topics = [
   {
     title: 'Start a clinic shift',
@@ -97,37 +98,52 @@ export default function Guide() {
         title="User guide"
         description="Practical steps for patient registration, clinical care, dispensary, and checkout."
       />
-      <Panel title="Show me on the screen">
-        <p className="form-help">
-          Choose a walkthrough to circle the actual controls. Use Next, Back or Close; nothing is
-          saved by the guide.
-        </p>
-        <div className="visual-guide-list">
-          {available.map(([id, label]) => (
-            <button className="secondary" key={id} onClick={() => startTour(id)}>
-              {label}
-              <span>Start visual guide</span>
-            </button>
-          ))}
-        </div>
-      </Panel>
-      <Panel title="Using your clinic workspace">
-        <p className="form-help">
-          Choose a topic below. Staff permissions may limit the actions available to your account.
-        </p>
-        <div className="guide-topics">
-          {topics.map((topic) => (
-            <details key={topic.title}>
-              <summary>{topic.title}</summary>
-              <ol>
-                {topic.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </details>
-          ))}
-        </div>
-      </Panel>
+      <WorkspaceSections label="User guide sections">
+        <WorkspaceSection
+          id="walkthroughs"
+          label="Visual walkthroughs"
+          description="Choose a task to highlight its actual controls in the app."
+        >
+          <Panel title="Show me on the screen">
+            <p className="form-help">
+              Choose a walkthrough to circle the actual controls. Use Next, Back or Close; nothing
+              is saved by the guide.
+            </p>
+            <div className="visual-guide-list">
+              {available.map(([id, label]) => (
+                <button className="secondary" key={id} onClick={() => startTour(id)}>
+                  {label}
+                  <span>Start visual guide</span>
+                </button>
+              ))}
+            </div>
+          </Panel>
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="instructions"
+          label="Written instructions"
+          description="Open a topic for step-by-step reference."
+        >
+          <Panel title="Using your clinic workspace">
+            <p className="form-help">
+              Choose a topic below. Staff permissions may limit the actions available to your
+              account.
+            </p>
+            <div className="guide-topics">
+              {topics.map((topic) => (
+                <details key={topic.title}>
+                  <summary>{topic.title}</summary>
+                  <ol>
+                    {topic.steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                </details>
+              ))}
+            </div>
+          </Panel>
+        </WorkspaceSection>
+      </WorkspaceSections>
     </>
   );
 }

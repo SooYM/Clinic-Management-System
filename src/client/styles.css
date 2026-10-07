@@ -1637,3 +1637,58 @@ dd {
     gap: 4px;
   }
 }
+.workspace-sections {
+  min-width: 0;
+}
+.workspace-sections > section[hidden] {
+  display: none;
+}
+.section-navigation {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #cbd5e1;
+  background: #f8fafc;
+  scroll-margin-top: 12px;
+}
+.section-navigation button {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  font-weight: 600;
+}
+.section-navigation button:hover {
+  background: #e2e8f0;
+}
+.section-navigation button[aria-current='page'] {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1e40af;
+}
+.section-description {
+  margin: 0 0 20px;
+  color: #475569;
+  max-width: 75ch;
+}
+.demo-app .section-navigation {
+  top: var(--demo-banner-height);
+  scroll-margin-top: calc(var(--demo-banner-height) + 12px);
+}
+@media (max-width: 600px) {
+  .section-navigation {
+    gap: 4px;
+  }
+  .section-navigation button {
+    flex: 1 1 auto;
+    padding: 10px 12px;
+  }
+}

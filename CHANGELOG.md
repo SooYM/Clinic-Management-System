@@ -36,3 +36,5 @@ V1 PostgreSQL migrations, API contracts, mock accounts and secrets are incompati
 Last V1 main revision: `b0c9a49cd0cfef239cd2376edafc601c2e44928e`. Its source remains in Git history and `v1-demo-before-v2`. Publication preserves history without force-pushing.
 
 Administrator catalogs support branch-scoped editing, archival and restoration for drugs, supplies and clinical choices. New signed prescriptions preserve authoritative medicine snapshots. Phone fields explain international country codes and accept foreign numbers unchanged. Migration 014 preserves inventory and adds no local sample records.
+
+Long operational pages now use named task sections with persistent section navigation. Patients, appointments, queue, clinical care, inventory, billing, administration and help show one task area at a time. Section switches preserve draft fields; guided walkthroughs reveal the relevant section automatically.

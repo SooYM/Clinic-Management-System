@@ -122,3 +122,20 @@ Messages are simulated; receipt and document downloads explain their demo limita
 Administrators use **Administration → Catalog choices** to add or edit lab panels, specimen types, inventory units and referral destinations. Set display order, archive unused choices, or restore them. New forms use active choices from the selected branch. Configure these lists before using an empty local installation.
 
 In **Dispensary → Stock catalogue**, administrators edit drug/supply names, SKU, prices and reorder levels, or archive/restore items. Prescription choices come from active medication items. Used stock units, categories and ingredients cannot change. New signed prescriptions retain captured medicine details; legacy records without snapshots use catalog fallback. Existing signed prescriptions remain dispensable after archival. Existing archived stock can still be received or used. Rooms remain editable in Administration; practitioners come from active GP accounts.
+
+## Find features without long scrolling
+
+Use the section buttons below each module title. The highlighted button identifies your current task. Buttons stay available while scrolling and wrap to fit a phone. Only that section is displayed.
+
+| Module             | Sections                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| Clinic overview    | Live queue; Check in patient                                                            |
+| Patients           | Patient directory; Patient registration / Edit patient                                  |
+| Appointments       | Scheduled visits; Book appointment                                                      |
+| Clinical workspace | Consultations; Note & prescription; Documents; Medication logs                          |
+| Dispensary         | Stock catalogue; Receive stock; Use supplies; Dispense medicines; Prescription history  |
+| Billing            | Invoice history; Patient checkout; Patient deposits                                     |
+| Administration     | Staff accounts; Branches; Consultation rooms; Catalog choices; Role access; Audit trail |
+| User guide         | Visual walkthroughs; Written instructions                                               |
+
+Section switches keep entered values until you save or leave the module. They do not save drafts to the database. Add/edit buttons open the matching section. Show me automatically opens each walkthrough step’s section. Account security and Reports & delivery already contain one task and remain simple pages.

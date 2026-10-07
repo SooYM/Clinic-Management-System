@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import type { CatalogEntry } from '../AdminCatalogs';
 import PrescriptionLog from '../PrescriptionLog';
 import { RefreshCw } from 'lucide-react';
@@ -37,9 +38,14 @@ interface PendingPrescription {
 }
 export default function Inventory() {
   const role = useRole();
+  const [section, setSection] = useState('stock');
+  const editorRef = useRef<HTMLDivElement>(null);
   const units = useResource<CatalogEntry[]>('/references/catalogs?kind=INVENTORY_UNIT');
   const [editingItem, setEditingItem] = useState<InventoryItem>();
   const [create, setCreate] = useState(false);
+  useEffect(() => {
+    if (create || editingItem) editorRef.current?.scrollIntoView({ block: 'start' });
+  }, [create, editingItem]);
   const [historySearch, setHistorySearch] = useState('');
   const [logEncounterId, setLogEncounterId] = useState('');
   const [logRevision, setLogRevision] = useState(0);
@@ -93,6 +99,7 @@ export default function Inventory() {
               <button
                 data-guide="open-inventory-item"
                 onClick={() => {
+                  setSection('stock');
                   setCreate(!create);
                   setEditingItem(undefined);
                 }}
@@ -103,238 +110,252 @@ export default function Inventory() {
           </div>
         }
       />
-      {(create || editingItem) && (
-        <Panel title={editingItem ? 'Edit inventory item' : 'Inventory item'}>
-          <MutationForm
-            key={editingItem ? `${editingItem.id}:${editingItem.version}` : 'new-item'}
-            label={editingItem ? 'Save inventory item' : 'Add item'}
-            onSuccess={() => {
-              refresh();
-              setCreate(false);
-              setEditingItem(undefined);
-            }}
-            onSubmit={(f) => {
-              const body = {
-                name: formText(f, 'name'),
-                sku: formText(f, 'sku'),
-                ingredient: formText(f, 'ingredient'),
-                category: formText(f, 'category'),
-                unit: formText(f, 'unit'),
-                priceCents: Math.round(Number(f.get('price')) * 100),
-                reorderLevel: Number(f.get('reorderLevel')),
-              };
-              return editingItem
-                ? api.put('/admin/inventory/' + editingItem.id, {
-                    ...body,
-                    active: f.get('active') === 'on',
-                    version: editingItem.version,
-                  })
-                : api.post('/inventory', body);
-            }}
-          >
+      <WorkspaceSections label="Dispensary sections" value={section} onChange={setSection}>
+        <WorkspaceSection
+          id="stock"
+          label="Stock catalogue"
+          description="Review stock levels, medicine holds and inventory catalogue details."
+        >
+          <div ref={editorRef}>
+            {' '}
+            {(create || editingItem) && (
+              <Panel title={editingItem ? 'Edit inventory item' : 'Inventory item'}>
+                <MutationForm
+                  key={editingItem ? `${editingItem.id}:${editingItem.version}` : 'new-item'}
+                  label={editingItem ? 'Save inventory item' : 'Add item'}
+                  onSuccess={() => {
+                    refresh();
+                    setCreate(false);
+                    setEditingItem(undefined);
+                  }}
+                  onSubmit={(f) => {
+                    const body = {
+                      name: formText(f, 'name'),
+                      sku: formText(f, 'sku'),
+                      ingredient: formText(f, 'ingredient'),
+                      category: formText(f, 'category'),
+                      unit: formText(f, 'unit'),
+                      priceCents: Math.round(Number(f.get('price')) * 100),
+                      reorderLevel: Number(f.get('reorderLevel')),
+                    };
+                    return editingItem
+                      ? api.put('/admin/inventory/' + editingItem.id, {
+                          ...body,
+                          active: f.get('active') === 'on',
+                          version: editingItem.version,
+                        })
+                      : api.post('/inventory', body);
+                  }}
+                >
+                  <div className="form-grid">
+                    <Field label="Item name">
+                      <input
+                        name="name"
+                        defaultValue={editingItem?.name}
+                        required
+                        placeholder="Medicine, gloves, lab coat or other item"
+                      />
+                    </Field>
+                    <Field label="SKU">
+                      <input
+                        name="sku"
+                        defaultValue={editingItem?.sku}
+                        required
+                        placeholder="e.g. PARA-500"
+                      />
+                    </Field>
+                    <Field label="Active ingredient">
+                      <input
+                        name="ingredient"
+                        defaultValue={editingItem?.ingredient}
+                        placeholder="e.g. Paracetamol"
+                      />
+                    </Field>
+                    <Field label="Category">
+                      <select name="category" defaultValue={editingItem?.category || 'MEDICATION'}>
+                        <option value="MEDICATION">Medication</option>
+                        <option value="CONSUMABLE">Consumables and supplies</option>
+                        <option value="RETAIL">Retail products (e.g. lab coat)</option>
+                      </select>
+                    </Field>
+                    <Field label="Unit">
+                      <select name="unit" required defaultValue={editingItem?.unit || ''}>
+                        <option value="">Select configured unit</option>
+                        {editingItem?.unit &&
+                          !units.data?.some((unit) => unit.label === editingItem.unit) && (
+                            <option value={editingItem.unit}>{editingItem.unit} (recorded)</option>
+                          )}
+                        {units.data?.map((unit) => (
+                          <option value={unit.label} key={unit.id}>
+                            {unit.label}
+                          </option>
+                        ))}
+                      </select>
+                      {!units.data?.length && (
+                        <small>
+                          Ask an administrator to add inventory units under Clinical and inventory
+                          choices.
+                        </small>
+                      )}
+                    </Field>
+                    <Field label="Price (MYR)">
+                      <input
+                        name="price"
+                        defaultValue={editingItem ? (editingItem.priceCents || 0) / 100 : undefined}
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                      />
+                    </Field>
+                    <Field label="Reorder level">
+                      <input
+                        name="reorderLevel"
+                        type="number"
+                        min="0"
+                        defaultValue={editingItem?.reorderLevel ?? 10}
+                        required
+                      />
+                    </Field>
+                  </div>
+                  {editingItem && (
+                    <>
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          name="active"
+                          defaultChecked={editingItem.active !== false}
+                        />
+                        Active in new catalog choices
+                      </label>
+                      <p className="form-help">
+                        Archiving preserves stock and historical prescriptions. Category, ingredient
+                        and unit cannot change after stock or prescribing history.
+                      </p>
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => setEditingItem(undefined)}
+                      >
+                        Cancel editing
+                      </button>
+                    </>
+                  )}
+                </MutationForm>
+              </Panel>
+            )}
+          </div>
+          <Panel title="Stock catalogue">
+            <p className="form-help">
+              Available excludes signed-prescription reservations and ineligible expired stock.
+              Signing reserves stock; dispensing deducts physical quantities once. Unexpired stock
+              includes non-expiring supplies.
+            </p>
             <div className="form-grid">
-              <Field label="Item name">
+              <Field label="Search inventory">
                 <input
-                  name="name"
-                  defaultValue={editingItem?.name}
-                  required
-                  placeholder="Medicine, gloves, lab coat or other item"
+                  type="search"
+                  placeholder="Item name, SKU, ingredient or category"
+                  value={inventorySearch}
+                  onChange={(event) => setInventorySearch(event.target.value)}
                 />
               </Field>
-              <Field label="SKU">
-                <input
-                  name="sku"
-                  defaultValue={editingItem?.sku}
-                  required
-                  placeholder="e.g. PARA-500"
-                />
-              </Field>
-              <Field label="Active ingredient">
-                <input
-                  name="ingredient"
-                  defaultValue={editingItem?.ingredient}
-                  placeholder="e.g. Paracetamol"
-                />
-              </Field>
-              <Field label="Category">
-                <select name="category" defaultValue={editingItem?.category || 'MEDICATION'}>
+              <Field label="Inventory category">
+                <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                  <option value="">All categories</option>
                   <option value="MEDICATION">Medication</option>
                   <option value="CONSUMABLE">Consumables and supplies</option>
-                  <option value="RETAIL">Retail products (e.g. lab coat)</option>
+                  <option value="RETAIL">Retail products</option>
                 </select>
-              </Field>
-              <Field label="Unit">
-                <select name="unit" required defaultValue={editingItem?.unit || ''}>
-                  <option value="">Select configured unit</option>
-                  {editingItem?.unit &&
-                    !units.data?.some((unit) => unit.label === editingItem.unit) && (
-                      <option value={editingItem.unit}>{editingItem.unit} (recorded)</option>
-                    )}
-                  {units.data?.map((unit) => (
-                    <option value={unit.label} key={unit.id}>
-                      {unit.label}
-                    </option>
-                  ))}
-                </select>
-                {!units.data?.length && (
-                  <small>
-                    Ask an administrator to add inventory units under Clinical and inventory
-                    choices.
-                  </small>
-                )}
-              </Field>
-              <Field label="Price (MYR)">
-                <input
-                  name="price"
-                  defaultValue={editingItem ? (editingItem.priceCents || 0) / 100 : undefined}
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                />
-              </Field>
-              <Field label="Reorder level">
-                <input
-                  name="reorderLevel"
-                  type="number"
-                  min="0"
-                  defaultValue={editingItem?.reorderLevel ?? 10}
-                  required
-                />
               </Field>
             </div>
-            {editingItem && (
-              <>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    name="active"
-                    defaultChecked={editingItem.active !== false}
-                  />
-                  Active in new catalog choices
-                </label>
-                <p className="form-help">
-                  Archiving preserves stock and historical prescriptions. Category, ingredient and
-                  unit cannot change after stock or prescribing history.
-                </p>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setEditingItem(undefined)}
-                >
-                  Cancel editing
-                </button>
-              </>
-            )}
-          </MutationForm>
-        </Panel>
-      )}
-      <div className="two-column">
-        <Panel title="Stock catalogue">
-          <p className="form-help">
-            Available excludes signed-prescription reservations and ineligible expired stock.
-            Signing reserves stock; dispensing deducts physical quantities once. Unexpired stock
-            includes non-expiring supplies.
-          </p>
-          <div className="form-grid">
-            <Field label="Search inventory">
-              <input
-                type="search"
-                placeholder="Item name, SKU, ingredient or category"
-                value={inventorySearch}
-                onChange={(event) => setInventorySearch(event.target.value)}
-              />
-            </Field>
-            <Field label="Inventory category">
-              <select value={category} onChange={(event) => setCategory(event.target.value)}>
-                <option value="">All categories</option>
-                <option value="MEDICATION">Medication</option>
-                <option value="CONSUMABLE">Consumables and supplies</option>
-                <option value="RETAIL">Retail products</option>
-              </select>
-            </Field>
-          </div>
-          <ResourceState {...resource}>
-            {matchingItems.length ? (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Category</th>
-                      <th>Available</th>
-                      <th>Unexpired stock</th>
-                      <th>Reserved</th>
-                      <th>Reorder level</th>
-                      <th>Status</th>
-                      {role === 'ADMIN' && <th>Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {matchingItems.map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          <strong>{item.name}</strong>
-                          <small>
-                            Item ID #{item.id} · {item.sku} · {item.unit}
-                          </small>
-                          {item.batches?.length ? (
-                            <details>
-                              <summary>View batches</summary>
-                              {item.batches.map((batch) => (
-                                <p className="form-help" key={batch.id}>
-                                  {batch.batchNumber} · {batch.quantity} units ·{' '}
-                                  {batch.expiresOn
-                                    ? `expiry ${batch.expiresOn.slice(0, 10)}`
-                                    : 'No expiry'}
-                                </p>
-                              ))}
-                            </details>
-                          ) : (
-                            <small>No batches received</small>
-                          )}
-                        </td>
-                        <td>{humanize(item.category || 'MEDICATION')}</td>
-                        <td>{item.stockQuantity ?? item.quantity ?? 0}</td>
-                        <td>{item.onHandQuantity ?? '—'}</td>
-                        <td>{item.reservedQuantity ?? '—'}</td>
-                        <td>{item.reorderLevel}</td>
-                        <td>
-                          <Status value={item.active === false ? 'ARCHIVED' : 'ACTIVE'} />
-                        </td>
-                        {role === 'ADMIN' && (
-                          <td>
-                            <button
-                              className="secondary"
-                              onClick={() => {
-                                setEditingItem(item);
-                                setCreate(false);
-                              }}
-                            >
-                              Edit item
-                            </button>
-                          </td>
-                        )}
+            <ResourceState {...resource}>
+              {matchingItems.length ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Category</th>
+                        <th>Available</th>
+                        <th>Unexpired stock</th>
+                        <th>Reserved</th>
+                        <th>Reorder level</th>
+                        <th>Status</th>
+                        {role === 'ADMIN' && <th>Action</th>}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty
-                title={
-                  inventoryTerm || category ? 'No matching inventory items' : 'No inventory items'
-                }
-                description={
-                  inventoryTerm || category
-                    ? 'Try another search or choose All categories.'
-                    : 'Add medicines, consumables or retail products, then receive batches. Available quantities update after receiving, reservation or dispensing.'
-                }
-              />
-            )}
-          </ResourceState>
-        </Panel>
-        <div className="stack">
+                    </thead>
+                    <tbody>
+                      {matchingItems.map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            <strong>{item.name}</strong>
+                            <small>
+                              Item ID #{item.id} · {item.sku} · {item.unit}
+                            </small>
+                            {item.batches?.length ? (
+                              <details>
+                                <summary>View batches</summary>
+                                {item.batches.map((batch) => (
+                                  <p className="form-help" key={batch.id}>
+                                    {batch.batchNumber} · {batch.quantity} units ·{' '}
+                                    {batch.expiresOn
+                                      ? `expiry ${batch.expiresOn.slice(0, 10)}`
+                                      : 'No expiry'}
+                                  </p>
+                                ))}
+                              </details>
+                            ) : (
+                              <small>No batches received</small>
+                            )}
+                          </td>
+                          <td>{humanize(item.category || 'MEDICATION')}</td>
+                          <td>{item.stockQuantity ?? item.quantity ?? 0}</td>
+                          <td>{item.onHandQuantity ?? '—'}</td>
+                          <td>{item.reservedQuantity ?? '—'}</td>
+                          <td>{item.reorderLevel}</td>
+                          <td>
+                            <Status value={item.active === false ? 'ARCHIVED' : 'ACTIVE'} />
+                          </td>
+                          {role === 'ADMIN' && (
+                            <td>
+                              <button
+                                className="secondary"
+                                onClick={() => {
+                                  setSection('stock');
+                                  setEditingItem(item);
+                                  setCreate(false);
+                                }}
+                              >
+                                Edit item
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty
+                  title={
+                    inventoryTerm || category ? 'No matching inventory items' : 'No inventory items'
+                  }
+                  description={
+                    inventoryTerm || category
+                      ? 'Try another search or choose All categories.'
+                      : 'Add medicines, consumables or retail products, then receive batches. Available quantities update after receiving, reservation or dispensing.'
+                  }
+                />
+              )}
+            </ResourceState>
+          </Panel>
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="receive"
+          label="Receive stock"
+          description="Record delivered batches and their expiry dates."
+        >
           <Panel title="Receive a stock batch">
             <MutationForm
               label="Receive stock"
@@ -383,6 +404,12 @@ export default function Inventory() {
               </div>
             </MutationForm>
           </Panel>
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="supplies"
+          label="Use supplies"
+          description="Record non-medication stock issued or used by clinic staff."
+        >
           <Panel title="Use supplies and retail stock">
             {usageRecorded && (
               <p className="notice success" role="status">
@@ -440,6 +467,12 @@ export default function Inventory() {
               </p>
             )}
           </Panel>
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="dispense"
+          label="Dispense medicines"
+          description="Review and complete signed GP prescriptions."
+        >
           <Panel title="Dispense a signed prescription">
             <Field
               label="Search prescription list"
@@ -543,50 +576,56 @@ export default function Inventory() {
             </ResourceState>
             <a href="#guide">Read the consultation and dispensing guide</a>
           </Panel>
-        </div>
-      </div>
-      <Panel title="Prescription history and activity">
-        <Field
-          label="Search prescription history"
-          hint="Find pending or completed prescriptions by patient, GP or encounter ID."
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="history"
+          label="Prescription history"
+          description="Find pending or completed prescriptions and their clinic activity."
         >
-          <input
-            type="search"
-            value={historySearch}
-            onChange={(event) => setHistorySearch(event.target.value)}
-            placeholder="Patient, GP or encounter ID"
-          />
-        </Field>
-        <ResourceState {...history}>
-          {history.data?.length ? (
-            <Field label="Prescription activity record">
-              <select
-                value={logEncounterId}
-                onChange={(event) => setLogEncounterId(event.target.value)}
-              >
-                <option value="">Select pending or completed prescription</option>
-                {history.data.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.patientName} · Patient #{e.patientId} · Encounter #{e.id} ·{' '}
-                    {e.dispensed ? 'Dispensed' : 'Pending'}
-                  </option>
-                ))}
-              </select>
+          <Panel title="Prescription history and activity">
+            <Field
+              label="Search prescription history"
+              hint="Find pending or completed prescriptions by patient, GP or encounter ID."
+            >
+              <input
+                type="search"
+                value={historySearch}
+                onChange={(event) => setHistorySearch(event.target.value)}
+                placeholder="Patient, GP or encounter ID"
+              />
             </Field>
-          ) : (
-            <Empty
-              title="No matching prescription history"
-              description="Signed medicine prescriptions appear here, including completed dispensing."
-            />
-          )}
-        </ResourceState>
-        {logEncounterId && (
-          <PrescriptionLog
-            key={`${logEncounterId}:${logRevision}`}
-            encounterId={Number(logEncounterId)}
-          />
-        )}
-      </Panel>
+            <ResourceState {...history}>
+              {history.data?.length ? (
+                <Field label="Prescription activity record">
+                  <select
+                    value={logEncounterId}
+                    onChange={(event) => setLogEncounterId(event.target.value)}
+                  >
+                    <option value="">Select pending or completed prescription</option>
+                    {history.data.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.patientName} · Patient #{e.patientId} · Encounter #{e.id} ·{' '}
+                        {e.dispensed ? 'Dispensed' : 'Pending'}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : (
+                <Empty
+                  title="No matching prescription history"
+                  description="Signed medicine prescriptions appear here, including completed dispensing."
+                />
+              )}
+            </ResourceState>
+            {logEncounterId && (
+              <PrescriptionLog
+                key={`${logEncounterId}:${logRevision}`}
+                encounterId={Number(logEncounterId)}
+              />
+            )}
+          </Panel>
+        </WorkspaceSection>
+      </WorkspaceSections>
     </>
   );
 }

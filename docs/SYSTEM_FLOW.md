@@ -146,3 +146,5 @@ Reset demo clears that browser namespace and returns to login; local MySQL recor
 Reset restores the original fictional workflow examples. They are never loaded by normal MySQL bootstrap.
 
 Administrators configure branch choices → active choices appear in clinical/stock forms → server validates and captures medication metadata → signed prescriptions preserve snapshots → archival hides future choices while preserving historical dispensing and stock operations.
+
+Choose module → choose named task section → complete its form or review its list → switch sections without losing unsaved in-module values. Successful registration, appointment booking, checkout and check-in return to their relevant lists. Selecting a consultation opens Note & prescription; issuance/history live in Documents and prescription/dose events in Medication logs.
