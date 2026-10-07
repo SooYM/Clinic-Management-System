@@ -710,7 +710,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       'INSERT INTO inventory_batches(id,tenant_id,branch_id,item_id,batch_number,expires_on,quantity) VALUES(?,?,?,?,?,?,?)',
       [fixtureId(), tenant, branch, i.id, 'EXPIRED', '2020-01-01', 10],
     );
-    const e = await encounter(p.id, [rx(i.id)]);
+    await expect(encounter(p.id, [rx(i.id)])).rejects.toMatchObject({ code: 'INSUFFICIENT_STOCK' });
+    // Historical signed charts predate reservations and still require safe dispensing.
+    const e = await encounter(p.id, [rx(i.id)], { status: 'DRAFT' });
+    await sql.query("UPDATE encounters SET status='SIGNED',signed_at=NOW() WHERE id=?", [e.id]);
     await expect(
       service.dispense(ctx, { encounterId: e.id, idempotencyKey: randomUUID() }),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_STOCK' });
@@ -730,7 +733,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       expiresOn: '2030-01-01',
       quantity: 5,
     });
+    const batchB = await service.receiveBatch(ctx, {
+      itemId: b.id,
+      batchNumber: 'B-TO-EXPIRE',
+      expiresOn: '2030-01-01',
+      quantity: 3,
+    });
     const e = await encounter(p.id, [rx(a.id), rx(b.id)]);
+    await sql.query("UPDATE inventory_batches SET expires_on='2020-01-01' WHERE id=?", [batchB.id]);
     await expect(
       service.dispense(ctx, { encounterId: e.id, idempotencyKey: randomUUID() }),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_STOCK' });
@@ -750,8 +760,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       expiresOn: '2030-01-01',
       quantity: 3,
     });
-    const first = await encounter(p.id, [rx(i.id)]),
-      second = await encounter(p.id, [rx(i.id)]);
+    // Imported historical signed prescriptions have no reservation rows.
+    const first = await encounter(p.id, [rx(i.id)], { status: 'DRAFT' }),
+      second = await encounter(p.id, [rx(i.id)], { status: 'DRAFT' });
+    await sql.query("UPDATE encounters SET status='SIGNED',signed_at=NOW() WHERE id IN (?,?)", [
+      first.id,
+      second.id,
+    ]);
     const results = await Promise.allSettled([
       service.dispense(ctx, { encounterId: first.id, idempotencyKey: randomUUID() }),
       service.dispense(ctx, { encounterId: second.id, idempotencyKey: randomUUID() }),
@@ -1660,6 +1675,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     ).modules;
     const p = await patient({ allergies: ['penicillin'] }),
       i = await item();
+    await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: 'CLINICAL',
+      expiresOn: '2030-01-01',
+      quantity: 3,
+    });
     try {
       await adminHttp('/admin/role-modules', 'PUT', {
         role: 'RECEPTIONIST',
@@ -1887,6 +1908,346 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       state: 'Manual State',
     });
   });
+  it('signing reserves FEFO without physically consuming stock; dispensing and retries consume once', async () => {
+    const p = await patient(),
+      i = await item();
+    const batch = await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: 'RESERVE',
+      expiresOn: '2035-01-01',
+      quantity: 100,
+    });
+    const e = await encounter(p.id, [rx(i.id)]);
+    expect(
+      (await service.list(ctx, 'inventory')).find((row: any) => row.id === i.id),
+    ).toMatchObject({ stockQuantity: 97, onHandQuantity: 100, reservedQuantity: 3 });
+    expect(
+      (
+        await rows(
+          'SELECT quantity,status,consumed_at FROM prescription_reservations WHERE encounter_id=?',
+          [e.id],
+        )
+      )[0],
+    ).toMatchObject({ quantity: 3, status: 'RESERVED', consumed_at: null });
+    expect(
+      (await rows('SELECT quantity FROM inventory_batches WHERE id=?', [batch.id]))[0].quantity,
+    ).toBe(100);
+    const key = randomUUID();
+    const results = await Promise.all([
+      service.dispense(ctx, { encounterId: e.id, idempotencyKey: key }),
+      service.dispense(ctx, { encounterId: e.id, idempotencyKey: key }),
+    ]);
+    expect(results[0].id).toBe(results[1].id);
+    expect(
+      (await service.list(ctx, 'inventory')).find((row: any) => row.id === i.id),
+    ).toMatchObject({ stockQuantity: 97, onHandQuantity: 97, reservedQuantity: 0 });
+    expect(
+      (await rows('SELECT quantity FROM inventory_batches WHERE id=?', [batch.id]))[0].quantity,
+    ).toBe(97);
+    expect(
+      await rows('SELECT id FROM stock_movements WHERE dispense_id=?', [results[0].id]),
+    ).toHaveLength(1);
+  });
+  it('draft Rx creates no holds and failed multi-item signing rolls back chart, holds and notifications', async () => {
+    const p = await patient({ notificationConsent: true, email: 'reservation@example.invalid' }),
+      a = await item(),
+      b = await item();
+    await service.receiveBatch(ctx, {
+      itemId: a.id,
+      batchNumber: 'SIGN-A',
+      expiresOn: '2035-01-01',
+      quantity: 3,
+    });
+    const draft = await encounter(p.id, [rx(a.id), rx(b.id)], { status: 'DRAFT' });
+    expect(
+      await rows('SELECT id FROM prescription_reservations WHERE encounter_id=?', [draft.id]),
+    ).toHaveLength(0);
+    await expect(
+      service.saveEncounter(
+        ctx,
+        {
+          patientId: p.id,
+          specialty: 'GP',
+          subjective: 'Cough',
+          objective: 'Stable',
+          assessment: 'QA assessment',
+          plan: 'Review',
+          vitals: {},
+          prescriptions: [rx(a.id), rx(b.id)],
+          procedureNotes: '',
+          status: 'SIGNED',
+          version: draft.version,
+        },
+        draft.id,
+      ),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_STOCK' });
+    expect(await rows('SELECT id FROM encounters WHERE patient_id=?', [p.id])).toHaveLength(1);
+    expect(
+      await rows('SELECT id FROM prescription_reservations WHERE item_id IN (?,?)', [a.id, b.id]),
+    ).toHaveLength(0);
+    expect(
+      await rows("SELECT id FROM notification_outbox WHERE patient_id=? AND template='REFILL'", [
+        p.id,
+      ]),
+    ).toHaveLength(0);
+    expect((await rows('SELECT status FROM encounters WHERE id=?', [draft.id]))[0].status).toBe(
+      'DRAFT',
+    );
+  });
+  it('concurrent signing of competing prescriptions reserves final stock for exactly one chart', async () => {
+    const p = await patient(),
+      i = await item();
+    await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: 'SIGN-RACE',
+      expiresOn: '2035-01-01',
+      quantity: 3,
+    });
+    const results = await Promise.allSettled([
+      encounter(p.id, [rx(i.id)]),
+      encounter(p.id, [rx(i.id)]),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find(
+      (result) => result.status === 'rejected',
+    ) as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ code: 'INSUFFICIENT_STOCK' });
+    expect(await rows('SELECT id FROM encounters WHERE patient_id=?', [p.id])).toHaveLength(1);
+    expect(
+      (
+        await rows(
+          'SELECT SUM(quantity) quantity FROM prescription_reservations WHERE item_id=? AND consumed_at IS NULL',
+          [i.id],
+        )
+      )[0].quantity,
+    ).toBe('3');
+    expect(
+      (await service.list(ctx, 'inventory')).find((row: any) => row.id === i.id),
+    ).toMatchObject({ stockQuantity: 0, onHandQuantity: 3, reservedQuantity: 3 });
+  });
+  it('expired own hold survives failed dispensing and reallocates to a fresh batch without touching expired stock', async () => {
+    const p = await patient(),
+      i = await item();
+    const old = await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: 'HELD-EXPIRES',
+      expiresOn: '2035-01-01',
+      quantity: 3,
+    });
+    const e = await encounter(p.id, [rx(i.id)]);
+    await sql.query("UPDATE inventory_batches SET expires_on='2020-01-01' WHERE id=?", [old.id]);
+    const key = randomUUID();
+    await expect(
+      service.dispense(ctx, { encounterId: e.id, idempotencyKey: key }),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_STOCK' });
+    expect(
+      (
+        await rows(
+          'SELECT status,consumed_at FROM prescription_reservations WHERE encounter_id=?',
+          [e.id],
+        )
+      )[0],
+    ).toEqual({ status: 'RESERVED', consumed_at: null });
+    expect(await rows('SELECT id FROM dispenses WHERE encounter_id=?', [e.id])).toHaveLength(0);
+    const fresh = await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: 'FRESH',
+      expiresOn: '2036-01-01',
+      quantity: 3,
+    });
+    const d = await service.dispense(ctx, { encounterId: e.id, idempotencyKey: key });
+    expect(d.allocations[0].batchId).toBe(fresh.id);
+    expect(
+      (await rows('SELECT quantity FROM inventory_batches WHERE id=?', [old.id]))[0].quantity,
+    ).toBe(3);
+    expect(
+      (await rows('SELECT status FROM prescription_reservations WHERE encounter_id=?', [e.id]))[0]
+        .status,
+    ).toBe('RELEASED');
+  });
+  it('non-expiring supplies support atomic idempotent usage but medication cannot bypass dispensing', async () => {
+    const supply = await item({ name: 'QA Gauze', category: 'CONSUMABLE' });
+    const batch = await service.receiveBatch(ctx, {
+      itemId: supply.id,
+      batchNumber: 'NO-EXPIRY',
+      quantity: 10,
+    });
+    expect(batch.expiresOn).toBeNull();
+    const input = {
+      itemId: supply.id,
+      quantity: 4,
+      reason: 'Dressing',
+      idempotencyKey: randomUUID(),
+    };
+    const results = await Promise.all([
+      service.useInventory(ctx, input),
+      service.useInventory(ctx, input),
+    ]);
+    expect(results[0].id).toBe(results[1].id);
+    expect(
+      (await rows('SELECT quantity FROM inventory_batches WHERE id=?', [batch.id]))[0].quantity,
+    ).toBe(6);
+    await expect(service.useInventory(ctx, { ...input, quantity: 5 })).rejects.toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+    });
+    await expect(
+      service.useInventory(otherCtx, { ...input, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    const medicine = await item();
+    await expect(
+      service.receiveBatch(ctx, {
+        itemId: medicine.id,
+        batchNumber: 'NO-MED-EXPIRY',
+        quantity: 10,
+      }),
+    ).rejects.toMatchObject({ code: 'EXPIRY_REQUIRED' });
+    await expect(
+      service.useInventory(ctx, { ...input, itemId: medicine.id, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: 'MEDICATION_DISPENSE_REQUIRED' });
+  });
+  it('rejects supply or retail items as medication even when eligible dated stock exists', async () => {
+    const p = await patient();
+    for (const category of ['CONSUMABLE', 'RETAIL']) {
+      const supply = await item({ category });
+      await service.receiveBatch(ctx, {
+        itemId: supply.id,
+        batchNumber: 'NOT-MEDICATION',
+        expiresOn: '2035-01-01',
+        quantity: 5,
+      });
+      await expect(encounter(p.id, [rx(supply.id)])).rejects.toMatchObject({
+        code: 'INVALID_MEDICATION',
+      });
+      expect(
+        await rows('SELECT id FROM prescription_reservations WHERE item_id=?', [supply.id]),
+      ).toHaveLength(0);
+    }
+    expect(await rows('SELECT id FROM encounters WHERE patient_id=?', [p.id])).toHaveLength(0);
+  });
+  it('inventory search and category filters apply server-side and retain branch isolation', async () => {
+    const target = await item({
+      name: 'Unique Surgical Dressing',
+      category: 'CONSUMABLE',
+      ingredient: 'QA search fibre',
+    });
+    expect(
+      (await service.list(ctx, 'inventory', 'QA search fibre', 'CONSUMABLE')).map(
+        (row: any) => row.id,
+      ),
+    ).toEqual([target.id]);
+    expect(await service.list(ctx, 'inventory', 'QA search fibre', 'MEDICATION')).toEqual([]);
+    expect(await service.list(otherCtx, 'inventory', 'QA search fibre')).toEqual([]);
+    expect((await adminHttp('/inventory?category=UNSUPPORTED')).status).toBe(400);
+  });
+  it('consultation and medicine-name pending search find scoped older rows beyond the recent 200 limit', async () => {
+    const p = await patient({ name: 'Old Search Needle' }),
+      i = await item({ name: 'Distinct Search Medicine' });
+    await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: 'SEARCH',
+      expiresOn: '2035-01-01',
+      quantity: 3,
+    });
+    const target = await encounter(p.id, [rx(i.id)], { assessment: 'old-search-assessment' });
+    const filler = await patient({ name: 'Search filler' });
+    for (let n = 0; n < 201; n++) {
+      await sql.query(
+        "INSERT INTO patients(tenant_id,branch_id,name,national_id,date_of_birth,sex,created_at) VALUES(?,?,?,?,'1990-01-01','OTHER',DATE_ADD(NOW(),INTERVAL 1 DAY))",
+        [tenant, branch, 'Recent search filler ' + n, randomUUID()],
+      );
+      await sql.query(
+        "INSERT INTO encounters(tenant_id,branch_id,patient_id,practitioner_id,specialty,subjective,objective,assessment,plan,procedure_notes,status,prescriptions,vitals,created_at) VALUES(?,?,?,?,?,'','','','','','DRAFT','[]','{}',DATE_ADD(NOW(),INTERVAL 1 DAY))",
+        [tenant, branch, filler.id, doctor, 'GP'],
+      );
+    }
+    expect((await service.list(ctx, 'patients')).some((row: any) => row.id === p.id)).toBe(false);
+    expect(
+      (await service.list(ctx, 'patients', 'Old Search Needle')).map((row: any) => row.id),
+    ).toEqual([p.id]);
+    const patientRefs = await (
+      await adminHttp('/references/patients?search=Old%20Search%20Needle')
+    ).json();
+    expect(patientRefs.data.map((row: any) => row.id)).toEqual([p.id]);
+    expect((await service.list(ctx, 'encounters')).some((row: any) => row.id === target.id)).toBe(
+      false,
+    );
+    expect(
+      (await service.list(ctx, 'encounters', 'old-search-assessment')).map((row: any) => row.id),
+    ).toEqual([target.id]);
+    expect(await service.list(otherCtx, 'encounters', 'old-search-assessment')).toEqual([]);
+    const pending = await (
+      await adminHttp('/dispensary/encounters?search=Distinct%20Search%20Medicine')
+    ).json();
+    expect(pending.data.map((row: any) => row.id)).toEqual([target.id]);
+    expect(pending.data[0]).not.toHaveProperty('subjective');
+    const other = await (
+      await http('/dispensary/encounters?search=Distinct%20Search%20Medicine', 'GET', undefined, {
+        Cookie: 'cms_session=' + adminToken,
+        'X-Branch-ID': String(otherBranch),
+      })
+    ).json();
+    expect(other.data).toEqual([]);
+  });
+  it('HTTP rejects unsigned MC and malformed blood pressure while retaining unusual ordered readings', async () => {
+    const p = await patient(),
+      draft = await encounter(p.id, [], { status: 'DRAFT' });
+    const auth = { Cookie: 'cms_session=' + doctorToken };
+    const denied = await http(
+      '/documents',
+      'POST',
+      { encounterId: draft.id, kind: 'MC', startDate: '2033-01-01', days: 1 },
+      auth,
+    );
+    expect(denied.status).toBe(422);
+    expect(
+      await rows('SELECT id FROM clinical_documents WHERE encounter_id=?', [draft.id]),
+    ).toHaveLength(0);
+    expect(
+      (
+        await http(
+          '/encounters',
+          'POST',
+          {
+            patientId: p.id,
+            specialty: 'GP',
+            status: 'DRAFT',
+            vitals: { bloodPressure: '80/120' },
+          },
+          auth,
+        )
+      ).status,
+    ).toBe(400);
+    const valid = await http(
+      '/encounters',
+      'POST',
+      {
+        patientId: p.id,
+        specialty: 'GP',
+        status: 'SIGNED',
+        vitals: { bloodPressure: '270/220', resp_rate: 18 },
+        assessment: 'QA assessment for signed certificate',
+      },
+      auth,
+    );
+    expect(valid.status, JSON.stringify(await valid.clone().json())).toBe(201);
+    const chart = await valid.json();
+    expect(chart.vitals).toEqual({ bloodPressure: '270/220', resp_rate: 18 });
+    const issued = await http(
+      '/documents',
+      'POST',
+      { encounterId: chart.id, kind: 'MC', startDate: '2033-01-01', days: 3 },
+      auth,
+    );
+    expect(issued.status).toBe(201);
+    expect(
+      (
+        await rows(
+          "SELECT DATE_FORMAT(end_date,'%Y-%m-%d') end_date FROM clinical_documents WHERE encounter_id=?",
+          [chart.id],
+        )
+      )[0].end_date,
+    ).toBe('2033-01-03');
+  });
   it('assigns unique increasing numeric patient primary keys and foreign-key relations', async () => {
     const first = await patient({ name: 'Numbered patient ' + randomUUID() }),
       second = await patient();
@@ -1905,8 +2266,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(ref).toMatchObject({ id: first.id, patientNumber: first.patientNumber });
     const banner = await (await adminHttp('/clinical/patients/' + first.id)).json();
     expect(banner.patientNumber).toBe(first.patientNumber);
-    const i = await item(),
-      chart = await encounter(first.id, [rx(i.id)]);
+    const i = await item();
+    await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: 'ID-FK',
+      expiresOn: '2030-01-01',
+      quantity: 3,
+    });
+    const chart = await encounter(first.id, [rx(i.id)]);
     const pending = (await (await adminHttp('/dispensary/encounters')).json()).data.find(
       (e: any) => e.id === chart.id,
     );

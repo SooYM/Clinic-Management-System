@@ -2,6 +2,7 @@ import { idSchema } from '../shared/identifiers.js';
 import { z } from 'zod';
 import { queueStatuses } from '../domain/models.js';
 import { parseMalaysianIc } from '../shared/patient-identity.js';
+import { parseBloodPressure } from '../shared/blood-pressure.js';
 const id = idSchema,
   text = z.string().trim().min(1).max(200),
   long = z.string().max(20000).default('');
@@ -154,7 +155,20 @@ export const schemas = {
       objective: long,
       assessment: long,
       plan: long,
-      vitals: z.record(z.string(), z.union([z.string().max(100), z.number()])).default({}),
+      vitals: z
+        .record(z.string(), z.union([z.string().max(100), z.number()]))
+        .default({})
+        .superRefine((value, ctx) => {
+          try {
+            parseBloodPressure(value.bloodPressure);
+          } catch (error) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['bloodPressure'],
+              message: (error as Error).message,
+            });
+          }
+        }),
       procedureNotes: long,
       prescriptions: z
         .array(
@@ -190,8 +204,23 @@ export const schemas = {
       reorderLevel: z.number().int().min(0).max(100000).default(10),
     })
     .strict(),
-  batch: z.object({ itemId: id, batchNumber: text, expiresOn: date, quantity: integer }).strict(),
+  batch: z
+    .object({
+      itemId: id,
+      batchNumber: text,
+      expiresOn: date.nullable().optional().default(null),
+      quantity: integer,
+    })
+    .strict(),
   dispense: z.object({ encounterId: id, idempotencyKey: z.string().min(8).max(100) }).strict(),
+  inventoryUsage: z
+    .object({
+      itemId: id,
+      quantity: integer,
+      reason: z.string().trim().min(1).max(500),
+      idempotencyKey: z.string().min(8).max(100),
+    })
+    .strict(),
   package: z
     .object({
       patientId: id,

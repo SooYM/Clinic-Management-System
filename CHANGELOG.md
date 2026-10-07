@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Searchable patient, consultation, prescription and categorized inventory lists; SOAP fields use separate full-width rows.
+- Signing reserves prescription stock automatically; dispensing deducts physical batches once, with shortages and expired holds handled atomically.
+- General supplies support optional expiry and audited idempotent usage; migrations 010–012 extend the numeric schema.
+- MC eligibility messages and Malaysia 17:00 leave-date defaults; blood-pressure format validation with nonblocking unusual-reading warnings.
+
 - Interactive staff walkthroughs highlight real controls, respect module access and explain workflows without submitting records.
 - Phone layout improvements for navigation, guide instructions, forms and tables.
 - Default fictional demo accounts use `demo`; unchanged previous defaults upgrade without losing session records.

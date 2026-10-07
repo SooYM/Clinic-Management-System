@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–009. No records or credentials are included.
+Schema-only reference after migrations001–012. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -159,7 +159,7 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | branch_id    | bigint unsigned | NO       | NULL                 |                              |
 | item_id      | bigint unsigned | NO       | NULL                 |                              |
 | batch_number | varchar(100)    | NO       | NULL                 |                              |
-| expires_on   | date            | NO       | NULL                 |                              |
+| expires_on   | date            | YES      | NULL                 |                              |
 | quantity     | int             | NO       | NULL                 |                              |
 | received_at  | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
@@ -177,6 +177,20 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | unit          | varchar(50)     | NO       | unit       |                              |
 | price_cents   | int             | NO       | NULL       |                              |
 | reorder_level | int             | NO       | 10         |                              |
+
+## inventory_usages
+
+| Column          | Type            | Nullable | Default              | Extra / generated expression |
+| --------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id              | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id       | bigint unsigned | NO       | NULL                 |                              |
+| branch_id       | bigint unsigned | NO       | NULL                 |                              |
+| item_id         | bigint unsigned | NO       | NULL                 |                              |
+| quantity        | int             | NO       | NULL                 |                              |
+| reason          | varchar(500)    | NO       | NULL                 |                              |
+| actor_id        | bigint unsigned | NO       | NULL                 |                              |
+| idempotency_key | varchar(100)    | NO       | NULL                 |                              |
+| created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
 ## invoices
 
@@ -282,6 +296,21 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | reference    | varchar(200)    | NO       |                      |                              |
 | created_at   | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
+## prescription_reservations
+
+| Column       | Type            | Nullable | Default              | Extra / generated expression |
+| ------------ | --------------- | -------- | -------------------- | ---------------------------- |
+| id           | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id    | bigint unsigned | NO       | NULL                 |                              |
+| branch_id    | bigint unsigned | NO       | NULL                 |                              |
+| encounter_id | bigint unsigned | NO       | NULL                 |                              |
+| item_id      | bigint unsigned | NO       | NULL                 |                              |
+| batch_id     | bigint unsigned | NO       | NULL                 |                              |
+| quantity     | int             | NO       | NULL                 |                              |
+| status       | varchar(20)     | NO       | RESERVED             |                              |
+| consumed_at  | datetime(3)     | YES      | NULL                 |                              |
+| created_at   | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+
 ## queue_tickets
 
 | Column            | Type            | Nullable | Default              | Extra / generated expression                                                                                                      |
@@ -359,6 +388,7 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | reason         | varchar(2000)   | NO       | NULL                 |                              |
 | actor_id       | bigint unsigned | NO       | NULL                 |                              |
 | created_at     | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| usage_id       | bigint unsigned | YES      | NULL                 |                              |
 
 ## tenants
 

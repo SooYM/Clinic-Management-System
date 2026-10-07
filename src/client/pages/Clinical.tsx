@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../api';
+import { api, isDemo } from '../api';
 import {
   Empty,
   ErrorNotice,
@@ -7,18 +7,22 @@ import {
   MutationForm,
   PageTitle,
   Panel,
-  PatientSelect,
+  SearchablePatientSelect,
   ResourceState,
   Status,
   formText,
   useResource,
   useRole,
+  useDebouncedValue,
 } from '../components';
 import { type Patient, type InventoryItem, dateTime, humanize } from '../types';
 import ClinicalDocuments from './ClinicalDocuments';
+import { defaultMcStartDate } from '../../shared/clinic-dates';
+import { parseBloodPressure } from '../../shared/blood-pressure';
 interface Encounter {
   id: number;
   patientId: number;
+  practitionerId: number;
   patientName: string;
   subjective: string;
   objective: string;
@@ -47,20 +51,87 @@ interface Document {
   status: string;
   verificationUrl?: string;
 }
-export default function Clinical() {
+function McLeaveStart() {
+  const [initialDate] = useState(() => defaultMcStartDate());
+  return (
+    <Field
+      label="Leave starts"
+      hint="New MCs default to today before 5 pm Malaysia time, or tomorrow from 5 pm. Review and change when needed."
+    >
+      <input type="date" name="startDate" required defaultValue={initialDate} />
+    </Field>
+  );
+}
+function BloodPressureField({ initial }: { initial?: string | number }) {
+  const [value, setValue] = useState(String(initial ?? ''));
+  let error = '',
+    unusual = false;
+  try {
+    unusual = parseBloodPressure(value)?.unusual || false;
+  } catch (failure) {
+    error = (failure as Error).message;
+  }
+  return (
+    <Field
+      label="Blood pressure"
+      hint="SYS/DIA in mmHg; positive whole numbers with systolic higher than diastolic."
+    >
+      <input
+        name="bloodPressure"
+        placeholder="e.g. 120/80"
+        value={value}
+        aria-invalid={!!error}
+        aria-describedby={
+          error ? 'blood-pressure-error' : unusual ? 'blood-pressure-warning' : undefined
+        }
+        onChange={(event) => {
+          setValue(event.target.value);
+          try {
+            parseBloodPressure(event.target.value);
+            event.currentTarget.setCustomValidity('');
+          } catch (failure) {
+            event.currentTarget.setCustomValidity((failure as Error).message);
+          }
+        }}
+      />
+      {error && (
+        <small id="blood-pressure-error" role="alert">
+          {error}
+        </small>
+      )}
+      {unusual && (
+        <small id="blood-pressure-warning" role="status">
+          Outside common monitor operating ranges (SYS 60–260, DIA 40–215). Verify this reading; you
+          can still record it. These are not healthy or diagnostic ranges.
+        </small>
+      )}
+    </Field>
+  );
+}
+export default function Clinical({ practitionerId }: { practitionerId: number }) {
   const role = useRole();
-  const encounters = useResource<Encounter[]>('/encounters');
-  const patients = useResource<Patient[]>('/references/patients');
+  const [encounterSearch, setEncounterSearch] = useState('');
+  const encounterTerm = useDebouncedValue(encounterSearch.trim());
+  const encounters = useResource<Encounter[]>(
+    `/encounters?search=${encodeURIComponent(encounterTerm)}`,
+  );
   const items = useResource<InventoryItem[]>('/references/medications');
   const [selected, setSelected] = useState<Encounter>();
   const [documentKind, setDocumentKind] = useState('MC');
   const [doc, setDoc] = useState<Document>();
   const [error, setError] = useState('');
+  const [prescriptionSearch, setPrescriptionSearch] = useState('');
   const patientResource = useResource<Patient>(
     selected ? `/clinical/patients/${selected.patientId}` : '',
   );
   const patient =
     patientResource.data?.id === selected?.patientId ? patientResource.data : undefined;
+  const matchingEncounters = encounters.data || [];
+  const matchingRecordedPrescriptions = (selected?.prescriptions || []).filter((rx) =>
+    `${items.data?.find((item) => item.id === rx.itemId)?.name || rx.itemId} ${rx.dosage}`
+      .toLowerCase()
+      .includes(prescriptionSearch.trim().toLowerCase()),
+  );
   return (
     <>
       <PageTitle
@@ -102,6 +173,7 @@ export default function Clinical() {
               if (selected?.status === 'SIGNED')
                 throw new Error('Signed encounters cannot be edited.');
               const itemId = Number(formText(f, 'itemId'));
+              parseBloodPressure(formText(f, 'bloodPressure'));
               const body = {
                 patientId: selected?.patientId || Number(formText(f, 'patientId')),
                 specialty: selected?.specialty || formText(f, 'specialty'),
@@ -142,7 +214,7 @@ export default function Clinical() {
               setSelected(saved);
             }}
           >
-            {!selected && <PatientSelect patients={patients.data || []} />}
+            {!selected && <SearchablePatientSelect />}
             <div className="form-grid">
               <Field label="Consultation template">
                 <select name="specialty" defaultValue={selected?.specialty || 'GP'}>
@@ -157,13 +229,7 @@ export default function Clinical() {
                   <option>SIGNED</option>
                 </select>
               </Field>
-              <Field label="Blood pressure">
-                <input
-                  name="bloodPressure"
-                  placeholder="e.g. 120/80"
-                  defaultValue={selected?.vitals?.bloodPressure}
-                />
-              </Field>
+              <BloodPressureField initial={selected?.vitals?.bloodPressure} />
               <Field label="Temperature (°C)">
                 <input
                   name="temperature"
@@ -190,7 +256,22 @@ export default function Clinical() {
             </Field>
             <fieldset>
               <legend>Add prescription</legend>
-              {selected?.prescriptions?.map((rx, index) => (
+              {!!selected?.prescriptions?.length && (
+                <Field label="Search recorded prescriptions">
+                  <input
+                    type="search"
+                    value={prescriptionSearch}
+                    onChange={(event) => setPrescriptionSearch(event.target.value)}
+                    placeholder="Medicine or dosage instructions"
+                  />
+                </Field>
+              )}
+              {!!prescriptionSearch && !matchingRecordedPrescriptions.length && (
+                <p className="form-help" role="status">
+                  No recorded medicines match this search. The saved prescription remains unchanged.
+                </p>
+              )}
+              {matchingRecordedPrescriptions.map((rx, index) => (
                 <p key={index} className="form-help">
                   Existing: {items.data?.find((i) => i.id === rx.itemId)?.name || rx.itemId} ·{' '}
                   {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
@@ -259,15 +340,27 @@ export default function Clinical() {
               )
             }
           >
+            <Field
+              label="Search consultations"
+              hint="Search branch consultations by patient, assessment or encounter ID."
+            >
+              <input
+                type="search"
+                value={encounterSearch}
+                onChange={(event) => setEncounterSearch(event.target.value)}
+                placeholder="Patient, assessment or encounter ID"
+              />
+            </Field>
             <ResourceState {...encounters}>
-              {encounters.data?.length ? (
-                encounters.data.map((e) => (
+              {matchingEncounters.length ? (
+                matchingEncounters.map((e) => (
                   <button
                     className={`encounter-row ${selected?.id === e.id ? 'selected' : ''}`}
                     key={e.id}
                     onClick={() => {
                       setSelected(e);
                       setDoc(undefined);
+                      setPrescriptionSearch('');
                     }}
                   >
                     <strong>{e.patientName || 'Patient'}</strong>
@@ -279,8 +372,12 @@ export default function Clinical() {
                 ))
               ) : (
                 <Empty
-                  title="No consultations recorded"
-                  description="Start a consultation to create the patient's first SOAP note."
+                  title={encounterTerm ? 'No matching consultations' : 'No consultations recorded'}
+                  description={
+                    encounterTerm
+                      ? 'Change or clear the search to see recent consultations.'
+                      : "Start a consultation to create the patient's first SOAP note."
+                  }
                 />
               )}
             </ResourceState>
@@ -288,6 +385,12 @@ export default function Clinical() {
           <Panel title="Clinical documents">
             {selected && role === 'DOCTOR' ? (
               <>
+                {isDemo && (
+                  <p className="form-help">
+                    Browser demo: issuance creates a simulated record only. PDFs and clinical
+                    signatures are unavailable.
+                  </p>
+                )}
                 <div className="segmented">
                   {['MC', 'REFERRAL', 'LAB'].map((k) => (
                     <button
@@ -303,8 +406,16 @@ export default function Clinical() {
                   ))}
                 </div>
                 <MutationForm
-                  key={documentKind}
+                  key={`${selected.id}:${documentKind}`}
                   label="Issue document"
+                  disabled={
+                    selected.status !== 'SIGNED' || selected.practitionerId !== practitionerId
+                  }
+                  disabledReason={
+                    selected.status !== 'SIGNED'
+                      ? 'Sign this consultation first, then issue the document.'
+                      : 'Only this consultation’s attending GP can issue its documents. Sign in with that GP account.'
+                  }
                   onSubmit={async (f) => {
                     setError('');
                     const issued = await api.post<Document>('/documents', {
@@ -330,9 +441,7 @@ export default function Clinical() {
                 >
                   {documentKind === 'MC' ? (
                     <>
-                      <Field label="Leave starts">
-                        <input type="date" name="startDate" required />
-                      </Field>
+                      <McLeaveStart />
                       <div className="actions">
                         {[1, 2, 3].map((days) => (
                           <button

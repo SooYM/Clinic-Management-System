@@ -36,7 +36,7 @@ The demo server returns 503 for `/api/*`. Actual signed documents, QR verificati
 
 ## Real local application
 
-Use `npm run build` plus `npm start`, or `npm run dev`, with the MySQL schema and private local .env. Follow [DEPLOYMENT.md](DEPLOYMENT.md) for migrations, separate runtime credentials, bootstrap, and production configuration. Run migrations 001–009 in order; never run demo seed against MySQL. Existing local data remains separate from the Render browser demo.
+Use `npm run build` plus `npm start`, or `npm run dev`, with the MySQL schema and private local .env. Follow [DEPLOYMENT.md](DEPLOYMENT.md) for migrations, separate runtime credentials, bootstrap, and production configuration. Run migrations 001–012 in order; never run demo seed against MySQL. Existing local data remains separate from the Render browser demo.
 
 ## Validation limits
 

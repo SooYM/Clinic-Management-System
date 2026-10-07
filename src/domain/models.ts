@@ -84,16 +84,20 @@ export class ClinicalEncounter {
 
 export class FefoAllocator {
   static allocate(
-    batches: { id: number; quantity: number; expires_on: string }[],
+    batches: { id: number; quantity: number; expires_on: string | null }[],
     quantity: number,
     today: string,
+    allowNonExpiring = false,
   ) {
     if (!Number.isSafeInteger(quantity) || quantity < 1)
       throw new DomainError('INVALID_QUANTITY', 'Quantity must be positive integer.');
     let remaining = quantity;
     const allocations: { batchId: number; quantity: number }[] = [];
-    for (const batch of [...batches].sort((a, b) => a.expires_on.localeCompare(b.expires_on))) {
-      if (batch.expires_on <= today || batch.quantity <= 0) continue;
+    for (const batch of [...batches].sort((a, b) =>
+      (a.expires_on || '9999-12-31').localeCompare(b.expires_on || '9999-12-31'),
+    )) {
+      if ((batch.expires_on ? batch.expires_on <= today : !allowNonExpiring) || batch.quantity <= 0)
+        continue;
       const taken = Math.min(remaining, batch.quantity);
       if (taken) allocations.push({ batchId: batch.id, quantity: taken });
       remaining -= taken;

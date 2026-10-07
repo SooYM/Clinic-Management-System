@@ -22,13 +22,16 @@ flowchart TD
   CheckIn --> Queue[Versioned queue ticket; assign GP and room]
   Queue --> SOAP[Attending GP records SOAP and prescriptions]
   SOAP --> Review[Review allergies, medicine instructions and chart]
-  Review --> Sign[GP signs immutable encounter]
+  Review --> Reservable{Free eligible stock can cover all prescriptions?}
+  Reservable -->|No| Draft[Keep draft; no partial holds or sign-off]
+  Draft --> Review
+  Reservable -->|Yes or no medicines| Sign[GP signs immutable encounter and reserves stock atomically]
   Sign --> Rx{Medication prescribed?}
   Rx -->|Yes| Pending[Signed undispensed work in dispensary]
   Pending --> Stock{Eligible FEFO stock sufficient?}
   Stock -->|No| Receive[No partial depletion; receive suitable batches or review prescription]
   Receive --> Pending
-  Stock -->|Yes| Dispense[Atomic dispense and movement ledger]
+  Stock -->|Yes| Dispense[Close own holds; atomic physical dispense and movement ledger]
   Rx -->|No| Payment[Staff moves visit to payment]
   Dispense --> Payment
   Payment --> Checkout[Itemized invoice and split tender]
@@ -87,6 +90,10 @@ sequenceDiagram
 
 Use current versions after conflicts; never overwrite silently. Retry uncertain financial responses with the same key and unchanged payload.
 Failed checkout does not imply an invoice exists. Repeated dispense cannot allocate stock twice.
+
+Signing reduces available stock by reservations, while batch quantity remains physical stock until dispensing.
+An expired hold can be replaced with eligible fresh stock during the dispense transaction; failure restores prior holds.
+Non-medication supply usage follows its own idempotent allocation and movement ledger, without requiring a prescription or permitting medication bypass.
 
 ## Notification delivery
 

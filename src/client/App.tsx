@@ -347,7 +347,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                   ) : page === 'appointments' ? (
                     <Appointments {...references} />
                   ) : page === 'clinical' ? (
-                    <Clinical />
+                    <Clinical practitionerId={user.id} />
                   ) : page === 'inventory' ? (
                     <Inventory />
                   ) : page === 'billing' ? (

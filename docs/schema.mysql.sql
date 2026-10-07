@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-009, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-012, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -218,14 +218,14 @@ CREATE TABLE `inventory_batches` (
   `branch_id` bigint unsigned NOT NULL,
   `item_id` bigint unsigned NOT NULL,
   `batch_number` varchar(100) NOT NULL,
-  `expires_on` date NOT NULL,
+  `expires_on` date DEFAULT NULL,
   `quantity` int NOT NULL,
   `received_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `item_id` (`item_id`,`batch_number`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
+  UNIQUE KEY `batch_item_scope` (`tenant_id`,`branch_id`,`item_id`,`id`),
   KEY `batches_fefo` (`item_id`,`expires_on`,`received_at`),
-  KEY `inventory_batches_ibfk_1` (`tenant_id`,`branch_id`,`item_id`),
   CONSTRAINT `inventory_batches_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `item_id`) REFERENCES `inventory_items` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `inventory_batches_chk_1` CHECK ((`quantity` >= 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -247,6 +247,26 @@ CREATE TABLE `inventory_items` (
   CONSTRAINT `inventory_items_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `inventory_items_chk_1` CHECK ((`price_cents` >= 0)),
   CONSTRAINT `inventory_items_chk_2` CHECK ((`reorder_level` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `inventory_usages` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint unsigned NOT NULL,
+  `branch_id` bigint unsigned NOT NULL,
+  `item_id` bigint unsigned NOT NULL,
+  `quantity` int NOT NULL,
+  `reason` varchar(500) NOT NULL,
+  `actor_id` bigint unsigned NOT NULL,
+  `idempotency_key` varchar(100) NOT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `usage_idempotency` (`branch_id`,`idempotency_key`),
+  UNIQUE KEY `usage_scope` (`tenant_id`,`branch_id`,`id`),
+  KEY `tenant_id` (`tenant_id`,`branch_id`,`item_id`),
+  KEY `actor_id` (`actor_id`),
+  CONSTRAINT `inventory_usages_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `item_id`) REFERENCES `inventory_items` (`tenant_id`, `branch_id`, `id`),
+  CONSTRAINT `inventory_usages_ibfk_2` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`),
+  CONSTRAINT `inventory_usages_chk_1` CHECK ((`quantity` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `invoices` (
@@ -389,6 +409,29 @@ CREATE TABLE `payments` (
   CONSTRAINT `payments_chk_2` CHECK ((`amount_cents` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `prescription_reservations` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint unsigned NOT NULL,
+  `branch_id` bigint unsigned NOT NULL,
+  `encounter_id` bigint unsigned NOT NULL,
+  `item_id` bigint unsigned NOT NULL,
+  `batch_id` bigint unsigned NOT NULL,
+  `quantity` int NOT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'RESERVED',
+  `consumed_at` datetime(3) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `reservation_batch` (`encounter_id`,`batch_id`),
+  KEY `reservation_available` (`batch_id`,`consumed_at`),
+  KEY `tenant_id` (`tenant_id`,`branch_id`,`encounter_id`),
+  KEY `tenant_id_2` (`tenant_id`,`branch_id`,`item_id`,`batch_id`),
+  CONSTRAINT `prescription_reservations_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `encounter_id`) REFERENCES `encounters` (`tenant_id`, `branch_id`, `id`),
+  CONSTRAINT `prescription_reservations_ibfk_2` FOREIGN KEY (`tenant_id`, `branch_id`, `item_id`) REFERENCES `inventory_items` (`tenant_id`, `branch_id`, `id`),
+  CONSTRAINT `prescription_reservations_ibfk_3` FOREIGN KEY (`tenant_id`, `branch_id`, `item_id`, `batch_id`) REFERENCES `inventory_batches` (`tenant_id`, `branch_id`, `item_id`, `id`),
+  CONSTRAINT `prescription_reservations_chk_1` CHECK ((`quantity` > 0)),
+  CONSTRAINT `prescription_reservations_chk_2` CHECK ((`status` in (_utf8mb4'RESERVED',_utf8mb4'FULFILLED',_utf8mb4'RELEASED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `queue_tickets` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `tenant_id` bigint unsigned NOT NULL,
@@ -481,11 +524,14 @@ CREATE TABLE `stock_movements` (
   `reason` varchar(2000) NOT NULL,
   `actor_id` bigint unsigned NOT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `usage_id` bigint unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `stock_movements_batch_history` (`batch_id`,`created_at`),
   KEY `stock_movements_ibfk_1` (`tenant_id`,`branch_id`,`batch_id`),
   KEY `stock_movements_ibfk_2` (`tenant_id`,`branch_id`,`dispense_id`),
   KEY `stock_movements_ibfk_3` (`tenant_id`,`actor_id`),
+  KEY `movement_usage_fk` (`tenant_id`,`branch_id`,`usage_id`),
+  CONSTRAINT `movement_usage_fk` FOREIGN KEY (`tenant_id`, `branch_id`, `usage_id`) REFERENCES `inventory_usages` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `stock_movements_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `batch_id`) REFERENCES `inventory_batches` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `stock_movements_ibfk_2` FOREIGN KEY (`tenant_id`, `branch_id`, `dispense_id`) REFERENCES `dispenses` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `stock_movements_ibfk_3` FOREIGN KEY (`tenant_id`, `actor_id`) REFERENCES `users` (`tenant_id`, `id`),

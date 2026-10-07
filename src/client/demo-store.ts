@@ -342,6 +342,21 @@ function seed(): State {
         version: 1,
       },
     ],
+    reservations: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        encounterId: 1,
+        itemId: 1,
+        batchId: 1,
+        quantity: 3,
+        status: 'RESERVED',
+        consumedAt: null,
+        createdAt: timestamp,
+      },
+    ],
+    usages: [],
     audit: [],
   };
   return {
@@ -413,6 +428,11 @@ export class DemoClinic {
     } catch {
       this.state = seed();
     }
+    // Existing browser sessions retain historical prescriptions without adding retroactive holds.
+    for (const table of ['reservations', 'usages']) {
+      this.state.rows[table] ||= [];
+      this.state.counters[table] ??= Math.max(0, ...this.state.rows[table].map((r) => r.id));
+    }
     // Upgrade only unchanged original demo accounts; retain records and user-changed passwords.
     for (const [index, alias] of ['admin', 'gp', 'reception', 'nurse', 'therapist'].entries()) {
       const user = this.state.rows.users.find(
@@ -471,13 +491,58 @@ export class DemoClinic {
     };
   }
   private inventory(branch: number): Row[] {
-    return this.scoped('inventory', branch).map((item) => ({
-      ...item,
-      batches: this.scoped('batches', branch).filter((b) => b.itemId === item.id),
-      stockQuantity: this.scoped('batches', branch)
-        .filter((b) => b.itemId === item.id && b.expiresOn > today())
-        .reduce((sum, b) => sum + b.quantity, 0),
-    }));
+    return this.scoped('inventory', branch).map((item) => {
+      const batches = this.scoped('batches', branch).filter((b) => b.itemId === item.id);
+      const eligible = batches.filter((b) =>
+        b.expiresOn ? b.expiresOn > today() : item.category !== 'MEDICATION',
+      );
+      const onHandQuantity = eligible.reduce((sum, b) => sum + b.quantity, 0);
+      const reservedQuantity = this.scoped('reservations', branch)
+        .filter((r) => !r.consumedAt && eligible.some((b) => b.id === r.batchId))
+        .reduce((sum, r) => sum + r.quantity, 0);
+      return {
+        ...item,
+        batches,
+        onHandQuantity,
+        reservedQuantity,
+        stockQuantity: onHandQuantity - reservedQuantity,
+      };
+    });
+  }
+  private reserve(encounter: Row, branch: number) {
+    for (const rx of encounter.prescriptions) {
+      const allocations = FefoAllocator.allocate(
+        this.availableBatches(rx.itemId, branch),
+        rx.quantity,
+        today(),
+      );
+      for (const a of allocations)
+        this.add(
+          'reservations',
+          {
+            encounterId: encounter.id,
+            itemId: rx.itemId,
+            batchId: a.batchId,
+            quantity: a.quantity,
+            consumedAt: null,
+            status: 'RESERVED',
+          },
+          branch,
+        );
+    }
+  }
+  private availableBatches(itemId: number, branch: number) {
+    return this.scoped('batches', branch)
+      .filter((b) => b.itemId === itemId)
+      .map((b) => ({
+        id: b.id,
+        quantity:
+          b.quantity -
+          this.scoped('reservations', branch)
+            .filter((r) => !r.consumedAt && r.batchId === b.id)
+            .reduce((sum, r) => sum + r.quantity, 0),
+        expires_on: b.expiresOn,
+      }));
   }
   private notice(patient: Row, template: string, branch: number) {
     if (patient.notificationConsent)
@@ -854,6 +919,7 @@ export class DemoClinic {
           version: e.version + 1,
           signedAt: v.status === 'SIGNED' ? now() : null,
         });
+        if (v.status === 'SIGNED') this.reserve(e, branch);
         return this.enrich(e);
       }
       if (v.queueTicketId) this.record('queue', v.queueTicketId, branch);
@@ -862,7 +928,10 @@ export class DemoClinic {
         { ...v, practitionerId: user.id, signedAt: v.status === 'SIGNED' ? now() : null },
         branch,
       );
-      if (v.status === 'SIGNED') this.notice(p, 'REFILL', branch);
+      if (v.status === 'SIGNED') {
+        this.reserve(e, branch);
+        this.notice(p, 'REFILL', branch);
+      }
       return this.enrich(e);
     }
     if (route === '/inventory' && method === 'POST') {
@@ -874,7 +943,9 @@ export class DemoClinic {
     if (route === '/inventory/batches' && method === 'POST') {
       const v = schemas.batch.parse(body);
       this.record('inventory', v.itemId, branch);
-      if (v.expiresOn <= today()) fail('Receive only stock expiring after today.');
+      if (v.expiresOn && v.expiresOn <= today()) fail('Receive only stock expiring after today.');
+      if (this.record('inventory', v.itemId, branch).category === 'MEDICATION' && !v.expiresOn)
+        fail('Medication batches require an expiry date.');
       if (
         this.scoped('batches', branch).some(
           (b) => b.itemId === v.itemId && b.batchNumber === v.batchNumber,
@@ -887,6 +958,25 @@ export class DemoClinic {
         stockQuantity: this.inventory(branch).find((i) => i.id === v.itemId)!.stockQuantity,
       };
     }
+    if (route === '/inventory/usage' && method === 'POST') {
+      const v = schemas.inventoryUsage.parse(body),
+        prior = this.scoped('usages', branch).find((u) => u.idempotencyKey === v.idempotencyKey);
+      if (prior) {
+        if (prior.itemId !== v.itemId || prior.quantity !== v.quantity || prior.reason !== v.reason)
+          fail('Usage key has different details.', 409);
+        return prior;
+      }
+      if (this.record('inventory', v.itemId, branch).category === 'MEDICATION')
+        fail('Medication requires signed prescription dispensing.');
+      for (const a of FefoAllocator.allocate(
+        this.availableBatches(v.itemId, branch),
+        v.quantity,
+        today(),
+        true,
+      ))
+        this.record('batches', a.batchId, branch).quantity -= a.quantity;
+      return this.add('usages', { ...v, actorId: user.id }, branch);
+    }
     if (route === '/dispensary/encounters')
       return {
         data: this.scoped('encounters', branch)
@@ -894,6 +984,19 @@ export class DemoClinic {
             (e) =>
               e.status === 'SIGNED' &&
               e.prescriptions.length &&
+              [
+                this.record('patients', e.patientId, branch).name,
+                this.record('patients', e.patientId, branch).nationalId,
+                String(e.patientId),
+                String(e.id),
+                this.state.rows.users.find((u) => u.id === e.practitionerId)?.name,
+                ...e.prescriptions.map(
+                  (rx: Row) => this.record('inventory', rx.itemId, branch).name,
+                ),
+              ]
+                .join(' ')
+                .toLowerCase()
+                .includes((url.searchParams.get('search') || '').toLowerCase()) &&
               !this.scoped('dispenses', branch).some((d) => d.encounterId === e.id),
           )
           .map((e) => {
@@ -928,15 +1031,26 @@ export class DemoClinic {
       if (this.scoped('dispenses', branch).some((d) => d.encounterId === e.id))
         fail('Already dispensed.', 409);
       this.checkPrescription(e.prescriptions, this.record('patients', e.patientId, branch), branch);
+      const holds = this.scoped('reservations', branch).filter(
+        (r) => r.encounterId === e.id && !r.consumedAt,
+      );
+      for (const hold of holds) {
+        hold.consumedAt = now();
+        hold.status = 'RELEASED';
+      }
       for (const rx of e.prescriptions) {
-        const batches = this.scoped('batches', branch).filter((b) => b.itemId === rx.itemId),
-          allocations = FefoAllocator.allocate(
-            batches.map((b) => ({ ...b, id: b.id, quantity: b.quantity, expires_on: b.expiresOn })),
-            rx.quantity,
-            today(),
-          );
-        for (const allocation of allocations)
+        const allocations = FefoAllocator.allocate(
+          this.availableBatches(rx.itemId, branch),
+          rx.quantity,
+          today(),
+        );
+        for (const allocation of allocations) {
           this.record('batches', allocation.batchId, branch).quantity -= allocation.quantity;
+          const original = holds.find(
+            (h) => h.batchId === allocation.batchId && h.quantity === allocation.quantity,
+          );
+          if (original) original.status = 'FULFILLED';
+        }
       }
       return this.add('dispenses', { ...v, patientId: e.patientId, actorId: user.id }, branch);
     }
@@ -989,6 +1103,27 @@ export class DemoClinic {
         e = this.record('encounters', v.encounterId, branch);
       if (e.status !== 'SIGNED' || e.practitionerId !== user.id)
         fail('Attending GP must sign first.');
+      let endDate: string | null = null;
+      if (v.kind === 'MC') {
+        if (!v.startDate || !v.days) fail('Start date and number of days required.');
+        const end = new Date(v.startDate! + 'T00:00:00Z');
+        end.setUTCDate(end.getUTCDate() + v.days! - 1);
+        endDate = end.toISOString().slice(0, 10);
+        if (
+          this.state.rows.documents.some(
+            (d) =>
+              d.patientId === e.patientId &&
+              d.kind === 'MC' &&
+              !d.revokedAt &&
+              d.startDate <= endDate! &&
+              d.endDate >= v.startDate!,
+          )
+        )
+          fail('Sick leave dates overlap an existing active certificate.', 409);
+      }
+      if (v.kind === 'REFERRAL' && (!v.target || !v.reason))
+        fail('Target and referral reason required.');
+      if (v.kind === 'LAB' && !v.panels?.length) fail('Select at least one investigation panel.');
       const d = this.add(
         'documents',
         {
@@ -996,9 +1131,10 @@ export class DemoClinic {
           patientId: e.patientId,
           practitionerId: user.id,
           diagnosisRedacted: v.diagnosisRedacted,
+          endDate,
           documentNumber: 'DEMO-UNSIGNED-' + (this.state.counters.documents + 1),
           verificationUrl: '/demo-unavailable',
-          payload: { ...v, demo: true },
+          payload: { ...v, endDate, demo: true },
         },
         branch,
       );
@@ -1128,8 +1264,37 @@ export class DemoClinic {
         '/notifications',
       ].includes(route)
     )
-      return { data: this.scoped(route.slice(1), branch).map((r) => this.enrich(r)) };
-    if (route === '/inventory' && method === 'GET') return { data: this.inventory(branch) };
+      return {
+        data: this.scoped(route.slice(1), branch)
+          .map((r) => this.enrich(r))
+          .filter(
+            (r: Row) =>
+              route !== '/encounters' ||
+              [
+                r.patientName,
+                this.record('patients', r.patientId, branch).nationalId,
+                r.patientId,
+                r.id,
+                r.assessment,
+                r.practitionerName,
+              ]
+                .join(' ')
+                .toLowerCase()
+                .includes((url.searchParams.get('search') || '').toLowerCase()),
+          ),
+      };
+    if (route === '/inventory' && method === 'GET')
+      return {
+        data: this.inventory(branch).filter(
+          (r) =>
+            (!url.searchParams.get('category') ||
+              r.category === url.searchParams.get('category')) &&
+            [r.name, r.sku, r.ingredient, r.category]
+              .join(' ')
+              .toLowerCase()
+              .includes((url.searchParams.get('search') || '').toLowerCase()),
+        ),
+      };
     fail('This operation needs the real MySQL application.', 503);
   }
   private doctor(id: number, branch: number) {

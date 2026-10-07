@@ -130,7 +130,7 @@ const tours: Record<string, Step[]> = {
     {
       target: field('note-status'),
       title: 'Review before signing',
-      text: 'Keep the note as a draft while working. Signing makes the consultation permanent and eligible prescriptions available to dispensary.',
+      text: 'Keep the note as a draft while working. Signing makes it permanent and reserves eligible medicine stock, reducing available quantity before dispensing.',
     },
     {
       target: panel('clinical-documents'),
@@ -142,7 +142,7 @@ const tours: Record<string, Step[]> = {
     {
       target: anchor('open-inventory-item'),
       title: 'Add a catalog item',
-      text: 'A catalog entry describes the medicine; it does not create available stock.',
+      text: 'Catalog medicines, consumables and retail products such as lab coats. Adding an item does not create available stock.',
     },
     {
       target: field('item-name'),
@@ -153,7 +153,12 @@ const tours: Record<string, Step[]> = {
     {
       target: `${panel('receive-a-stock-batch')} ${field('batch-number')}`,
       title: 'Receive a batch',
-      text: 'Select an item and record batch number, expiry and quantity. Only eligible unexpired stock can be dispensed.',
+      text: 'Select an item and record batch number and quantity. Medicines need future expiry; supplies and retail items may have no expiry.',
+    },
+    {
+      target: `${panel('use-supplies-and-retail-stock')} .panel-heading`,
+      title: 'Record supplies or retail usage',
+      text: 'Choose a consumable or retail item, quantity and reason to record physical usage. Medication must use signed-prescription dispensing; the guide never submits usage.',
     },
     {
       target: panel('dispense-a-signed-prescription'),
@@ -163,7 +168,7 @@ const tours: Record<string, Step[]> = {
     {
       target: `${panel('stock-catalogue')} .panel-heading`,
       title: 'Check remaining stock',
-      text: 'FEFO uses the earliest eligible expiry. Insufficient stock prevents the whole dispense. Refresh reads current quantities.',
+      text: 'Available excludes signed-prescription reservations. Unexpired stock is eligible physical stock; Reserved is held for prescriptions. Dispensing reduces physical stock once.',
     },
   ],
   billing: [

@@ -64,10 +64,14 @@ export interface InventoryItem {
   name: string;
   sku: string;
   unit: string;
+  category?: string;
+  ingredient?: string;
   reorderLevel: number;
   quantity?: number;
   stockQuantity?: number;
-  batches?: { id: number; batchNumber: string; quantity: number; expiresOn: string }[];
+  onHandQuantity?: number;
+  reservedQuantity?: number;
+  batches?: { id: number; batchNumber: string; quantity: number; expiresOn: string | null }[];
 }
 export const queueStates = [
   'REGISTERED',

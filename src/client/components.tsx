@@ -23,6 +23,14 @@ export function useModules() {
 export function useRole() {
   return useContext(RoleContext);
 }
+export function useDebouncedValue<T>(value: T, delay = 300) {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return settled;
+}
 export function useResource<T>(path: string) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState('');
@@ -248,7 +256,9 @@ export function SearchablePatientSelect() {
         </select>
       </Field>
       {!resource.loading && !resource.error && !options.length && (
-        <p className="form-help">No matching patient. Register the patient before booking.</p>
+        <p className="form-help">
+          No matching patient. Register the patient before starting this workflow.
+        </p>
       )}
     </div>
   );

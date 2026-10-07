@@ -182,7 +182,18 @@ export function createApp(service = new ClinicService()) {
     api.get(
       `/${kind}`,
       asyncRoute(async (req, res) => {
-        res.json({ data: await service.list(req.context, kind, String(req.query.search || '')) });
+        const category =
+          kind === 'inventory'
+            ? schemas.item.shape.category.optional().parse(req.query.category)
+            : undefined;
+        res.json({
+          data: await service.list(
+            req.context,
+            kind,
+            String(req.query.search || ''),
+            category || '',
+          ),
+        });
       }),
     );
   }
@@ -239,6 +250,9 @@ export function createApp(service = new ClinicService()) {
   );
   mutation('/inventory', schemas.item, (r, i) => service.addItem(r.context, i));
   mutation('/inventory/batches', schemas.batch, (r, i) => service.receiveBatch(r.context, i));
+  mutation('/inventory/usage', schemas.inventoryUsage, (r, i) =>
+    service.useInventory(r.context, i),
+  );
   mutation('/dispenses', schemas.dispense, (r, i) => service.dispense(r.context, i));
 
   mutation('/invoices', schemas.invoice, (r, i) => service.createInvoice(r.context, i));

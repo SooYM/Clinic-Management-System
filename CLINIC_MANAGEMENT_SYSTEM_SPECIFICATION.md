@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 22 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migration 009.
+All 24 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–012.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -93,6 +93,10 @@ Queue-clearance estimates require at least five qualifying recent consultation o
 ## 5. GP consultation and prescribing
 
 The clinical workspace records subjective history, objective findings, assessment, plan, vitals and procedure notes.
+SOAP fields appear on separate full-width rows. Patient and prescription lists expose visible search controls.
+Blood pressure uses positive whole-number `SYS/DIA`, with systolic greater than diastolic; malformed entries are rejected.
+Readings outside the reference monitor limits (SYS 60–260, DIA 40–215 mmHg) trigger a warning and remain recordable.
+These limits flag data for review; they are not a healthy range or diagnosis.
 Allergies and conditions are visible before prescribing. The application does not generate diagnoses or medication decisions.
 Drafts are editable by their attending GP with optimistic versions. Signed encounters are immutable.
 
@@ -105,10 +109,20 @@ Medication selectors use a minimal reference API so clinical access does not req
 
 Catalog items store SKU, name, ingredient, category, unit, price in cents and reorder level.
 Creating an item does not create stock. Batch receipt records batch number, expiry, quantity and a movement ledger entry.
+The catalog supports medications, consumables and retail supplies such as lab coats.
+Medication expiry is mandatory; non-medication batches may have no expiry.
+Non-medication usage records item, quantity, reason and staff member with an idempotent movement ledger; it cannot bypass medication dispensing.
+
+Signing a prescription reserves eligible batches atomically and reduces available stock immediately; drafts reserve nothing.
+Insufficient free stock aborts signing without saving a signed encounter or partial holds.
+`stockQuantity` is available stock; `onHandQuantity` is eligible unexpired physical stock; `reservedQuantity` is active eligible prescription holds.
 
 Pending work includes only branch-scoped signed encounters containing prescriptions that have not already been dispensed.
 The dispensary projection includes medicine instructions and allergies but excludes full SOAP notes.
-FEFO consumes the earliest eligible expiry first. Expiry on or before the clinic date is ineligible.
+FEFO consumes the earliest eligible expiry first. Expiry on or before the clinic date is ineligible; undated supplies sort after dated batches.
+Dispensing releases its own holds and allocates eligible stock excluding other prescriptions' holds, then deducts physical units once.
+Expired reserved batches can be replaced with fresh eligible stock during dispensing; failed allocation restores prior holds and quantities.
+Historical signed encounters without holds remain dispensable from free stock. Existing records are not backfilled or reset.
 All prescribed quantities are allocated atomically; insufficient stock leaves the whole dispense unchanged.
 Idempotency keys and unique encounter dispensing prevent duplicate depletion.
 Stock totals and pending work refresh after successful actions.
@@ -127,6 +141,8 @@ Refunds, fiscal e-invoice integration and automated settlement reconciliation ar
 ## 8. Clinical documents
 
 The attending GP issues MC, referral and laboratory documents from signed consultations.
+The MC form defaults leave start using Malaysia time: before 17:00 uses today; 17:00 onward uses tomorrow.
+Staff can override the default date. Draft or other-practitioner encounters show an eligibility explanation before issuance.
 Documents retain payload snapshots, document numbers, a signing HMAC and hashed public verification tokens.
 PDF generation includes verification QR codes. Public verification returns minimal authenticity metadata without patient names or diagnoses.
 
@@ -168,7 +184,7 @@ It uses OOP where behavior needs invariants rather than adding empty entity wrap
 Shared identity, module and identifier contracts reduce duplicated validation.
 Reusable UI forms and minimal reference endpoints support independent module grants.
 
-The final schema has 22 entity tables, composite membership/policy keys, secret-keyed sessions and resource locks.
+The final schema has 24 entity tables, composite membership/policy keys, secret-keyed sessions and resource locks.
 Unsigned numeric keys support long-term growth, while API inputs remain within JavaScript's positive safe-integer range.
 Composite foreign keys enforce tenant/branch relationships; generated queue keys protect active-patient and room uniqueness.
 JSON captures prescriptions, vitals and immutable snapshots; typed references inside JSON require application validation.

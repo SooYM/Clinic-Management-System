@@ -26,15 +26,23 @@ export class ClinicService {
     private readonly db: Database = pool,
     private readonly transact: typeof transaction = transaction,
   ) {}
-  async list(ctx: Context, kind: string, search = '') {
+  async list(ctx: Context, kind: string, search = '', category = '') {
     const t = ctx.actor.tenantId,
       b = ctx.branchId;
     const queries: Record<string, string> = {
       patients: `SELECT p.*,p.id patient_number FROM patients p WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.created_at DESC LIMIT 200`,
       appointments: `SELECT a.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM appointments a JOIN patients p ON p.id=a.patient_id JOIN users u ON u.id=a.practitioner_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.tenant_id=$1 AND a.branch_id=$2 ORDER BY a.starts_at DESC LIMIT 200`,
       queue: `SELECT q.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM queue_tickets q JOIN patients p ON p.id=q.patient_id LEFT JOIN users u ON u.id=q.practitioner_id LEFT JOIN rooms r ON r.id=q.room_id WHERE q.tenant_id=$1 AND q.branch_id=$2 AND q.service_date=DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) ORDER BY CASE WHEN q.priority='URGENT' THEN 0 ELSE 1 END,q.created_at LIMIT 200`,
-      encounters: `SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.tenant_id=$1 AND e.branch_id=$2 ORDER BY e.created_at DESC LIMIT 200`,
-      inventory: `SELECT i.*,coalesce(sum(CASE WHEN b.expires_on>DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) THEN b.quantity ELSE 0 END),0) stock_quantity FROM inventory_items i LEFT JOIN inventory_batches b ON b.item_id=i.id WHERE i.tenant_id=$1 AND i.branch_id=$2 GROUP BY i.id ORDER BY i.name LIMIT 200`,
+      encounters: `SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.tenant_id=$1 AND e.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR e.assessment LIKE $3 OR u.name LIKE $3) ORDER BY e.created_at DESC LIMIT 200`,
+      inventory: `SELECT i.*,
+        (SELECT COALESCE(SUM(b.quantity),0) FROM inventory_batches b
+          WHERE b.item_id=i.id AND b.tenant_id=i.tenant_id AND b.branch_id=i.branch_id
+          AND (b.expires_on>DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) OR (b.expires_on IS NULL AND i.category<>'MEDICATION'))) on_hand_quantity,
+        (SELECT COALESCE(SUM(r.quantity),0) FROM prescription_reservations r JOIN inventory_batches b ON b.id=r.batch_id AND b.item_id=r.item_id AND b.tenant_id=r.tenant_id AND b.branch_id=r.branch_id
+          WHERE r.item_id=i.id AND r.tenant_id=i.tenant_id AND r.branch_id=i.branch_id AND r.consumed_at IS NULL
+          AND (b.expires_on>DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) OR (b.expires_on IS NULL AND i.category<>'MEDICATION'))) reserved_quantity
+        FROM inventory_items i WHERE i.tenant_id=$1 AND i.branch_id=$2
+        AND (i.name LIKE $3 OR i.sku LIKE $3 OR i.ingredient LIKE $3 OR i.category LIKE $3) AND ($4='' OR i.category=$4) ORDER BY i.name LIMIT 200`,
       packages: `SELECT t.*,p.name patient_name FROM treatment_packages t JOIN patients p ON p.id=t.patient_id WHERE t.tenant_id=$1 AND t.branch_id=$2 ORDER BY t.created_at DESC LIMIT 200`,
       invoices: `SELECT i.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM invoices i JOIN patients p ON p.id=i.patient_id JOIN users u ON u.id=i.practitioner_id WHERE i.tenant_id=$1 AND i.branch_id=$2 ORDER BY i.created_at DESC LIMIT 200`,
       documents: `SELECT d.id,d.encounter_id,d.patient_id,d.practitioner_id,d.kind,d.document_number,d.payload,d.start_date,d.end_date,d.diagnosis_redacted,d.revoked_at,d.created_at,p.name patient_name,u.name practitioner_name FROM clinical_documents d JOIN patients p ON p.id=d.patient_id JOIN users u ON u.id=d.practitioner_id WHERE d.tenant_id=$1 AND d.branch_id=$2 ORDER BY d.created_at DESC LIMIT 200`,
@@ -42,7 +50,14 @@ export class ClinicService {
       commissions: `SELECT c.*,u.name practitioner_name,i.invoice_number FROM commission_ledger c JOIN users u ON u.id=c.practitioner_id JOIN invoices i ON i.id=c.invoice_id WHERE c.tenant_id=$1 AND c.branch_id=$2 ORDER BY c.created_at DESC LIMIT 200`,
     };
     const rows = (
-      await this.db.query(queries[kind], [t, b, ...(kind === 'patients' ? [`%${search}%`] : [])])
+      await this.db.query(queries[kind], [
+        t,
+        b,
+        ...(['patients', 'encounters', 'inventory'].includes(kind)
+          ? [`%${search.slice(0, 200)}%`]
+          : []),
+        ...(kind === 'inventory' ? [category] : []),
+      ])
     ).rows;
     if (kind === 'inventory')
       for (const row of rows) {
@@ -52,7 +67,9 @@ export class ClinicService {
             [row.id],
           )
         ).rows;
-        row.stock_quantity = Number(row.stock_quantity);
+        row.on_hand_quantity = Number(row.on_hand_quantity);
+        row.reserved_quantity = Number(row.reserved_quantity);
+        row.stock_quantity = row.on_hand_quantity - row.reserved_quantity;
       }
     if (kind === 'invoices')
       for (const row of rows)
@@ -401,6 +418,11 @@ export class ClinicService {
         'INVALID_MEDICATION',
         'Each prescription must reference a distinct inventory item in this branch.',
       );
+    if (rows.some((item) => item.category !== 'MEDICATION'))
+      throw new DomainError(
+        'INVALID_MEDICATION',
+        'Prescriptions require medication items; use supply usage for non-medication stock.',
+      );
     ClinicalEncounter.assertAllergySafety(patient.allergies, rows);
   }
   async saveEncounter(ctx: Context, input: any, id?: number) {
@@ -480,6 +502,8 @@ export class ClinicService {
         ));
       }
       if (input.status === 'SIGNED')
+        await this.reservePrescription(db, ctx, rows[0].id, input.prescriptions);
+      if (input.status === 'SIGNED')
         for (const rx of input.prescriptions) {
           const due = new Date();
           due.setUTCDate(due.getUTCDate() + Math.max(0, rx.durationDays - 3));
@@ -503,6 +527,54 @@ export class ClinicService {
       return camel(rows[0]);
     });
   }
+  private async availableBatches(db: Database, ctx: Context, itemId: number) {
+    await db.query(
+      'SELECT id FROM inventory_items WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+      [itemId, ctx.actor.tenantId, ctx.branchId],
+    );
+    const rows = (
+      await db.query(
+        "SELECT id,quantity,DATE_FORMAT(expires_on,'%Y-%m-%d') expires_on FROM inventory_batches WHERE tenant_id=$1 AND branch_id=$2 AND item_id=$3 AND quantity>0 ORDER BY expires_on IS NULL,expires_on,received_at,id FOR UPDATE",
+        [ctx.actor.tenantId, ctx.branchId, itemId],
+      )
+    ).rows;
+    for (const row of rows) {
+      const held = (
+        await db.query(
+          'SELECT COALESCE(SUM(quantity),0) quantity FROM prescription_reservations WHERE tenant_id=$1 AND branch_id=$2 AND batch_id=$3 AND consumed_at IS NULL',
+          [ctx.actor.tenantId, ctx.branchId, row.id],
+        )
+      ).rows[0];
+      row.quantity -= Number(held.quantity);
+    }
+    return rows;
+  }
+  private async reservePrescription(
+    db: Database,
+    ctx: Context,
+    encounterId: number,
+    prescriptions: any[],
+  ) {
+    for (const rx of [...prescriptions].sort((a, b) => a.itemId - b.itemId)) {
+      const allocations = FefoAllocator.allocate(
+        await this.availableBatches(db, ctx, rx.itemId),
+        rx.quantity,
+        today(),
+      );
+      for (const allocation of allocations)
+        await db.query(
+          'INSERT INTO prescription_reservations(tenant_id,branch_id,encounter_id,item_id,batch_id,quantity) VALUES($1,$2,$3,$4,$5,$6)',
+          [
+            ctx.actor.tenantId,
+            ctx.branchId,
+            encounterId,
+            rx.itemId,
+            allocation.batchId,
+            allocation.quantity,
+          ],
+        );
+    }
+  }
   async addItem(ctx: Context, input: any) {
     return this.transact(async (db) => {
       const { rows } = await db.query(
@@ -525,12 +597,21 @@ export class ClinicService {
   }
   async receiveBatch(ctx: Context, input: any) {
     input = schemas.batch.parse(input);
-    if (input.expiresOn <= today())
+    if (input.expiresOn && input.expiresOn <= today())
       throw new DomainError(
         'BATCH_EXPIRED',
         'Expiry date must be after today. Stock expiring today or earlier cannot be received for dispensing.',
       );
     return this.transact(async (db) => {
+      const item = (
+        await db.query(
+          'SELECT category FROM inventory_items WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+          [input.itemId, ctx.actor.tenantId, ctx.branchId],
+        )
+      ).rows[0];
+      if (!item) throw missing();
+      if (item.category === 'MEDICATION' && !input.expiresOn)
+        throw new DomainError('EXPIRY_REQUIRED', 'Medication batches require an expiry date.');
       const { rows } = await db.query(
         `INSERT INTO inventory_batches(tenant_id,branch_id,item_id,batch_number,expires_on,quantity) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
         [
@@ -549,11 +630,104 @@ export class ClinicService {
       await this.audit(db, ctx, 'RECEIVE', 'batch', rows[0].id);
       const stock = (
         await db.query(
-          'SELECT coalesce(sum(quantity),0) stock_quantity FROM inventory_batches WHERE tenant_id=$1 AND branch_id=$2 AND item_id=$3 AND expires_on>$4',
+          'SELECT coalesce(sum(quantity),0) stock_quantity FROM inventory_batches WHERE tenant_id=$1 AND branch_id=$2 AND item_id=$3 AND (expires_on IS NULL OR expires_on>$4)',
           [ctx.actor.tenantId, ctx.branchId, input.itemId, today()],
         )
       ).rows[0];
-      return { ...camel(rows[0]), stockQuantity: Number(stock.stock_quantity) };
+      const reserved = Number(
+        (
+          await db.query(
+            'SELECT COALESCE(SUM(r.quantity),0) quantity FROM prescription_reservations r JOIN inventory_batches b ON b.id=r.batch_id WHERE r.tenant_id=$1 AND r.branch_id=$2 AND r.item_id=$3 AND r.consumed_at IS NULL AND b.expires_on>$4',
+            [ctx.actor.tenantId, ctx.branchId, input.itemId, today()],
+          )
+        ).rows[0].quantity,
+      );
+      return {
+        ...camel(rows[0]),
+        stockQuantity: Number(stock.stock_quantity) - reserved,
+        onHandQuantity: Number(stock.stock_quantity),
+        reservedQuantity: reserved,
+      };
+    });
+  }
+  async useInventory(ctx: Context, input: unknown) {
+    const v = schemas.inventoryUsage.parse(input);
+    return this.transact(async (db) => {
+      await lock(db, [`inventory-usage:${ctx.branchId}:${v.idempotencyKey}`]);
+      const prior = (
+        await db.query(
+          'SELECT * FROM inventory_usages WHERE tenant_id=$1 AND branch_id=$2 AND idempotency_key=$3',
+          [ctx.actor.tenantId, ctx.branchId, v.idempotencyKey],
+        )
+      ).rows[0];
+      if (prior) {
+        if (
+          prior.item_id !== v.itemId ||
+          prior.quantity !== v.quantity ||
+          prior.reason !== v.reason
+        )
+          throw new DomainError(
+            'IDEMPOTENCY_CONFLICT',
+            'Usage key already has different details.',
+            409,
+          );
+        return camel(prior);
+      }
+      const item = (
+        await db.query(
+          'SELECT category FROM inventory_items WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+          [v.itemId, ctx.actor.tenantId, ctx.branchId],
+        )
+      ).rows[0];
+      if (!item) throw missing();
+      if (item.category === 'MEDICATION')
+        throw new DomainError(
+          'MEDICATION_DISPENSE_REQUIRED',
+          'Medication must use signed prescription dispensing.',
+        );
+      const batches = (
+        await db.query(
+          "SELECT id,quantity,DATE_FORMAT(expires_on,'%Y-%m-%d') expires_on FROM inventory_batches WHERE tenant_id=$1 AND branch_id=$2 AND item_id=$3 AND quantity>0 ORDER BY expires_on IS NULL,expires_on,received_at,id FOR UPDATE",
+          [ctx.actor.tenantId, ctx.branchId, v.itemId],
+        )
+      ).rows;
+      const allocations = FefoAllocator.allocate(batches, v.quantity, today(), true);
+      const usage = (
+        await db.query(
+          'INSERT INTO inventory_usages(tenant_id,branch_id,item_id,quantity,reason,actor_id,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+          [
+            ctx.actor.tenantId,
+            ctx.branchId,
+            v.itemId,
+            v.quantity,
+            v.reason,
+            ctx.actor.id,
+            v.idempotencyKey,
+          ],
+        )
+      ).rows[0];
+      for (const allocation of allocations) {
+        await db.query('UPDATE inventory_batches SET quantity=quantity-$2 WHERE id=$1', [
+          allocation.batchId,
+          allocation.quantity,
+        ]);
+        await db.query(
+          "INSERT INTO stock_movements(tenant_id,branch_id,batch_id,usage_id,quantity_delta,reason,actor_id) VALUES($1,$2,$3,$4,$5,'SUPPLY_USAGE',$6)",
+          [
+            ctx.actor.tenantId,
+            ctx.branchId,
+            allocation.batchId,
+            usage.id,
+            -allocation.quantity,
+            ctx.actor.id,
+          ],
+        );
+      }
+      await this.audit(db, ctx, 'USE_SUPPLY', 'inventory_usage', usage.id, {
+        itemId: v.itemId,
+        quantity: v.quantity,
+      });
+      return camel(usage);
     });
   }
   async dispense(ctx: Context, input: any) {
@@ -594,13 +768,22 @@ export class ClinicService {
         `INSERT INTO dispenses(tenant_id,branch_id,patient_id,encounter_id,actor_id,idempotency_key) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
         [ctx.actor.tenantId, ctx.branchId, e.patient_id, e.id, ctx.actor.id, input.idempotencyKey],
       );
+      // Close this encounter's holds inside the same transaction before reallocating.
+      // This permits fresh FEFO allocation when originally reserved batches expired.
+      const held = (
+        await db.query(
+          'SELECT * FROM prescription_reservations WHERE tenant_id=$1 AND branch_id=$2 AND encounter_id=$3 AND consumed_at IS NULL FOR UPDATE',
+          [ctx.actor.tenantId, ctx.branchId, e.id],
+        )
+      ).rows;
+      await db.query(
+        "UPDATE prescription_reservations SET consumed_at=now(),status='RELEASED' WHERE tenant_id=$1 AND branch_id=$2 AND encounter_id=$3 AND consumed_at IS NULL",
+        [ctx.actor.tenantId, ctx.branchId, e.id],
+      );
       const allocations = [];
       for (const rx of [...e.prescriptions].sort((a, b) => a.itemId - b.itemId)) {
-        const batches = await db.query(
-          `SELECT id,quantity,DATE_FORMAT(expires_on,'%Y-%m-%d') expires_on FROM inventory_batches WHERE tenant_id=$1 AND branch_id=$2 AND item_id=$3 AND quantity>0 ORDER BY expires_on,received_at,id FOR UPDATE`,
-          [ctx.actor.tenantId, ctx.branchId, rx.itemId],
-        );
-        for (const allocation of FefoAllocator.allocate(batches.rows, rx.quantity, today())) {
+        const batches = await this.availableBatches(db, ctx, rx.itemId);
+        for (const allocation of FefoAllocator.allocate(batches, rx.quantity, today())) {
           await db.query(`UPDATE inventory_batches SET quantity=quantity-$2 WHERE id=$1`, [
             allocation.batchId,
             allocation.quantity,
@@ -617,6 +800,13 @@ export class ClinicService {
             ],
           );
           allocations.push({ ...allocation, itemId: rx.itemId });
+          const original = held.find(
+            (h) => h.batch_id === allocation.batchId && h.quantity === allocation.quantity,
+          );
+          if (original)
+            await db.query("UPDATE prescription_reservations SET status='FULFILLED' WHERE id=$1", [
+              original.id,
+            ]);
         }
       }
       await this.audit(db, ctx, 'DISPENSE', 'dispense', record.rows[0].id);

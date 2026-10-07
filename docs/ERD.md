@@ -1,6 +1,6 @@
 # Entity relationship diagrams
 
-These diagrams describe the final MySQL 8.4 schema after migrations 001–009, including numeric conversion.
+These diagrams describe the final MySQL 8.4 schema after migrations 001–012, including numeric conversion, general supplies and prescription reservations.
 Every displayed entity `id` is `BIGINT UNSIGNED AUTO_INCREMENT`; referenced IDs are unsigned BIGINT.
 Mermaid `bigint` labels omit unsigned/auto-increment syntax for readability. Exact SQL remains authoritative.
 
@@ -182,6 +182,12 @@ erDiagram
 erDiagram
   branches ||--o{ inventory_items : catalogs
   inventory_items ||--o{ inventory_batches : receives
+  inventory_items ||--o{ inventory_usages : used
+  users ||--o{ inventory_usages : records
+  inventory_usages o|--o{ stock_movements : supply_allocation
+  encounters ||--o{ prescription_reservations : reserves
+  inventory_items ||--o{ prescription_reservations : prescribed
+  inventory_batches ||--o{ prescription_reservations : holds
   encounters ||--o| dispenses : dispensed_once
   patients ||--o{ dispenses : receives
   users ||--o{ dispenses : actor
@@ -210,7 +216,7 @@ erDiagram
     bigint branch_id FK
     bigint item_id FK
     varchar batch_number
-    date expires_on
+    date expires_on "nullable for general supplies"
     int quantity
   }
   dispenses {
@@ -222,12 +228,35 @@ erDiagram
     bigint actor_id FK
     varchar idempotency_key
   }
+  inventory_usages {
+    bigint id PK
+    bigint tenant_id FK
+    bigint branch_id FK
+    bigint item_id FK
+    bigint actor_id FK
+    int quantity
+    varchar reason
+    varchar idempotency_key
+    datetime created_at
+  }
+  prescription_reservations {
+    bigint id PK
+    bigint tenant_id FK
+    bigint branch_id FK
+    bigint encounter_id FK
+    bigint item_id FK
+    bigint batch_id FK
+    int quantity
+    varchar status
+    datetime consumed_at "nullable while active"
+  }
   stock_movements {
     bigint id PK
     bigint tenant_id FK
     bigint branch_id FK
     bigint batch_id FK
     bigint dispense_id FK
+    bigint usage_id FK
     bigint actor_id FK
     int quantity_delta
     varchar reason

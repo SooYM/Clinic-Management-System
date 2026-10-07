@@ -2,11 +2,11 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `009_numeric_identifiers.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `012_prescription_reservations.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
-There are 22 entity tables with `BIGINT UNSIGNED AUTO_INCREMENT` primary keys.
+There are 24 entity tables with `BIGINT UNSIGNED AUTO_INCREMENT` primary keys.
 Entity foreign keys are matching unsigned BIGINT values, including audit actor/entity references and generated queue references.
 API IDs are positive JavaScript-safe integers. Sequences are independent per table and may contain gaps.
 `tenantNumber`, `branchNumber` and `patientNumber` are response aliases for actual IDs, not extra stored counters.
@@ -16,34 +16,36 @@ Migration bookkeeping is infrastructure, not a clinical entity. See the [ERD](ER
 
 ## Data dictionary
 
-The [complete column dictionary](DATA_DICTIONARY.md) lists every column in all 28 tables. A [schema-only SQL snapshot](schema.mysql.sql) records final types, indexes and constraints without data or allocated sequence values. These are references; install through migrations, not the snapshot.
+The [complete column dictionary](DATA_DICTIONARY.md) lists every column in all 30 tables. A [schema-only SQL snapshot](schema.mysql.sql) records final types, indexes and constraints without data or allocated sequence values. These are references; install through migrations, not the snapshot.
 
 All active clinical/operational entity tables carry organization scope where required. Exact defaults, indexes and bounds remain executable in migrations.
 
-| Table                   | Key and important data                                                                                                                                                             | Invariant / use                                                                    |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| tenants                 | Numeric id, name, created_at                                                                                                                                                       | Organization root                                                                  |
-| branches                | Numeric id, tenant_id, name, address                                                                                                                                               | Unique `(tenant_id,id)` supports scoped FKs                                        |
-| users                   | Numeric id, tenant_id, branch_id, email, name, password_hash, role, license_number, active                                                                                         | Globally unique email; GP is DOCTOR account                                        |
-| user_branches           | Composite `(user_id,branch_id)` PK                                                                                                                                                 | Authorized branch membership                                                       |
-| sessions                | token_hash PK, user_id, csrf_token, expires_at                                                                                                                                     | Hashed session lookup; expiry and active user checked                              |
-| role_module_permissions | Composite `(tenant_id,role)` PK, modules JSON, updated_at                                                                                                                          | Non-admin tenant role overrides; server validates module IDs                       |
-| patients                | Numeric id, tenant_id, branch_id, first/last/display name, nationality, national_id, date_of_birth, sex, contact, address, city/state, allergies/conditions JSON, consent, version | Unique `(tenant_id,national_id)`; optimistic updates                               |
-| rooms                   | Numeric id, tenant_id, branch_id, name, active                                                                                                                                     | Unique `(branch_id,name)`; archive retains historical references                   |
-| appointments            | Numeric id, patient/practitioner/optional room IDs, starts_at, ends_at, reason, status, version                                                                                    | End after start; transactional overlap protection                                  |
-| queue_tickets           | Numeric id, scoped patient/room/practitioner IDs, ticket_number, service_date, priority, status, version, call/completion timestamps                                               | Unique branch/date/ticket and generated active-patient/occupied-room constraints   |
-| encounters              | Numeric id, patient/practitioner/optional queue IDs, specialty, SOAP text, vitals/prescriptions JSON, procedure_notes, status, version, signed_at                                  | GP workflow; author-owned drafts; signed immutability enforced by service          |
-| inventory_items         | Numeric id, scoped SKU, name, ingredient, category, unit, price_cents, reorder_level                                                                                               | Unique branch/SKU; nonnegative prices/thresholds                                   |
-| inventory_batches       | Numeric id, item_id, batch_number, expires_on, quantity, received_at                                                                                                               | Unique item/batch; nonnegative quantity                                            |
-| dispenses               | Numeric id, encounter_id, patient_id, actor_id, idempotency_key                                                                                                                    | Unique encounter and branch/retry key                                              |
-| stock_movements         | Numeric id, batch_id, optional dispense_id, actor_id, signed quantity_delta, reason                                                                                                | Nonzero movement, transactional receipt/dispense ledger                            |
-| invoices                | Numeric id, patient_id, practitioner_id, invoice_number, lines JSON, total_cents, status, idempotency_key, request_hash                                                            | Unique number and branch/retry key; positive total; current checkout creates PAID  |
-| payments                | Numeric id, invoice_id, method, amount_cents, reference                                                                                                                            | Positive integer amount; CASH/CARD/QR/DEPOSIT                                      |
-| patient_deposits        | Numeric id, patient_id, signed amount_cents, reference                                                                                                                             | Nonzero ledger amount; spending validated under transaction lock                   |
-| clinical_documents      | Numeric id, encounter/patient/practitioner IDs, kind, document_number, payload JSON, dates, redaction, verification_hash, signature_hash, revoke data                              | Unique document/verification keys; MC date consistency; snapshot integrity checked |
-| notification_outbox     | Numeric id, patient_id, channel, template, recipient, payload JSON, state, attempts, available_at, errors/provider reference, deduplication_key                                    | Unique dedup key; explicit asynchronous state                                      |
-| audit_logs              | Numeric id, tenant/branch/actor IDs, action, entity_type, optional entity_id, request_id, metadata JSON, created_at                                                                | Polymorphic entity reference has no universal entity FK                            |
-| resource_locks          | lock_key varchar PK                                                                                                                                                                | Transaction scope serialization for cross-row checks                               |
+| Table                     | Key and important data                                                                                                                                                             | Invariant / use                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| tenants                   | Numeric id, name, created_at                                                                                                                                                       | Organization root                                                                  |
+| branches                  | Numeric id, tenant_id, name, address                                                                                                                                               | Unique `(tenant_id,id)` supports scoped FKs                                        |
+| users                     | Numeric id, tenant_id, branch_id, email, name, password_hash, role, license_number, active                                                                                         | Globally unique email; GP is DOCTOR account                                        |
+| user_branches             | Composite `(user_id,branch_id)` PK                                                                                                                                                 | Authorized branch membership                                                       |
+| sessions                  | token_hash PK, user_id, csrf_token, expires_at                                                                                                                                     | Hashed session lookup; expiry and active user checked                              |
+| role_module_permissions   | Composite `(tenant_id,role)` PK, modules JSON, updated_at                                                                                                                          | Non-admin tenant role overrides; server validates module IDs                       |
+| patients                  | Numeric id, tenant_id, branch_id, first/last/display name, nationality, national_id, date_of_birth, sex, contact, address, city/state, allergies/conditions JSON, consent, version | Unique `(tenant_id,national_id)`; optimistic updates                               |
+| rooms                     | Numeric id, tenant_id, branch_id, name, active                                                                                                                                     | Unique `(branch_id,name)`; archive retains historical references                   |
+| appointments              | Numeric id, patient/practitioner/optional room IDs, starts_at, ends_at, reason, status, version                                                                                    | End after start; transactional overlap protection                                  |
+| queue_tickets             | Numeric id, scoped patient/room/practitioner IDs, ticket_number, service_date, priority, status, version, call/completion timestamps                                               | Unique branch/date/ticket and generated active-patient/occupied-room constraints   |
+| encounters                | Numeric id, patient/practitioner/optional queue IDs, specialty, SOAP text, vitals/prescriptions JSON, procedure_notes, status, version, signed_at                                  | GP workflow; author-owned drafts; signed immutability enforced by service          |
+| inventory_items           | Numeric id, scoped SKU, name, ingredient, category, unit, price_cents, reorder_level                                                                                               | Unique branch/SKU; nonnegative prices/thresholds                                   |
+| inventory_batches         | Numeric id, item_id, batch_number, expires_on, quantity, received_at                                                                                                               | Unique item/batch; nonnegative quantity                                            |
+| inventory_usages          | Numeric id, scoped item/actor IDs, quantity, reason, idempotency_key, created_at                                                                                                   | General supply usage only; unique branch/retry key and transactional allocation    |
+| prescription_reservations | Numeric id, scoped encounter/item/batch IDs, quantity, status, consumed_at                                                                                                         | Unique encounter/batch; positive quantity; RESERVED/FULFILLED/RELEASED ledger      |
+| dispenses                 | Numeric id, encounter_id, patient_id, actor_id, idempotency_key                                                                                                                    | Unique encounter and branch/retry key                                              |
+| stock_movements           | Numeric id, batch_id, optional dispense_id or usage_id, actor_id, signed quantity_delta, reason                                                                                    | Nonzero movement, transactional receipt/dispense/usage ledger                      |
+| invoices                  | Numeric id, patient_id, practitioner_id, invoice_number, lines JSON, total_cents, status, idempotency_key, request_hash                                                            | Unique number and branch/retry key; positive total; current checkout creates PAID  |
+| payments                  | Numeric id, invoice_id, method, amount_cents, reference                                                                                                                            | Positive integer amount; CASH/CARD/QR/DEPOSIT                                      |
+| patient_deposits          | Numeric id, patient_id, signed amount_cents, reference                                                                                                                             | Nonzero ledger amount; spending validated under transaction lock                   |
+| clinical_documents        | Numeric id, encounter/patient/practitioner IDs, kind, document_number, payload JSON, dates, redaction, verification_hash, signature_hash, revoke data                              | Unique document/verification keys; MC date consistency; snapshot integrity checked |
+| notification_outbox       | Numeric id, patient_id, channel, template, recipient, payload JSON, state, attempts, available_at, errors/provider reference, deduplication_key                                    | Unique dedup key; explicit asynchronous state                                      |
+| audit_logs                | Numeric id, tenant/branch/actor IDs, action, entity_type, optional entity_id, request_id, metadata JSON, created_at                                                                | Polymorphic entity reference has no universal entity FK                            |
+| resource_locks            | lock_key varchar PK                                                                                                                                                                | Transaction scope serialization for cross-row checks                               |
 
 ## Historical tables retained, features retired
 
@@ -89,6 +91,9 @@ JSON item references are validated by application code because SQL FKs cannot co
 | 007       | Patient city; bundled postcode lookup stays application reference data                |
 | 008       | Intermediate visible-number columns on tenant/branch/patient records                  |
 | 009       | Actual numeric entity PK/FK conversion; supersedes intermediate display columns       |
+| 010       | Optional expiry for general supplies; medication expiry remains required              |
+| 011       | Audited supply usage with movement links and scoped idempotency                       |
+| 012       | Prescription reservations with scoped encounter/item/batch consistency                |
 
 Migration 009 delegates to `src/server/db/numeric-ids.ts`; executing its SQL marker alone does not perform conversion.
 It maps IDs and FKs, rewrites typed JSON references and preserves arbitrary vitals/allergy/condition values.
@@ -118,3 +123,11 @@ The separate browser demo build does not connect to this schema. Its sample reco
 Demo resets cannot modify local MySQL data; local/production database backup and retention remain separate operational duties.
 Demo business fixtures live only in `DemoClinic`. Normal MySQL bootstrap creates clinic/staff/room setup, without fictional patients or transactions.
 `db:seed` is an explicitly guarded development operation, not an automatic bootstrap or demo dependency.
+
+## Stock extensions after numeric migration
+
+Migration 010 makes batch expiry nullable without changing existing dates. Category-aware receiving requires medication expiry; non-medication supplies may omit it.
+Migration 011 creates numeric `inventory_usages` and links supply allocations through nullable `stock_movements.usage_id`.
+Migration 012 creates numeric `prescription_reservations`, with scoped encounter/item/batch foreign keys and a composite batch/item consistency constraint.
+Existing signed encounters and business records are not rewritten or backfilled. New signing creates holds; legacy signed prescriptions allocate free stock when dispensed.
+Reservations subtract from eligible availability but not physical batch quantity. Dispensing closes own holds and atomically records physical depletion; shortages roll back both ledger and quantity changes.

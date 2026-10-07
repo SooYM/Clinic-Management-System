@@ -14,6 +14,7 @@ import {
   useResource,
   useRole,
   useModules,
+  useDebouncedValue,
 } from '../components';
 import { type Patient, dateTime } from '../types';
 import PatientForm from './PatientForm';
@@ -127,10 +128,11 @@ export default function Patients() {
   const role = useRole();
   const canEdit = true;
   const [search, setSearch] = useState('');
+  const searchTerm = useDebouncedValue(search.trim());
   const [selected, setSelected] = useState<Patient>();
   const [register, setRegister] = useState(false);
   const [editing, setEditing] = useState(false);
-  const resource = useResource<Patient[]>(`/patients?search=${encodeURIComponent(search)}`);
+  const resource = useResource<Patient[]>(`/patients?search=${encodeURIComponent(searchTerm)}`);
   function saved(patient: Patient) {
     resource.refresh();
     setRegister(false);
@@ -227,14 +229,22 @@ export default function Patients() {
         </>
       ) : (
         <Panel title="Patient directory">
+          <label htmlFor="patient-list-search">Search patient list</label>
           <div className="search-field">
             <Search size={18} />
             <input
+              id="patient-list-search"
+              type="search"
               aria-label="Search patients"
-              placeholder="Search name, NRIC, or phone"
+              placeholder="Name, IC/passport, or phone"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {search && (
+              <button type="button" className="text-button" onClick={() => setSearch('')}>
+                Clear
+              </button>
+            )}
           </div>
           <ResourceState {...resource}>
             {resource.data?.length ? (

@@ -259,7 +259,8 @@ describe('browser-session demo simulation', () => {
     expect((await request(clinic, '/bootstrap')).modules.length).toBe(7);
   });
   it('preserves structured Rx and rolls back all simulated stock on failed dispensing', async () => {
-    const clinic = new DemoClinic(new MemoryStorage());
+    const storage = new MemoryStorage();
+    let clinic = new DemoClinic(storage);
     await login(clinic);
     const p = await request(clinic, '/patients', 'POST', patientPayload('RX'));
     const a = await request(clinic, '/inventory', 'POST', itemPayload('RX-A')),
@@ -270,6 +271,12 @@ describe('browser-session demo simulation', () => {
       expiresOn: '2035-12-31',
       quantity: 5,
     });
+    const expiringBatch = await request(clinic, '/inventory/batches', 'POST', {
+      itemId: b.id,
+      batchNumber: 'BATCH-B-EXPIRES',
+      expiresOn: '2035-12-31',
+      quantity: 3,
+    });
     await request(clinic, '/auth/logout', 'POST');
     await login(clinic, 'gp');
     const prescriptions = [rx(a.id, 3), rx(b.id, 3)],
@@ -277,6 +284,13 @@ describe('browser-session demo simulation', () => {
     expect(chart.prescriptions).toEqual(prescriptions);
     await request(clinic, '/auth/logout', 'POST');
     await login(clinic);
+    // Simulate elapsed time after signing; dispensing must retain holds on failure.
+    const stateKey = [...storage.entries.keys()][0];
+    const stored = JSON.parse(storage.getItem(stateKey)!);
+    stored.rows.batches.find((batch: any) => batch.id === expiringBatch.id).expiresOn =
+      '2020-01-01';
+    storage.setItem(stateKey, JSON.stringify(stored));
+    clinic = new DemoClinic(storage);
     await expect(
       request(clinic, '/dispenses', 'POST', {
         encounterId: chart.id,
@@ -285,7 +299,10 @@ describe('browser-session demo simulation', () => {
     ).rejects.toBeDefined();
     expect(
       (await request(clinic, '/inventory')).data.find((i: any) => i.id === a.id).stockQuantity,
-    ).toBe(5);
+    ).toBe(2);
+    expect(
+      (await request(clinic, '/inventory')).data.find((i: any) => i.id === a.id),
+    ).toMatchObject({ onHandQuantity: 5, reservedQuantity: 3 });
     expect(
       (await request(clinic, '/dispensary/encounters')).data.some((e: any) => e.id === chart.id),
     ).toBe(true);
@@ -327,6 +344,37 @@ describe('browser-session demo simulation', () => {
         assessment: 'Changed',
       }),
     ).rejects.toBeDefined();
+  });
+  it('does not simulate medication reservations for supply or retail prescriptions', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const p = await request(clinic, '/patients', 'POST', patientPayload('NON-MED-RX'));
+    const supplies = [];
+    for (const category of ['CONSUMABLE', 'RETAIL']) {
+      const supply = await request(clinic, '/inventory', 'POST', {
+        ...itemPayload('NON-MED-' + category),
+        category,
+      });
+      await request(clinic, '/inventory/batches', 'POST', {
+        itemId: supply.id,
+        batchNumber: 'DATED-SUPPLY',
+        expiresOn: '2035-12-31',
+        quantity: 5,
+      });
+      supplies.push(supply);
+    }
+    await request(clinic, '/auth/logout', 'POST');
+    await login(clinic, 'gp');
+    const before = (await request(clinic, '/encounters')).data.length;
+    for (const supply of supplies) {
+      await expect(
+        request(clinic, '/encounters', 'POST', chartPayload(p.id, [rx(supply.id, 3)])),
+      ).rejects.toThrow('Prescriptions require medication items.');
+      expect(
+        (await request(clinic, '/inventory')).data.find((item: any) => item.id === supply.id),
+      ).toMatchObject({ stockQuantity: 5, reservedQuantity: 0 });
+    }
+    expect((await request(clinic, '/encounters')).data).toHaveLength(before);
   });
   it('rejects mismatched simulated payments without committing an invoice', async () => {
     const clinic = new DemoClinic(new MemoryStorage());

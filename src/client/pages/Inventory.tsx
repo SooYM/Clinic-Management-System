@@ -11,6 +11,7 @@ import {
   Status,
   formText,
   useResource,
+  useDebouncedValue,
 } from '../components';
 import { type InventoryItem, dateTime, humanize } from '../types';
 interface PendingPrescription {
@@ -32,12 +33,32 @@ interface PendingPrescription {
   }[];
 }
 export default function Inventory() {
-  const resource = useResource<InventoryItem[]>('/inventory');
-  const pending = useResource<PendingPrescription[]>('/dispensary/encounters');
   const [create, setCreate] = useState(false);
   const [encounterId, setEncounterId] = useState('');
+  const [prescriptionSearch, setPrescriptionSearch] = useState('');
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [receivingItemId, setReceivingItemId] = useState('');
+  const [usageKey, setUsageKey] = useState(crypto.randomUUID());
+  const [usageRecorded, setUsageRecorded] = useState(false);
+  const prescriptionTerm = useDebouncedValue(prescriptionSearch.trim());
+  const inventoryTerm = useDebouncedValue(inventorySearch.trim());
+  const resource = useResource<InventoryItem[]>(
+    `/inventory?search=${encodeURIComponent(inventoryTerm)}${category ? `&category=${encodeURIComponent(category)}` : ''}`,
+  );
+  const pending = useResource<PendingPrescription[]>(
+    `/dispensary/encounters?search=${encodeURIComponent(prescriptionTerm)}`,
+  );
   const [dispenseKey, setDispenseKey] = useState(crypto.randomUUID());
   const selected = pending.data?.find((e) => e.id === Number(encounterId));
+  const matchingPrescriptions = pending.data || [];
+  const matchingItems = resource.data || [];
+  const receivingItem = resource.data?.find((item) => item.id === Number(receivingItemId));
+  const optionalExpiry =
+    receivingItem?.category === 'CONSUMABLE' || receivingItem?.category === 'RETAIL';
+  const supplies = matchingItems.filter(
+    (item) => item.category === 'CONSUMABLE' || item.category === 'RETAIL',
+  );
   function refresh() {
     resource.refresh();
     pending.refresh();
@@ -46,7 +67,7 @@ export default function Inventory() {
     <>
       <PageTitle
         title="Dispensary"
-        description="Receive stock by batch and dispense signed GP prescriptions using first expiry, first out."
+        description="Manage medicines, consumables and retail stock; dispense signed GP prescriptions by first expiry, first out."
         action={
           <div className="actions">
             <button className="secondary" onClick={refresh}>
@@ -81,7 +102,11 @@ export default function Inventory() {
           >
             <div className="form-grid">
               <Field label="Item name">
-                <input name="name" required placeholder="e.g. Paracetamol 500 mg" />
+                <input
+                  name="name"
+                  required
+                  placeholder="Medicine, gloves, lab coat or other item"
+                />
               </Field>
               <Field label="SKU">
                 <input name="sku" required placeholder="e.g. PARA-500" />
@@ -91,13 +116,13 @@ export default function Inventory() {
               </Field>
               <Field label="Category">
                 <select name="category">
-                  <option>MEDICATION</option>
-                  <option>CONSUMABLE</option>
-                  <option>RETAIL</option>
+                  <option value="MEDICATION">Medication</option>
+                  <option value="CONSUMABLE">Consumables and supplies</option>
+                  <option value="RETAIL">Retail products (e.g. lab coat)</option>
                 </select>
               </Field>
               <Field label="Unit">
-                <input name="unit" required defaultValue="tablet" />
+                <input name="unit" required defaultValue="unit" placeholder="e.g. tablet, piece" />
               </Field>
               <Field label="Price (MYR)">
                 <input name="price" type="number" required min="0" step="0.01" />
@@ -111,19 +136,45 @@ export default function Inventory() {
       )}
       <div className="two-column">
         <Panel title="Stock catalogue">
+          <p className="form-help">
+            Available excludes signed-prescription reservations and ineligible expired stock.
+            Signing reserves stock; dispensing deducts physical quantities once. Unexpired stock
+            includes non-expiring supplies.
+          </p>
+          <div className="form-grid">
+            <Field label="Search inventory">
+              <input
+                type="search"
+                placeholder="Item name, SKU, ingredient or category"
+                value={inventorySearch}
+                onChange={(event) => setInventorySearch(event.target.value)}
+              />
+            </Field>
+            <Field label="Inventory category">
+              <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                <option value="">All categories</option>
+                <option value="MEDICATION">Medication</option>
+                <option value="CONSUMABLE">Consumables and supplies</option>
+                <option value="RETAIL">Retail products</option>
+              </select>
+            </Field>
+          </div>
           <ResourceState {...resource}>
-            {resource.data?.length ? (
+            {matchingItems.length ? (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>Item</th>
+                      <th>Category</th>
                       <th>Available</th>
+                      <th>Unexpired stock</th>
+                      <th>Reserved</th>
                       <th>Reorder level</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {resource.data.map((item) => (
+                    {matchingItems.map((item) => (
                       <tr key={item.id}>
                         <td>
                           <strong>{item.name}</strong>
@@ -135,8 +186,10 @@ export default function Inventory() {
                               <summary>View batches</summary>
                               {item.batches.map((batch) => (
                                 <p className="form-help" key={batch.id}>
-                                  {batch.batchNumber} · {batch.quantity} units · expiry{' '}
-                                  {batch.expiresOn?.slice(0, 10)}
+                                  {batch.batchNumber} · {batch.quantity} units ·{' '}
+                                  {batch.expiresOn
+                                    ? `expiry ${batch.expiresOn.slice(0, 10)}`
+                                    : 'No expiry'}
                                 </p>
                               ))}
                             </details>
@@ -144,7 +197,10 @@ export default function Inventory() {
                             <small>No batches received</small>
                           )}
                         </td>
+                        <td>{humanize(item.category || 'MEDICATION')}</td>
                         <td>{item.stockQuantity ?? item.quantity ?? 0}</td>
+                        <td>{item.onHandQuantity ?? '—'}</td>
+                        <td>{item.reservedQuantity ?? '—'}</td>
                         <td>{item.reorderLevel}</td>
                       </tr>
                     ))}
@@ -153,8 +209,14 @@ export default function Inventory() {
               </div>
             ) : (
               <Empty
-                title="No inventory items"
-                description="Add medicine catalogue items, then receive batches. Available quantities update after receiving or dispensing."
+                title={
+                  inventoryTerm || category ? 'No matching inventory items' : 'No inventory items'
+                }
+                description={
+                  inventoryTerm || category
+                    ? 'Try another search or choose All categories.'
+                    : 'Add medicines, consumables or retail products, then receive batches. Available quantities update after receiving, reservation or dispensing.'
+                }
               />
             )}
           </ResourceState>
@@ -168,17 +230,22 @@ export default function Inventory() {
                 api.post('/inventory/batches', {
                   itemId: Number(formText(f, 'itemId')),
                   batchNumber: formText(f, 'batchNumber'),
-                  expiresOn: formText(f, 'expiresOn'),
+                  expiresOn: formText(f, 'expiresOn') || null,
                   quantity: Number(f.get('quantity')),
                 })
               }
             >
               <Field label="Inventory item">
-                <select name="itemId" required>
+                <select
+                  name="itemId"
+                  required
+                  value={receivingItemId}
+                  onChange={(event) => setReceivingItemId(event.target.value)}
+                >
                   <option value="">Select item</option>
                   {resource.data?.map((i) => (
                     <option key={i.id} value={i.id}>
-                      {i.name}
+                      {i.name} · {humanize(i.category || 'MEDICATION')}
                     </option>
                   ))}
                 </select>
@@ -187,8 +254,15 @@ export default function Inventory() {
                 <Field label="Batch number">
                   <input name="batchNumber" required placeholder="e.g. BATCH-2026-01" />
                 </Field>
-                <Field label="Expiry date">
-                  <input name="expiresOn" type="date" required />
+                <Field
+                  label="Expiry date"
+                  hint={
+                    optionalExpiry
+                      ? 'Optional for supplies and retail products. Leave blank when the item has no expiry.'
+                      : 'Medicines require an expiry date after today.'
+                  }
+                >
+                  <input name="expiresOn" type="date" required={!optionalExpiry} />
                 </Field>
                 <Field label="Quantity">
                   <input name="quantity" type="number" required min="1" />
@@ -196,7 +270,79 @@ export default function Inventory() {
               </div>
             </MutationForm>
           </Panel>
+          <Panel title="Use supplies and retail stock">
+            {usageRecorded && (
+              <p className="notice success" role="status">
+                Supply usage recorded. Stock has been refreshed.
+              </p>
+            )}
+            <p className="form-help">
+              Record physical usage or issue of consumables and retail items, such as gloves or a
+              lab coat. Medicines require signed-prescription dispensing.
+            </p>
+            {supplies.length ? (
+              <MutationForm
+                key={usageKey}
+                label="Record supply usage"
+                onSuccess={() => {
+                  refresh();
+                  setUsageRecorded(true);
+                  setUsageKey(crypto.randomUUID());
+                }}
+                onSubmit={(form) =>
+                  api.post('/inventory/usage', {
+                    itemId: Number(formText(form, 'itemId')),
+                    quantity: Number(form.get('quantity')),
+                    reason: formText(form, 'reason'),
+                    idempotencyKey: usageKey,
+                  })
+                }
+              >
+                <Field label="Supply / retail item">
+                  <select name="itemId" required>
+                    <option value="">Choose non-medication item</option>
+                    {supplies.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} · {item.unit} · Available {item.stockQuantity ?? 0}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Quantity used">
+                  <input name="quantity" type="number" min="1" step="1" required />
+                </Field>
+                <Field label="Usage reason">
+                  <input
+                    name="reason"
+                    maxLength={500}
+                    placeholder="e.g. Gloves used during procedure, lab coat issued"
+                    required
+                  />
+                </Field>
+              </MutationForm>
+            ) : (
+              <p className="form-help">
+                No consumable or retail items match the current catalog filters. Choose All
+                categories, search for an item, or add one above.
+              </p>
+            )}
+          </Panel>
           <Panel title="Dispense a signed prescription">
+            <Field
+              label="Search prescription list"
+              hint="Search patient, IC/passport, GP, encounter ID or medicine name."
+            >
+              <input
+                type="search"
+                placeholder="Patient or medicine"
+                value={prescriptionSearch}
+                onChange={(event) => {
+                  setPrescriptionSearch(event.target.value);
+                  setEncounterId('');
+                  setDispenseKey(crypto.randomUUID());
+                }}
+              />
+            </Field>
             <ResourceState {...pending}>
               {pending.data?.length ? (
                 <MutationForm
@@ -214,6 +360,12 @@ export default function Inventory() {
                     });
                   }}
                 >
+                  {!matchingPrescriptions.length && (
+                    <p className="form-help" role="status">
+                      No prescriptions match this search. Clear or change the search to see pending
+                      work.
+                    </p>
+                  )}
                   <Field label="Signed GP prescription">
                     <select
                       required
@@ -224,7 +376,7 @@ export default function Inventory() {
                       }}
                     >
                       <option value="">Select patient prescription</option>
-                      {pending.data.map((e) => (
+                      {matchingPrescriptions.map((e) => (
                         <option key={e.id} value={e.id}>
                           {e.patientName} · Patient ID #{e.patientId} · Prescription encounter #
                           {e.id} · {e.practitionerName} · {dateTime(e.createdAt)}
@@ -256,13 +408,22 @@ export default function Inventory() {
                   )}
                   <div className="notice info">
                     <Status value="FEFO" />
-                    Only unexpired batches with enough available stock are used.
+                    Signed prescriptions use reserved stock. Older unreserved prescriptions use
+                    eligible FEFO batches. Physical stock is deducted once when dispensed.
                   </div>
                 </MutationForm>
               ) : (
                 <Empty
-                  title="No signed prescriptions waiting"
-                  description="A GP must save and sign a consultation containing medicines. Already dispensed prescriptions are excluded. Ask your administrator to create a GP account if none is available."
+                  title={
+                    prescriptionTerm
+                      ? 'No matching prescriptions'
+                      : 'No signed prescriptions waiting'
+                  }
+                  description={
+                    prescriptionTerm
+                      ? 'Clear or change the search to find pending signed prescriptions.'
+                      : 'A GP must save and sign a consultation containing medicines. Already dispensed prescriptions are excluded. Ask your administrator to create a GP account if none is available.'
+                  }
                 />
               )}
             </ResourceState>

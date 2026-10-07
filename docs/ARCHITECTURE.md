@@ -37,6 +37,10 @@ flowchart TB
 Classes encapsulate behavior where invariants matter. Simple record projections remain data rather than empty OOP wrappers.
 Shared contracts and reusable forms reduce duplicated logic. Existing services are concrete; a universal repository-interface layer is not claimed.
 
+Prescription signing and physical dispensing share the FEFO allocator through explicit reservation-ledger operations.
+Signing holds eligible batches inside its encounter transaction; dispensing excludes other holds and records physical movements once.
+Inventory item locks serialize competing allocations. General supply usage has its own idempotent header and audited movement allocations, with no medication bypass.
+
 The browser guide uses reusable control anchors and an optional walkthrough overlay.
 It explains permitted workflows by highlighting live controls without submitting records.
 Responsive navigation, forms and scroll-contained tables share the workspace styles; phone tour instructions fit the viewport.

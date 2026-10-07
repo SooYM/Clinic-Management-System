@@ -28,6 +28,7 @@ const entityIdColumns = new Set([
   'item_id',
   'batch_id',
   'dispense_id',
+  'usage_id',
   'invoice_id',
   'package_id',
   'sale_invoice_id',
