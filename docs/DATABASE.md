@@ -2,11 +2,11 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `012_prescription_reservations.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `014_reference_catalogs.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
-There are 24 entity tables with `BIGINT UNSIGNED AUTO_INCREMENT` primary keys.
+There are 26 entity tables with `BIGINT UNSIGNED AUTO_INCREMENT` primary keys.
 Entity foreign keys are matching unsigned BIGINT values, including audit actor/entity references and generated queue references.
 API IDs are positive JavaScript-safe integers. Sequences are independent per table and may contain gaps.
 `tenantNumber`, `branchNumber` and `patientNumber` are response aliases for actual IDs, not extra stored counters.
@@ -16,7 +16,7 @@ Migration bookkeeping is infrastructure, not a clinical entity. See the [ERD](ER
 
 ## Data dictionary
 
-The [complete column dictionary](DATA_DICTIONARY.md) lists every column in all 30 tables. A [schema-only SQL snapshot](schema.mysql.sql) records final types, indexes and constraints without data or allocated sequence values. These are references; install through migrations, not the snapshot.
+The [complete column dictionary](DATA_DICTIONARY.md) lists every column in all 32 tables. A [schema-only SQL snapshot](schema.mysql.sql) records final types, indexes and constraints without data or allocated sequence values. These are references; install through migrations, not the snapshot.
 
 All active clinical/operational entity tables carry organization scope where required. Exact defaults, indexes and bounds remain executable in migrations.
 
@@ -94,6 +94,8 @@ JSON item references are validated by application code because SQL FKs cannot co
 | 010       | Optional expiry for general supplies; medication expiry remains required              |
 | 011       | Audited supply usage with movement links and scoped idempotency                       |
 | 012       | Prescription reservations with scoped encounter/item/batch consistency                |
+| 013       | Patient medication-taking reports with numeric IDs, scoped references and retry keys  |
+| 014       | Branch reference catalogs and versioned active inventory metadata                     |
 
 Migration 009 delegates to `src/server/db/numeric-ids.ts`; executing its SQL marker alone does not perform conversion.
 It maps IDs and FKs, rewrites typed JSON references and preserves arbitrary vitals/allergy/condition values.
@@ -129,5 +131,18 @@ Demo business fixtures live only in `DemoClinic`. Normal MySQL bootstrap creates
 Migration 010 makes batch expiry nullable without changing existing dates. Category-aware receiving requires medication expiry; non-medication supplies may omit it.
 Migration 011 creates numeric `inventory_usages` and links supply allocations through nullable `stock_movements.usage_id`.
 Migration 012 creates numeric `prescription_reservations`, with scoped encounter/item/batch foreign keys and a composite batch/item consistency constraint.
+
+Prescription activity history projects these reservation rows together with encounter prescriptions, dispenses and stock movements.
+Document previews project immutable clinical-document snapshots; these read projections add no tables.
+Migration 013 adds `prescription_dose_logs`, a separate append-only clinical ledger for taken or missed patient doses.
+It snapshots medicine name/unit and records source, occurrence time, amount, notes, actor and entry time, with a scoped unique retry key and request hash.
+Scoped encounter/item/user foreign keys and outcome/amount checks constrain persisted reports. Reading returns the newest 500 entries for an encounter.
+Patient-taking records do not mutate inventory batches, holds or stock movements.
 Existing signed encounters and business records are not rewritten or backfilled. New signing creates holds; legacy signed prescriptions allocate free stock when dispensed.
 Reservations subtract from eligible availability but not physical batch quantity. Dispensing closes own holds and atomically records physical depletion; shortages roll back both ledger and quantity changes.
+
+## Managed branch catalogs
+
+Migration 014 adds numeric-ID reference_catalogs with tenant/branch scope, kind, label, active status, ordering and optimistic version. Scoped kind/label uniqueness prevents duplicate choices. Inventory items gain active status, version and update time. Existing items remain active; no local choices or business fixtures are inserted.
+
+Administrator edits are audited. Archival preserves history. New prescription writes capture database-authoritative item names, ingredients and units; signed clinical JSON remains immutable. Category/unit/ingredient changes are rejected after item history. Legacy prescriptions without metadata use catalog fallback.

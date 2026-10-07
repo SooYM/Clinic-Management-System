@@ -16,7 +16,11 @@ import {
   useDebouncedValue,
 } from '../components';
 import { type Patient, type InventoryItem, dateTime, humanize } from '../types';
+import type { CatalogEntry } from '../AdminCatalogs';
 import ClinicalDocuments from './ClinicalDocuments';
+import DocumentPreview from '../DocumentPreview';
+import PrescriptionLog from '../PrescriptionLog';
+import MedicationDoseLog from '../MedicationDoseLog';
 import { defaultMcStartDate } from '../../shared/clinic-dates';
 import { parseBloodPressure } from '../../shared/blood-pressure';
 interface Encounter {
@@ -37,6 +41,9 @@ interface Encounter {
   vitals: Record<string, string | number>;
   prescriptions: {
     itemId: number;
+    itemName?: string;
+    ingredient?: string;
+    unit?: string;
     quantity: number;
     dosage: string;
     durationDays: number;
@@ -50,6 +57,57 @@ interface Document {
   kind: string;
   status: string;
   verificationUrl?: string;
+}
+function MedicinePicker() {
+  const [search, setSearch] = useState('');
+  const term = useDebouncedValue(search.trim());
+  const resource = useResource<InventoryItem[]>(
+    '/references/medications?search=' + encodeURIComponent(term),
+  );
+  const [selected, setSelected] = useState<InventoryItem>();
+  const choices = (resource.data || []).filter((item) => item.active !== false);
+  const options =
+    selected && !choices.some((item) => item.id === selected.id) ? [selected, ...choices] : choices;
+  return (
+    <>
+      <Field label="Search drug catalog">
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Medicine, SKU or ingredient"
+        />
+      </Field>
+      <Field label="Medicine">
+        <select
+          name="itemId"
+          value={selected?.id || ''}
+          onChange={(event) =>
+            setSelected(options.find((item) => item.id === Number(event.target.value)))
+          }
+        >
+          <option value="">No additional medication</option>
+          {options.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {resource.loading && (
+        <p className="form-help" role="status">
+          Loading medicines…
+        </p>
+      )}
+      {resource.error && <ErrorNotice>{resource.error}</ErrorNotice>}
+      {!resource.loading && !resource.error && !choices.length && (
+        <p className="form-help">
+          No active medicines match. Change the search or ask an administrator to add or reactivate
+          a medication.
+        </p>
+      )}
+    </>
+  );
 }
 function McLeaveStart() {
   const [initialDate] = useState(() => defaultMcStartDate());
@@ -115,7 +173,12 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
   const encounters = useResource<Encounter[]>(
     `/encounters?search=${encodeURIComponent(encounterTerm)}`,
   );
-  const items = useResource<InventoryItem[]>('/references/medications');
+  const items = useResource<InventoryItem[]>('/references/medications?includeInactive=1');
+  const labPanels = useResource<CatalogEntry[]>('/references/catalogs?kind=LAB_PANEL');
+  const specimenTypes = useResource<CatalogEntry[]>('/references/catalogs?kind=SPECIMEN_TYPE');
+  const destinations = useResource<CatalogEntry[]>(
+    '/references/catalogs?kind=REFERRAL_DESTINATION',
+  );
   const [selected, setSelected] = useState<Encounter>();
   const [documentKind, setDocumentKind] = useState('MC');
   const [doc, setDoc] = useState<Document>();
@@ -128,7 +191,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     patientResource.data?.id === selected?.patientId ? patientResource.data : undefined;
   const matchingEncounters = encounters.data || [];
   const matchingRecordedPrescriptions = (selected?.prescriptions || []).filter((rx) =>
-    `${items.data?.find((item) => item.id === rx.itemId)?.name || rx.itemId} ${rx.dosage}`
+    `${rx.itemName || items.data?.find((item) => item.id === rx.itemId)?.name || rx.itemId} ${rx.dosage}`
       .toLowerCase()
       .includes(prescriptionSearch.trim().toLowerCase()),
   );
@@ -273,21 +336,13 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               )}
               {matchingRecordedPrescriptions.map((rx, index) => (
                 <p key={index} className="form-help">
-                  Existing: {items.data?.find((i) => i.id === rx.itemId)?.name || rx.itemId} ·{' '}
+                  Existing:{' '}
+                  {rx.itemName || items.data?.find((i) => i.id === rx.itemId)?.name || rx.itemId} ·{' '}
                   {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
                   {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.dosage} · {rx.durationDays} days
                 </p>
               ))}
-              <Field label="Medicine">
-                <select name="itemId">
-                  <option value="">No additional medication</option>
-                  {items.data?.map((i) => (
-                    <option value={i.id} key={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <MedicinePicker />
               <div className="form-grid">
                 <Field label="Quantity">
                   <input name="quantity" type="number" min="1" defaultValue="1" />
@@ -421,6 +476,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                     const issued = await api.post<Document>('/documents', {
                       encounterId: selected.id,
                       kind: documentKind,
+                      employer: formText(f, 'employer') || undefined,
                       startDate: formText(f, 'startDate') || undefined,
                       days: Number(f.get('days')) || undefined,
                       diagnosisRedacted: f.get('diagnosisRedacted') === 'on',
@@ -428,10 +484,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                       target: formText(f, 'target') || undefined,
                       urgency: formText(f, 'urgency') || undefined,
                       reason: formText(f, 'reason') || undefined,
-                      panels: formText(f, 'panels')
-                        .split(',')
-                        .map((v) => v.trim())
-                        .filter(Boolean),
+                      panels: f.getAll('panels').map((value) => String(value)),
                       specimenType: formText(f, 'specimenType') || undefined,
                       fastingRequired: f.get('fastingRequired') === 'on',
                       clinicalNotes: formText(f, 'clinicalNotes'),
@@ -442,6 +495,9 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                   {documentKind === 'MC' ? (
                     <>
                       <McLeaveStart />
+                      <Field label="Employer / department (optional)">
+                        <input name="employer" maxLength={200} />
+                      </Field>
                       <div className="actions">
                         {[1, 2, 3].map((days) => (
                           <button
@@ -481,7 +537,20 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                   ) : documentKind === 'REFERRAL' ? (
                     <>
                       <Field label="Hospital / specialty">
-                        <input name="target" required />
+                        <select name="target" required>
+                          <option value="">Select configured destination</option>
+                          {destinations.data?.map((destination) => (
+                            <option key={destination.id} value={destination.label}>
+                              {destination.label}
+                            </option>
+                          ))}
+                        </select>
+                        {!destinations.data?.length && (
+                          <small>
+                            Ask an administrator to add referral destinations in Clinical and
+                            inventory choices.
+                          </small>
+                        )}
                       </Field>
                       <Field label="Urgency">
                         <select name="urgency">
@@ -497,18 +566,39 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                     </>
                   ) : (
                     <>
-                      <Field
-                        label="Panels"
-                        hint="Separate panels with commas, e.g. Full Blood Count, HbA1c."
-                      >
-                        <input name="panels" required />
+                      <Field label="Panels" hint="Select one or more configured investigations.">
+                        <select
+                          name="panels"
+                          multiple
+                          required
+                          size={Math.min(Math.max(labPanels.data?.length || 3, 3), 6)}
+                          aria-label="Lab investigation panels"
+                        >
+                          {labPanels.data?.map((panel) => (
+                            <option key={panel.id} value={panel.label}>
+                              {panel.label}
+                            </option>
+                          ))}
+                        </select>
+                        {!labPanels.data?.length && (
+                          <small>
+                            Ask an administrator to add lab investigation panels in Clinical and
+                            inventory choices.
+                          </small>
+                        )}
                       </Field>
                       <Field label="Specimen type">
-                        <select name="specimenType">
-                          <option>BLOOD</option>
-                          <option>URINE</option>
-                          <option>OTHER</option>
+                        <select name="specimenType" required>
+                          <option value="">Select configured specimen</option>
+                          {specimenTypes.data?.map((specimen) => (
+                            <option key={specimen.id} value={specimen.label}>
+                              {specimen.label}
+                            </option>
+                          ))}
                         </select>
+                        {!specimenTypes.data?.length && (
+                          <small>Ask an administrator to add specimen types.</small>
+                        )}
                       </Field>
                       <label className="checkbox">
                         <input name="fastingRequired" type="checkbox" />
@@ -520,25 +610,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                     </>
                   )}
                 </MutationForm>
-                {doc && (
-                  <div className="document-result">
-                    <Status value={doc.status || 'ISSUED'} />
-                    <strong>{doc.documentNumber}</strong>
-                    <a
-                      className="button secondary"
-                      href={api.url(`/documents/${doc.id}/pdf`)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      View / print document
-                    </a>
-                    {doc.verificationUrl && (
-                      <a href={doc.verificationUrl} target="_blank" rel="noreferrer">
-                        Open verification
-                      </a>
-                    )}
-                  </div>
-                )}
+                {doc && <DocumentPreview key={doc.id} documentId={doc.id} />}
                 {error && <ErrorNotice>{error}</ErrorNotice>}
               </>
             ) : (
@@ -552,7 +624,36 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
       </div>
       {selected && (
         <>
-          <ClinicalDocuments key={doc?.id || selected.id} encounterId={selected.id} />
+          <MedicationDoseLog
+            key={`${selected.id}:${selected.version}`}
+            encounterId={selected.id}
+            signed={selected.status === 'SIGNED'}
+            medicines={Array.from(
+              new Map(
+                selected.prescriptions.map((rx) => {
+                  const item = items.data?.find((i) => i.id === rx.itemId);
+                  return [
+                    rx.itemId,
+                    {
+                      id: rx.itemId,
+                      name: rx.itemName || item?.name || `Medicine #${rx.itemId}`,
+                      unit: rx.unit || item?.unit || 'unit',
+                    },
+                  ] as const;
+                }),
+              ).values(),
+            )}
+          />
+          <Panel title="Prescription activity">
+            <PrescriptionLog key={`${selected.id}:${selected.version}`} encounterId={selected.id} />
+          </Panel>
+          <ClinicalDocuments
+            key={`documents:${selected.id}:${doc?.id ?? 'none'}`}
+            encounterId={selected.id}
+            onRevoked={(id) => {
+              if (doc?.id === id) setDoc(undefined);
+            }}
+          />
         </>
       )}
     </>

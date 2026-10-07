@@ -29,6 +29,7 @@ Module access controls which workflows staff can open and use. Signing prescript
 ## Register a patient
 
 Open **Patients → Register patient**. Enter first name and optional last name as recorded on the patient's identity document.
+Phone accepts Malaysian and international numbers. Include the country code for foreign contacts, for example `+44 1632 960123`; spaces and hyphens are retained.
 For a single legal name, leave last name blank.
 
 For **Malaysian** patients, enter 12 IC digits. The form adds hyphens as `YYMMDD-SS-NNNN`, derives birth date and assigns male for an odd final digit or female for an even final digit. Review the derived details before saving. The two-digit year does not identify its century; use the birth-date correction provided by the form when needed. The system checks number/date format; it does not verify the IC with a government registry.
@@ -63,8 +64,19 @@ Signing reserves the prescribed quantities immediately and reduces **Available**
 If eligible free stock is insufficient, the entire sign operation fails; receive stock or review the prescription, then retry.
 
 MC issuance requires a signed encounter belonging to the signed-in GP. The form explains unmet conditions.
+Enter the optional employer or department when needed for the letter.
 Leave starts prefilled with today before 17:00 Malaysia time, or tomorrow from 17:00 onward. Review or override the date before issuing.
 Render demo creates an explicitly unsigned simulated document; actual signed certificates and PDF downloads require the MySQL application.
+
+Open **Preview document** after issuance or from document history. Review the patient, leave dates, practitioner, status and diagnosis visibility.
+The preview uses a clinic letterhead and ruled certificate fields. Choose **Download PDF** only when you want a file.
+The browser demo previews an unsigned sample; it does not issue a verified certificate.
+
+For a signed consultation, open **Medication-taking records** in the clinical workspace.
+A GP or nurse with clinical access records the prescribed medicine, taken/missed outcome, patient-report/staff-observation source, occurrence time, amount taken and optional notes.
+Review the medicine and unit before saving. These records preserve who entered the report and when; they do not reduce clinic inventory again.
+The list shows the newest 500 entries for the selected consultation, ordered by dose occurrence time.
+Inventory-only staff can view clinic dispensing activity, but cannot access patient medication-taking records.
 
 ## Stock receipt and dispensing
 
@@ -78,6 +90,10 @@ Search the **Dispense prescription** list by patient, identity, record number, G
 The list contains signed consultations in the active branch with prescriptions that have not already been dispensed. Draft notes, notes without medicine and completed dispenses are excluded.
 
 Review prescription instructions and stock before dispensing. FEFO uses the earliest eligible expiry first. Insufficient stock prevents the whole dispense, rather than partially completing it. After success, stock totals refresh and the consultation leaves the pending list.
+
+Use **Prescription activity log** to review prescribed instructions, reserved batches and completed dispensing with quantities, staff and times.
+In **Dispensary → Prescription history and activity**, search and select a pending or completed record. Completed prescriptions remain searchable here after leaving the dispensing queue.
+Clinic stock events do not confirm that a patient took their medicine. Medication-taking records are entered separately by clinical staff.
 
 ## Billing, notifications and access problems
 
@@ -100,3 +116,9 @@ Existing tabs retain prior records and edited passwords. Use Reset demo to load 
 Patients, appointments, queue visits, prescriptions, stock and billing examples are preloaded only in the browser demo.
 Normal MySQL bootstrap creates clinic/staff/room setup without business fixtures. Development seeding is a separate guarded command.
 Messages are simulated; receipt and document downloads explain their demo limitation. Use the normal MySQL application for durable clinic work.
+
+## Edit dropdown and stock choices
+
+Administrators use **Administration → Catalog choices** to add or edit lab panels, specimen types, inventory units and referral destinations. Set display order, archive unused choices, or restore them. New forms use active choices from the selected branch. Configure these lists before using an empty local installation.
+
+In **Dispensary → Stock catalogue**, administrators edit drug/supply names, SKU, prices and reorder levels, or archive/restore items. Prescription choices come from active medication items. Used stock units, categories and ingredients cannot change. New signed prescriptions retain captured medicine details; legacy records without snapshots use catalog fallback. Existing signed prescriptions remain dispensable after archival. Existing archived stock can still be received or used. Rooms remain editable in Administration; practitioners come from active GP accounts.

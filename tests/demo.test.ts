@@ -281,7 +281,9 @@ describe('browser-session demo simulation', () => {
     await login(clinic, 'gp');
     const prescriptions = [rx(a.id, 3), rx(b.id, 3)],
       chart = await request(clinic, '/encounters', 'POST', chartPayload(p.id, prescriptions));
-    expect(chart.prescriptions).toEqual(prescriptions);
+    expect(chart.prescriptions).toEqual(
+      prescriptions.map((prescription) => expect.objectContaining(prescription)),
+    );
     await request(clinic, '/auth/logout', 'POST');
     await login(clinic);
     // Simulate elapsed time after signing; dispensing must retain holds on failure.
@@ -376,6 +378,194 @@ describe('browser-session demo simulation', () => {
     }
     expect((await request(clinic, '/encounters')).data).toHaveLength(before);
   });
+  it('previews an unsigned redacted document from immutable fictional snapshots and marks revocation', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic, 'gp');
+    const chart = await request(clinic, '/encounters', 'POST', {
+      ...chartPayload(2, []),
+      assessment: 'PRIVATE-DEMO-DIAGNOSIS',
+    });
+    const doc = await request(clinic, '/documents', 'POST', {
+      encounterId: chart.id,
+      kind: 'MC',
+      startDate: '2035-01-01',
+      days: 2,
+      diagnosisRedacted: true,
+      employer: 'Fictional QA Employer',
+    });
+    const before = await request(clinic, '/documents/' + doc.id);
+    expect(before).toMatchObject({
+      patientName: 'Mei Lin Tan',
+      diagnosis: null,
+      diagnosisRedacted: true,
+      kind: 'MC',
+    });
+    expect(before.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Employer', value: 'Fictional QA Employer' }),
+      ]),
+    );
+    expect(JSON.stringify(before)).not.toContain('PRIVATE-DEMO-DIAGNOSIS');
+    expect(before).not.toHaveProperty('payload');
+    expect(before).not.toHaveProperty('verificationUrl');
+    const patient = await request(clinic, '/patients/2');
+    await request(clinic, '/patients/2', 'PUT', {
+      ...patientPayload(patient.nationalId),
+      firstName: 'Changed Fictional',
+      lastName: 'Identity',
+      version: patient.version,
+    });
+    expect((await request(clinic, '/documents/' + doc.id)).patientName).toBe('Mei Lin Tan');
+    await expect(clinic.request('/documents/' + doc.id, 'GET', undefined, 2)).rejects.toMatchObject(
+      { status: 404 },
+    );
+    await expect(request(clinic, '/documents/' + doc.id + '/pdf')).rejects.toBeDefined();
+    await request(clinic, '/documents/' + doc.id + '/revoke', 'POST', {
+      reason: 'Fictional correction',
+    });
+    expect((await request(clinic, '/documents/' + doc.id)).revoked).toBe(true);
+  });
+  it('preserves custom frequency and records signed reservation/dispense activity without draft events', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic, 'gp');
+    const prescriptions = [
+        { ...rx(1, 4), frequencyPerDay: 23, mealTiming: 'BEFORE_MEAL', durationDays: 2 },
+      ],
+      draft = await request(clinic, '/encounters', 'POST', {
+        ...chartPayload(2, prescriptions),
+        status: 'DRAFT',
+      });
+    expect((await request(clinic, '/encounters/' + draft.id + '/prescription-log')).events).toEqual(
+      [],
+    );
+    const signed = await request(clinic, '/encounters/' + draft.id, 'PUT', {
+      ...chartPayload(2, prescriptions),
+      version: draft.version,
+    });
+    const before = await request(clinic, '/encounters/' + signed.id + '/prescription-log');
+    expect(before.events.map((event: any) => event.type)).toEqual(['PRESCRIBED', 'RESERVED']);
+    expect(before.events.find((event: any) => event.type === 'PRESCRIBED').at).toBe(
+      signed.signedAt,
+    );
+    expect(
+      before.events.every(
+        (event: any) =>
+          event.frequencyPerDay === 23 &&
+          event.mealTiming === 'BEFORE_MEAL' &&
+          event.quantity === 4,
+      ),
+    ).toBe(true);
+    const key = 'QA-DEMO-ACTIVITY-KEY';
+    await request(clinic, '/dispenses', 'POST', { encounterId: signed.id, idempotencyKey: key });
+    await request(clinic, '/dispenses', 'POST', { encounterId: signed.id, idempotencyKey: key });
+    const after = await request(clinic, '/encounters/' + signed.id + '/prescription-log');
+    expect(after.events.filter((event: any) => event.type === 'DISPENSED')).toHaveLength(1);
+    expect(after.events.find((event: any) => event.type === 'DISPENSED')).toMatchObject({
+      quantity: 4,
+      batchId: 1,
+      frequencyPerDay: 23,
+      actorName: 'Dr. Aiman Hafiz',
+    });
+    const history = (await request(clinic, '/dispensary/history?search=Mei')).data;
+    expect(history.find((row: any) => row.id === signed.id)).toMatchObject({ dispensed: true });
+    expect(after).not.toHaveProperty('subjective');
+  });
+  it('stores patient-taking reports separately from stock and preserves them across reload', async () => {
+    const storage = new MemoryStorage(),
+      clinic = new DemoClinic(storage);
+    await login(clinic, 'gp');
+    const before = (await request(clinic, '/inventory')).data,
+      path = '/encounters/1/medication-doses';
+    const input = {
+      itemId: 1,
+      outcome: 'TAKEN',
+      source: 'PATIENT_REPORTED',
+      occurredAt: '2026-01-01T10:00:00+08:00',
+      amount: 0.5,
+      notes: 'Fictional report',
+      idempotencyKey: 'DEMO-DOSE-REPORT',
+    };
+    const saved = await request(clinic, path, 'POST', input);
+    expect(saved).toMatchObject({
+      amount: 0.5,
+      occurredAt: '2026-01-01T02:00:00.000Z',
+      actorName: 'Dr. Aiman Hafiz',
+    });
+    expect((await request(clinic, path, 'POST', input)).id).toBe(saved.id);
+    await expect(request(clinic, path, 'POST', { ...input, amount: 1 })).rejects.toBeDefined();
+    await request(clinic, path, 'POST', {
+      ...input,
+      outcome: 'MISSED',
+      amount: null,
+      source: 'STAFF_OBSERVED',
+      occurredAt: '2026-01-02T00:00:00Z',
+      idempotencyKey: 'DEMO-MISSED-REPORT',
+    });
+    const restored = new DemoClinic(storage),
+      log = await request(restored, path);
+    expect(log.entries.map((v: any) => v.outcome)).toEqual(['MISSED', 'TAKEN']);
+    expect(log).not.toHaveProperty('data');
+    expect(log.entries[0]).not.toHaveProperty('requestHash');
+    expect((await request(restored, '/inventory')).data).toEqual(before);
+    for (const changed of [
+      { source: undefined },
+      { amount: 0 },
+      { amount: 0.0001 },
+      { outcome: 'MISSED', amount: 1 },
+      { occurredAt: '2099-01-01T00:00:00Z' },
+      { itemId: 2 },
+    ])
+      await expect(
+        request(restored, path, 'POST', {
+          ...input,
+          ...changed,
+          idempotencyKey: 'INVALID-DEMO-DOSE',
+        }),
+      ).rejects.toBeDefined();
+    await expect(request(restored, path, 'GET', undefined, 2)).rejects.toBeDefined();
+    await login(restored, 'reception');
+    await expect(request(restored, path)).rejects.toBeDefined();
+  });
+  it('retains prior-session records and fills only missing legacy document snapshot fields', async () => {
+    const storage = new MemoryStorage();
+    let clinic = new DemoClinic(storage);
+    await login(clinic, 'gp');
+    const patient = await request(
+        clinic,
+        '/patients',
+        'POST',
+        patientPayload('LEGACY-DOCUMENT-ROW'),
+      ),
+      chart = await request(clinic, '/encounters', 'POST', chartPayload(patient.id, [])),
+      doc = await request(clinic, '/documents', 'POST', {
+        encounterId: chart.id,
+        kind: 'MC',
+        startDate: '2035-01-01',
+        days: 1,
+      });
+    const stateKey = [...storage.entries.keys()][0],
+      state = JSON.parse(storage.getItem(stateKey)!);
+    state.rows.documents.find((row: any) => row.id === doc.id).payload = {
+      encounterId: chart.id,
+      kind: 'MC',
+      startDate: '2035-01-01',
+      days: 1,
+      demo: true,
+    };
+    storage.setItem(stateKey, JSON.stringify(state));
+    clinic = new DemoClinic(storage);
+    const preview = await request(clinic, '/documents/' + doc.id);
+    expect(preview).toMatchObject({
+      patientName: patient.name,
+      nationalId: patient.nationalId,
+      practitionerName: 'Dr. Aiman Hafiz',
+    });
+    expect(preview.clinicName).not.toBe('');
+    expect((await request(clinic, '/patients')).data).toHaveLength(5);
+    expect(
+      (await request(clinic, '/encounters')).data.some((row: any) => row.id === chart.id),
+    ).toBe(true);
+  });
   it('rejects mismatched simulated payments without committing an invoice', async () => {
     const clinic = new DemoClinic(new MemoryStorage());
     await login(clinic);
@@ -465,6 +655,154 @@ describe('browser-session demo simulation', () => {
         firstName: 'Invalid',
         nationality: 'MALAYSIAN',
         nationalId: '990231145568',
+      }),
+    ).rejects.toBeDefined();
+  });
+  it('admin catalog edits govern new lab choices while issued snapshots stay unchanged', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const entry = await request(clinic, '/admin/catalogs', 'POST', {
+      kind: 'LAB_PANEL',
+      label: 'QA Demo Panel',
+    });
+    await login(clinic, 'gp');
+    await expect(
+      request(clinic, '/admin/catalogs', 'POST', { kind: 'LAB_PANEL', label: 'Unauthorized' }),
+    ).rejects.toBeDefined();
+    expect(
+      (await request(clinic, '/references/catalogs?kind=LAB_PANEL')).data.some(
+        (v: any) => v.id === entry.id,
+      ),
+    ).toBe(true);
+    const issued = await request(clinic, '/documents', 'POST', {
+      encounterId: 1,
+      kind: 'LAB',
+      panels: ['QA Demo Panel'],
+      specimenType: 'Blood',
+      clinicalNotes: 'Fictional request',
+    });
+    const before = await request(clinic, '/documents/' + issued.id);
+    expect(JSON.stringify(before.fields)).toContain('QA Demo Panel');
+    await login(clinic);
+    await expect(
+      request(
+        clinic,
+        '/admin/catalogs/' + entry.id,
+        'PUT',
+        { label: 'Other branch', active: true, sortOrder: 0, version: entry.version },
+        2,
+      ),
+    ).rejects.toBeDefined();
+    await request(clinic, '/admin/catalogs/' + entry.id, 'PUT', {
+      label: 'QA Demo Panel Updated',
+      active: false,
+      sortOrder: 0,
+      version: entry.version,
+    });
+    await expect(
+      request(clinic, '/admin/catalogs/' + entry.id, 'PUT', {
+        label: 'Stale',
+        active: true,
+        sortOrder: 0,
+        version: entry.version,
+      }),
+    ).rejects.toBeDefined();
+    expect(
+      (await request(clinic, '/references/catalogs?kind=LAB_PANEL')).data.some(
+        (v: any) => v.id === entry.id,
+      ),
+    ).toBe(false);
+    expect(await request(clinic, '/documents/' + issued.id)).toEqual(before);
+    await login(clinic, 'gp');
+    await expect(
+      request(clinic, '/documents', 'POST', {
+        encounterId: 1,
+        kind: 'LAB',
+        panels: ['QA Demo Panel Updated'],
+        specimenType: 'Blood',
+        clinicalNotes: '',
+      }),
+    ).rejects.toBeDefined();
+  });
+  it('archives medicines without losing signed stock work or trusting client snapshots', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const input = itemPayload('DEMO-ARCHIVE'),
+      i = await request(clinic, '/inventory', 'POST', input);
+    await request(clinic, '/inventory/batches', 'POST', {
+      itemId: i.id,
+      batchNumber: 'DEMO-ARCHIVE',
+      expiresOn: '2035-01-01',
+      quantity: 5,
+    });
+    await login(clinic, 'gp');
+    const e = await request(
+      clinic,
+      '/encounters',
+      'POST',
+      chartPayload(2, [
+        { ...rx(i.id, 3), itemName: 'FORGED', ingredient: 'FORGED', unit: 'FORGED' },
+      ]),
+    );
+    expect(e.prescriptions[0]).toMatchObject({
+      itemName: i.name,
+      ingredient: i.ingredient,
+      unit: i.unit,
+    });
+    await login(clinic);
+    await expect(
+      request(clinic, '/admin/inventory/' + i.id, 'PUT', {
+        ...input,
+        ingredient: 'changed',
+        active: true,
+        version: i.version,
+      }),
+    ).rejects.toBeDefined();
+    await request(clinic, '/admin/inventory/' + i.id, 'PUT', {
+      ...input,
+      active: false,
+      version: i.version,
+    });
+    expect((await request(clinic, '/references/medications?search=DEMO-ARCHIVE')).data).toEqual([]);
+    await login(clinic, 'gp');
+    await expect(
+      request(clinic, '/encounters', 'POST', chartPayload(2, [rx(i.id, 1)])),
+    ).rejects.toBeDefined();
+    await request(clinic, '/dispenses', 'POST', {
+      encounterId: e.id,
+      idempotencyKey: 'DEMO-ARCHIVED-DISPENSE',
+    });
+    expect(
+      (await request(clinic, '/encounters/' + e.id + '/prescription-log')).events.find(
+        (v: any) => v.type === 'DISPENSED',
+      ),
+    ).toMatchObject({ quantity: 3, itemName: i.name });
+  });
+  it('retains foreign passport addresses and international formatted phone numbers', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const input = {
+      ...patientPayload('QA-FOREIGN-PASSPORT'),
+      addressLine1: 'Fictional overseas address',
+      postcode: 'SW1A 1AA',
+      city: 'London',
+      state: 'London',
+      phone: '+44 (0)20 7946 0999 ext 123',
+    };
+    const saved = await request(clinic, '/patients', 'POST', input);
+    expect(saved).toMatchObject(input);
+    expect(await request(clinic, '/patients/' + saved.id)).toMatchObject(input);
+    const updated = await request(clinic, '/patients/' + saved.id, 'PUT', {
+      ...input,
+      phone: '+64 9 555 0100',
+      version: saved.version,
+    });
+    expect(updated.phone).toBe('+64 9 555 0100');
+    await expect(
+      request(clinic, '/patients', 'POST', {
+        ...input,
+        nationalId: 'TOO-LONG-PHONE',
+        phone: '+'.padEnd(51, '1'),
       }),
     ).rejects.toBeDefined();
   });

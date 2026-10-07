@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Clinical letters open a responsive preview before manual PDF download; MCs use centered letterhead and ruled fields.
+- Prescription logs show clinic reservations/dispensing and separately recorded patient medication-taking, with staff, source and timestamps.
+
 - Searchable patient, consultation, prescription and categorized inventory lists; SOAP fields use separate full-width rows.
 - Signing reserves prescription stock automatically; dispensing deducts physical batches once, with shortages and expired holds handled atomically.
 - General supplies support optional expiry and audited idempotent usage; migrations 010–012 extend the numeric schema.
@@ -31,3 +34,5 @@ V1 PostgreSQL migrations, API contracts, mock accounts and secrets are incompati
 ## V1 archive
 
 Last V1 main revision: `b0c9a49cd0cfef239cd2376edafc601c2e44928e`. Its source remains in Git history and `v1-demo-before-v2`. Publication preserves history without force-pushing.
+
+Administrator catalogs support branch-scoped editing, archival and restoration for drugs, supplies and clinical choices. New signed prescriptions preserve authoritative medicine snapshots. Phone fields explain international country codes and accept foreign numbers unchanged. Migration 014 preserves inventory and adds no local sample records.

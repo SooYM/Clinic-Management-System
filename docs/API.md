@@ -4,49 +4,53 @@ Browser and API share an origin. JSON requests use `Content-Type: application/js
 
 Successful collection reads return `{ "data": [] }`; single-resource and mutation responses return resource objects. Mutation requests normally return 201; edits return 200. Logout returns 204. Failure response contains `error`, `code` and request identifier; validation failures also include field details. Never treat a 500 response as proof the transaction succeeded; reuse original idempotency key for financial retry.
 
-| Endpoint                            | Method     | Role / operation                                                                                         |
-| ----------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
-| `/api/health`                       | GET        | Database availability                                                                                    |
-| `/api/auth/login`                   | POST       | Email/password; session and CSRF token                                                                   |
-| `/api/auth/me`                      | GET        | Current authenticated actor                                                                              |
-| `/api/auth/logout`                  | POST       | Delete current session                                                                                   |
-| `/api/bootstrap`                    | GET        | User, authorized branches, rooms and practitioners                                                       |
-| `/api/dashboard`                    | GET        | Selected branch counts and revenue                                                                       |
-| `/api/patients`                     | GET / POST | Search / registry write                                                                                  |
-| `/api/patients/:id`                 | GET / PUT  | Selected branch patient; edit requires version                                                           |
-| `/api/patients/:id/encounters`      | GET        | Protected patient history; 50-row cursor pages ordered by timestamp and numeric ID                       |
-| `/api/appointments`                 | GET / POST | Calendar / booking                                                                                       |
-| `/api/appointments/:id/cancel`      | POST       | Cancel booked appointment with version                                                                   |
-| `/api/queue`                        | GET / POST | Today's queue / check-in                                                                                 |
-| `/api/queue/:id/transition`         | POST       | Status change with version and optional room/practitioner                                                |
-| `/api/queue/display`                | GET        | Authenticated display projection without patient details                                                 |
-| `/api/queue/events`                 | GET        | Authenticated server-sent queue refresh events                                                           |
-| `/api/queue/estimate`               | GET        | Approximate selected-branch clearance; unknown below five qualifying observations                        |
-| `/api/encounters`                   | GET / POST | Clinical module read / doctor-only GP chart creation                                                     |
-| `/api/encounters/:id`               | PUT        | Author edit before signing; version required                                                             |
-| `/api/inventory`                    | GET / POST | Stock catalog / authorized item creation                                                                 |
-| `/api/inventory/batches`            | POST       | Stock receipt and movement ledger                                                                        |
-| `/api/dispenses`                    | POST       | Signed encounter dispensing; consumes physical stock once and closes own holds; idempotency key required |
-| `/api/inventory/usage`              | POST       | Non-medication supply usage with `{itemId,quantity,reason,idempotencyKey}`; audited and idempotent       |
-| `/api/invoices`                     | GET / POST | Billing module financial ledger / split checkout                                                         |
-| `/api/invoices/:id/receipt`         | GET        | Authenticated receipt rendering                                                                          |
-| `/api/deposits`                     | POST       | Billing module deposit record                                                                            |
-| `/api/patients/:id/deposit-balance` | GET        | Billing module scoped deposit balance                                                                    |
-| `/api/documents`                    | GET / POST | Protected clinical documents / attending doctor issuance                                                 |
-| `/api/documents/:id/revoke`         | POST       | Issuing GP revocation with reason                                                                        |
-| `/api/documents/:id/pdf`            | GET        | Authenticated clinical PDF                                                                               |
-| `/api/verify/:token`                | GET        | Minimal public validity response                                                                         |
-| `/api/notifications`                | GET        | Reports module delivery status                                                                           |
-| `/api/admin/users`                  | GET / POST | Admin staff listing / account creation                                                                   |
-| `/api/admin/users/:id`              | PUT        | Admin activation; protects self and final administrator                                                  |
-| `/api/auth/change-password`         | POST       | Current password verification; invalidates sessions                                                      |
-| `/api/admin/branches`               | GET / POST | Admin clinic branches                                                                                    |
-| `/api/admin/rooms`                  | GET / POST | Admin rooms; tenant scope validated                                                                      |
-| `/api/admin/rooms/:id`              | PUT        | Rename/archive selected-branch room; busy room returns 409                                               |
-| `/api/admin/role-modules`           | GET / PUT  | Admin tenant-wide role grants; ADMIN always retains every module                                         |
-| `/api/dispensary/encounters`        | GET        | Inventory module: signed, prescription-bearing, undispensed work; excludes SOAP                          |
-| `/api/admin/audit`                  | GET        | Admin branch audit trail                                                                                 |
-| `/api/notifications/:id/retry`      | POST       | Admin retry failed/unconfigured delivery                                                                 |
+| Endpoint                               | Method     | Role / operation                                                                                         |
+| -------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
+| `/api/health`                          | GET        | Database availability                                                                                    |
+| `/api/auth/login`                      | POST       | Email/password; session and CSRF token                                                                   |
+| `/api/auth/me`                         | GET        | Current authenticated actor                                                                              |
+| `/api/auth/logout`                     | POST       | Delete current session                                                                                   |
+| `/api/bootstrap`                       | GET        | User, authorized branches, rooms and practitioners                                                       |
+| `/api/dashboard`                       | GET        | Selected branch counts and revenue                                                                       |
+| `/api/patients`                        | GET / POST | Search / registry write                                                                                  |
+| `/api/patients/:id`                    | GET / PUT  | Selected branch patient; edit requires version                                                           |
+| `/api/patients/:id/encounters`         | GET        | Protected patient history; 50-row cursor pages ordered by timestamp and numeric ID                       |
+| `/api/appointments`                    | GET / POST | Calendar / booking                                                                                       |
+| `/api/appointments/:id/cancel`         | POST       | Cancel booked appointment with version                                                                   |
+| `/api/queue`                           | GET / POST | Today's queue / check-in                                                                                 |
+| `/api/queue/:id/transition`            | POST       | Status change with version and optional room/practitioner                                                |
+| `/api/queue/display`                   | GET        | Authenticated display projection without patient details                                                 |
+| `/api/queue/events`                    | GET        | Authenticated server-sent queue refresh events                                                           |
+| `/api/queue/estimate`                  | GET        | Approximate selected-branch clearance; unknown below five qualifying observations                        |
+| `/api/encounters`                      | GET / POST | Clinical module read / doctor-only GP chart creation                                                     |
+| `/api/encounters/:id`                  | PUT        | Author edit before signing; version required                                                             |
+| `/api/encounters/:id/prescription-log` | GET        | Clinical or inventory module: scoped clinic prescription events; excludes SOAP                           |
+| `/api/encounters/:id/medication-doses` | GET / POST | Clinical-only patient medication-taking reports; GP/nurse records against signed prescriptions           |
+| `/api/inventory`                       | GET / POST | Stock catalog / authorized item creation                                                                 |
+| `/api/inventory/batches`               | POST       | Stock receipt and movement ledger                                                                        |
+| `/api/dispenses`                       | POST       | Signed encounter dispensing; consumes physical stock once and closes own holds; idempotency key required |
+| `/api/inventory/usage`                 | POST       | Non-medication supply usage with `{itemId,quantity,reason,idempotencyKey}`; audited and idempotent       |
+| `/api/invoices`                        | GET / POST | Billing module financial ledger / split checkout                                                         |
+| `/api/invoices/:id/receipt`            | GET        | Authenticated receipt rendering                                                                          |
+| `/api/deposits`                        | POST       | Billing module deposit record                                                                            |
+| `/api/patients/:id/deposit-balance`    | GET        | Billing module scoped deposit balance                                                                    |
+| `/api/documents`                       | GET / POST | Protected clinical documents / attending doctor issuance                                                 |
+| `/api/documents/:id`                   | GET        | Authenticated, integrity-checked, redacted letter preview projection                                     |
+| `/api/documents/:id/revoke`            | POST       | Issuing GP revocation with reason                                                                        |
+| `/api/documents/:id/pdf`               | GET        | Authenticated inline clinical PDF; `?download=1` requests an attachment                                  |
+| `/api/verify/:token`                   | GET        | Minimal public validity response                                                                         |
+| `/api/notifications`                   | GET        | Reports module delivery status                                                                           |
+| `/api/admin/users`                     | GET / POST | Admin staff listing / account creation                                                                   |
+| `/api/admin/users/:id`                 | PUT        | Admin activation; protects self and final administrator                                                  |
+| `/api/auth/change-password`            | POST       | Current password verification; invalidates sessions                                                      |
+| `/api/admin/branches`                  | GET / POST | Admin clinic branches                                                                                    |
+| `/api/admin/rooms`                     | GET / POST | Admin rooms; tenant scope validated                                                                      |
+| `/api/admin/rooms/:id`                 | PUT        | Rename/archive selected-branch room; busy room returns 409                                               |
+| `/api/admin/role-modules`              | GET / PUT  | Admin tenant-wide role grants; ADMIN always retains every module                                         |
+| `/api/dispensary/encounters`           | GET        | Inventory module: signed, prescription-bearing, undispensed work; excludes SOAP                          |
+| `/api/dispensary/history`              | GET        | Clinical or inventory module: searchable signed prescription history, including completed dispenses      |
+| `/api/admin/audit`                     | GET        | Admin branch audit trail                                                                                 |
+| `/api/notifications/:id/retry`         | POST       | Admin retry failed/unconfigured delivery                                                                 |
 
 Role details and validation bounds are executable in `src/server/app.ts` and `src/server/validation.ts`. Clinical writes accept identifiers from the same branch, signed encounter references where required, and safe integer quantities. Amounts use integer minor units named `priceCents`, `unitPriceCents` or `amountCents`.
 
@@ -73,7 +77,7 @@ SSE is process-local in this initial implementation. Multiple API replicas requi
 
 Patient history returns `{data, nextCursor}`. Supply both `before` (ISO UTC timestamp) and `beforeId` (positive integer) from the returned cursor for the next page. Timestamp/ID ordering retains encounters sharing the same timestamp without duplicates. A null cursor marks the final page. The clinical module is required; a patient outside the selected branch returns 404.
 
-Module grants authorize routes on every request. Administrator overrides apply clinic-wide by role; branch membership still constrains resources. Clinical write/sign and document issuance require DOCTOR even when another role receives clinical module access. Retired package, commission, policy, payroll and photo paths return `410 FEATURE_RETIRED`. Historical test adapters are not mounted by the deployed app.
+Module grants authorize routes on every request. Administrator overrides apply clinic-wide by role; branch membership still constrains resources. Chart write/sign and document issuance require DOCTOR even when another role receives clinical module access. Retired package, commission, policy, payroll and photo paths return `410 FEATURE_RETIRED`. Historical test adapters are not mounted by the deployed app.
 
 Patient registration supports `firstName`, optional `lastName`, `nationality`, `addressLine1`, `addressLine2`, `postcode`, `city` and `state`. Malaysian IC accepts 12 digits or 6-2-4 hyphens, persists canonical format, derives birth date/gender and rejects invalid calendar dates or conflicting demographics. An older-century birth date matching the IC date digits is accepted. Passport registrations require explicit date of birth and gender. Prescription entries accept `frequencyPerDay` (1–24) and `mealTiming` (`BEFORE_MEAL`, `AFTER_MEAL`, `ANY_TIME`); omitted values default to 1 and ANY_TIME.
 
@@ -101,3 +105,25 @@ Saving an encounter as `SIGNED` reserves every prescribed quantity in the same t
 Encounter `vitals.bloodPressure`, when present, must contain positive whole-number `SYS/DIA` with SYS>DIA. Unusual numeric readings remain accepted; browser warnings use the documented monitor limits, without diagnostic classification. Other vital keys retain their existing contracts.
 
 MC date defaults are browser assistance, not an API override: Malaysia time before 17:00 selects today, from 17:00 selects tomorrow. Explicit `startDate` remains required and editable. Attending-GP ownership, signed encounter and non-overlap checks remain enforced by the real service; demo issuance is unsigned simulation.
+
+## Letter preview and prescription activity
+
+Patient `phone` accepts local and international text up to 50 characters, including a leading `+` country code and display separators. The application preserves the supplied phone text; it does not infer a country from nationality or verify ownership.
+
+`GET /documents/:id` returns a `DocumentView`, including clinic/patient/practitioner display details, Malaysia issue date/time, status, `fields` as `{label,value}` pairs, and `diagnosis` as text or `null` when withheld. It excludes the raw signed payload, signing hash and verification token. Preview and PDF reads reject altered snapshots or metadata with `409 DOCUMENT_INTEGRITY_FAILED`; revocation remains visibly marked.
+
+`GET /documents/:id/pdf` streams an inline PDF by default. Only `?download=1` sets attachment disposition. The browser opens a letter preview first and offers a separate download action. Both outputs use the same snapshot projection and diagnosis-redaction policy.
+
+`GET /encounters/:id/prescription-log` accepts clinical or inventory module access and validates selected-branch scope. The response contains `encounterId`, `patientId`, `patientName` and `events`; each event includes type (`PRESCRIBED`, `RESERVED`, `RELEASED`, `DISPENSED`), medicine, quantity, staff, timestamp, prescribed frequency/meal timing/duration/dosage and batch details when applicable. The projection excludes SOAP and does not represent patient dose-taking. Reading it does not consume stock; existing encounter, reservation, dispense and movement rows remain authoritative.
+
+`GET /encounters/:id/medication-doses` requires clinical access and returns `{encounterId,patientId,patientName,entries}` with the newest 500 reports ordered by occurrence time and numeric ID. Inventory access alone is insufficient. Each entry includes medicine/unit snapshots, outcome, source, amount, occurrence time, notes, recording actor and creation time.
+
+`POST` on that path additionally requires DOCTOR or NURSE and a medicine from the signed encounter. Send `{itemId,outcome,source,occurredAt,amount,notes,idempotencyKey}`. Outcomes are `TAKEN` or `MISSED`; sources are `PATIENT_REPORTED` or `STAFF_OBSERVED`. `TAKEN` requires a positive amount of at most 1,000,000, with up to three decimal places; `MISSED` requires `amount:null`. An offset-bearing ISO occurrence timestamp is normalized to UTC and may not exceed current time by more than five minutes. Notes permit 2,000 characters. Retry keys permit 8–100 characters; a changed payload returns `409 IDEMPOTENCY_CONFLICT`.
+
+Reports are append-only clinical records. They do not change inventory or confirm adherence beyond the source recorded by staff. Existing prescription-frequency input remains unchanged.
+
+## Administrator catalogs
+
+ADMIN reads/creates `/api/admin/catalogs` and edits `/api/admin/catalogs/:id` with label, active, sortOrder and version. Creation also requires kind: LAB_PANEL, SPECIMEN_TYPE, INVENTORY_UNIT or REFERRAL_DESTINATION. Label limits respectively are 200, 100, 50 and 200 characters. Stale versions return 409. `/api/references/catalogs?kind=...` supplies active choices to authorized modules. Configured kinds require active matches; completely empty kinds preserve legacy API free text.
+
+ADMIN edits `/api/admin/inventory/:id` with complete item metadata plus active/version. Category, ingredient and unit cannot change after stock or prescription history. `/api/references/medications?search=...` searches active items before the 200-result cap; explicit includeInactive=1 supports historical lookup. New prescriptions reject archived medications. Existing signed prescriptions remain dispensable. New writes capture server-authoritative medicine metadata; legacy records without snapshots retain catalog fallback.

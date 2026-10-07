@@ -1537,3 +1537,103 @@ dd {
     max-width: 74px;
   }
 }
+
+.document-preview {
+  margin-top: 24px;
+  min-width: 0;
+}
+.document-preview-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.clinic-letter {
+  background: white;
+  color: #172b3a;
+  border: 1px solid #cbd5df;
+  padding: clamp(18px, 4vw, 40px);
+  max-width: 800px;
+  margin: 0 auto;
+  overflow-wrap: anywhere;
+}
+.letter-heading {
+  text-align: center;
+  border-bottom: 2px solid #172b3a;
+  padding-bottom: 20px;
+}
+.letter-heading > strong {
+  font-size: 1.3rem;
+}
+.letter-heading p {
+  white-space: pre-line;
+  margin: 8px 0 24px;
+}
+.letter-heading h2 {
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+}
+.letter-notice {
+  padding: 12px;
+  background: #fff3d7;
+  color: #694400;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+.letter-fields {
+  margin: 24px 0;
+}
+.letter-fields > div {
+  display: grid;
+  grid-template-columns: minmax(90px, 28%) 1fr;
+  gap: 16px;
+  border-bottom: 1px solid #acb7c2;
+  padding: 12px 0;
+}
+.letter-fields dt {
+  font-weight: 600;
+}
+.letter-fields dd {
+  margin: 0;
+  white-space: pre-line;
+}
+.letter-doctor {
+  margin: 48px 0 32px auto;
+  width: fit-content;
+  max-width: 100%;
+  border-top: 1px solid #172b3a;
+  padding-top: 12px;
+}
+.letter-doctor p {
+  margin: 4px 0;
+}
+.letter-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid #acb7c2;
+  padding-top: 14px;
+  font-size: 0.8rem;
+}
+.prescription-log {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.prescription-log li {
+  border-left: 3px solid #a8cbd0;
+  padding: 4px 0 16px 16px;
+  margin-top: 16px;
+}
+.prescription-log p {
+  margin: 8px 0;
+}
+@media (max-width: 420px) {
+  .letter-fields > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

@@ -7,6 +7,8 @@ const topics = [
       'Sign in with your staff account and choose the correct branch in the sidebar.',
       'Numeric record IDs identify tenants, branches, patients, staff, rooms, consultations, stock, and invoices. Clinical document and queue references remain easy to recognise alongside record IDs.',
       'Use the modules visible in your sidebar. Your administrator controls role access.',
+      'Administrators maintain Clinical and inventory choices for lab panels, specimen types, units and referral destinations. Edit or archive choices for future forms; recorded document details stay preserved.',
+      'Administrators use Edit item in Dispensary to correct drug names, prices and reorder levels, or archive and reactivate items. Archived medicines stay in historical prescriptions but disappear from new medicine choices. Category, ingredient and unit cannot change after stock or prescribing history.',
       'Use Account security to change your password. New passwords need at least 14 characters.',
     ],
   },
@@ -49,7 +51,7 @@ const topics = [
       'Enter blood pressure as SYS/DIA with systolic above diastolic. An unusual monitor-range warning asks you to verify the reading but does not block recording clinical extremes.',
       'Issue medical certificates, referrals, or lab orders from the encounter. Medical certificates can hide diagnosis from employers.',
       'Only the attending GP can issue documents from a signed consultation. New MC leave dates default to today before 5 pm Malaysia time, or tomorrow from 5 pm; review and change the date when needed.',
-      'Review issued documents, download PDFs, or revoke an incorrect document with an audited reason.',
+      'Issuance opens a readable letter preview. Preview saved documents from history; Download PDF is a separate action in the MySQL application. Demo previews are unsigned samples with no verified PDF. Revoke incorrect documents with an audited reason.',
     ],
   },
   {
@@ -61,7 +63,7 @@ const topics = [
       'Available stock excludes expired batches. Refresh the catalogue to see current amounts.',
       'Search the prescription list by patient or medicine, then select an eligible signed prescription to review patient, GP, allergies, and medicine instructions.',
       'Dispense uses first expiry, first out. Insufficient unexpired stock blocks the operation.',
-      'An empty prescription list means no undispensed signed prescriptions are available; a GP must sign the consultation first.',
+      'An empty prescription list means no undispensed signed prescriptions are available; a GP must sign the consultation first. Search Prescription history and activity for completed work. Clinic activity logs record prescribing, reservations and dispensing. The clinical Patient medication-taking log separately records Taken or Missed doses, patient-reported or staff-observed, without changing stock. GPs and nurses with clinical access can record doses on signed prescriptions.',
     ],
   },
   {

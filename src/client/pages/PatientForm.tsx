@@ -280,13 +280,17 @@ export default function PatientForm({
             {nationality === 'NON_MALAYSIAN' && <option value="OTHER">Other</option>}
           </select>
         </Field>
-        <Field label="Phone">
+        <Field
+          label="Phone"
+          hint="Malaysian and international numbers are accepted. Include +country code for foreign numbers."
+        >
           <input
             name="phone"
             type="tel"
             autoComplete="tel"
             defaultValue={initial?.phone}
-            placeholder="e.g. 012-3456789"
+            maxLength={50}
+            placeholder="e.g. +60 12-345 6789 or +44 1632 960123"
           />
         </Field>
         <Field label="Email">

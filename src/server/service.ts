@@ -12,6 +12,13 @@ import type { Context } from './security.js';
 import { schemas } from './validation.js';
 import { effectiveModules } from './module-access.js';
 import { lookupPostcode } from './data/postcodes.js';
+import {
+  buildDocumentView,
+  type PrescriptionLog,
+  type PrescriptionLogEvent,
+} from '../shared/document-view.js';
+import type { MedicationDose, MedicationDoseLog } from '../shared/medication-doses.js';
+import { validateCatalogChoices } from './catalog-service.js';
 
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -61,6 +68,7 @@ export class ClinicService {
     ).rows;
     if (kind === 'inventory')
       for (const row of rows) {
+        row.active = Boolean(row.active);
         row.batches = (
           await this.db.query(
             'SELECT * FROM inventory_batches WHERE item_id=$1 ORDER BY expires_on',
@@ -78,6 +86,12 @@ export class ClinicService {
         ).rows;
     if (['patients', 'encounters', 'documents'].includes(kind))
       await this.audit(this.db, ctx, 'READ_LIST', kind, null, { count: rows.length });
+    if (kind === 'documents')
+      for (const row of rows)
+        if (row.diagnosis_redacted) {
+          const { assessment, conditions, ...safePayload } = row.payload;
+          row.payload = safePayload;
+        }
     return camel(rows);
   }
   async bootstrap(ctx: Context) {
@@ -407,10 +421,11 @@ export class ClinicService {
     ctx: Context,
     patient: any,
     prescriptions: any[],
+    allowInactive = false,
   ) {
-    if (!prescriptions.length) return;
+    if (!prescriptions.length) return [];
     const { rows } = await db.query(
-      `SELECT * FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND id IN ($3)`,
+      `SELECT * FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND id IN ($3) ORDER BY id FOR UPDATE`,
       [ctx.actor.tenantId, ctx.branchId, prescriptions.map((p) => p.itemId)],
     );
     if (rows.length !== prescriptions.length)
@@ -423,7 +438,25 @@ export class ClinicService {
         'INVALID_MEDICATION',
         'Prescriptions require medication items; use supply usage for non-medication stock.',
       );
-    ClinicalEncounter.assertAllergySafety(patient.allergies, rows);
+    if (!allowInactive && rows.some((item) => !item.active))
+      throw new DomainError(
+        'INACTIVE_MEDICATION',
+        'Archived medication cannot be newly prescribed.',
+      );
+    ClinicalEncounter.assertAllergySafety(
+      patient.allergies,
+      rows.map((item) => {
+        const rx = prescriptions.find((rx) => rx.itemId === item.id);
+        return allowInactive
+          ? {
+              ...item,
+              name: rx.itemName || item.name,
+              ingredient: rx.ingredient ?? item.ingredient,
+            }
+          : item;
+      }),
+    );
+    return rows;
   }
   async saveEncounter(ctx: Context, input: any, id?: number) {
     if (ctx.actor.role !== 'DOCTOR')
@@ -444,7 +477,16 @@ export class ClinicService {
       }
       input = schemas.encounter.parse(input);
       const patient = await this.patient(db, ctx, input.patientId);
-      await this.validatePrescriptions(db, ctx, patient, input.prescriptions);
+      const medicationItems = await this.validatePrescriptions(
+        db,
+        ctx,
+        patient,
+        input.prescriptions,
+      );
+      input.prescriptions = input.prescriptions.map((rx: any) => {
+        const item = medicationItems.find((item) => item.id === rx.itemId)!;
+        return { ...rx, itemName: item.name, ingredient: item.ingredient, unit: item.unit };
+      });
       const values = [
         ctx.actor.tenantId,
         ctx.branchId,
@@ -576,7 +618,15 @@ export class ClinicService {
     }
   }
   async addItem(ctx: Context, input: any) {
+    if (ctx.actor.role !== 'ADMIN')
+      throw new DomainError(
+        'FORBIDDEN',
+        'Inventory catalog management requires an administrator.',
+        403,
+      );
+    input = schemas.item.parse(input);
     return this.transact(async (db) => {
+      await validateCatalogChoices(db, ctx, 'INVENTORY_UNIT', [input.unit]);
       const { rows } = await db.query(
         `INSERT INTO inventory_items(tenant_id,branch_id,name,sku,ingredient,category,unit,price_cents,reorder_level) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
         [
@@ -592,7 +642,7 @@ export class ClinicService {
         ],
       );
       await this.audit(db, ctx, 'CREATE', 'inventory', rows[0].id);
-      return camel(rows[0]);
+      return camel({ ...rows[0], active: Boolean(rows[0].active) });
     });
   }
   async receiveBatch(ctx: Context, input: any) {
@@ -763,7 +813,7 @@ export class ClinicService {
       if (!e.prescriptions.length)
         throw new DomainError('NO_PRESCRIPTION', 'Encounter has no medication to dispense.');
       const patient = await this.patient(db, ctx, e.patient_id);
-      await this.validatePrescriptions(db, ctx, patient, e.prescriptions);
+      await this.validatePrescriptions(db, ctx, patient, e.prescriptions, true);
       const record = await db.query(
         `INSERT INTO dispenses(tenant_id,branch_id,patient_id,encounter_id,actor_id,idempotency_key) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
         [ctx.actor.tenantId, ctx.branchId, e.patient_id, e.id, ctx.actor.id, input.idempotencyKey],
@@ -1038,9 +1088,25 @@ export class ClinicService {
           'REFERRAL_TARGET_REQUIRED',
           'Target hospital or specialty and referral reason required.',
         );
+      if (input.kind === 'REFERRAL')
+        await validateCatalogChoices(db, ctx, 'REFERRAL_DESTINATION', [input.target]);
       if (input.kind === 'LAB' && !input.panels?.length)
         throw new DomainError('LAB_PANELS_REQUIRED', 'Select at least one investigation panel.');
+      if (input.kind === 'LAB') {
+        await validateCatalogChoices(db, ctx, 'LAB_PANEL', input.panels);
+        await validateCatalogChoices(db, ctx, 'SPECIMEN_TYPE', [input.specimenType || 'BLOOD']);
+      }
       const issuedAt = new Date().toISOString();
+      const medicationNames = e.prescriptions.length
+        ? new Map(
+            (
+              await db.query(
+                'SELECT id,name FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND id IN ($3)',
+                [ctx.actor.tenantId, ctx.branchId, e.prescriptions.map((rx: any) => rx.itemId)],
+              )
+            ).rows.map((item) => [item.id, item.name]),
+          )
+        : new Map();
       const payload = {
         ...input,
         patientId: e.patient_id,
@@ -1058,7 +1124,10 @@ export class ClinicService {
         vitals: e.vitals,
         allergies: e.allergies,
         conditions: e.conditions,
-        prescriptions: e.prescriptions,
+        prescriptions: e.prescriptions.map((rx: any) => ({
+          ...rx,
+          itemName: rx.itemName || medicationNames.get(rx.itemId) || 'Medication ID ' + rx.itemId,
+        })),
         documentNumber: number,
       };
       const key = process.env.DOCUMENT_SIGNING_KEY;
@@ -1095,23 +1164,273 @@ export class ClinicService {
       };
     });
   }
-  async document(ctx: Context, id: number) {
+  private doseView(row: any): MedicationDose {
+    return camel({
+      id: row.id,
+      encounter_id: row.encounter_id,
+      item_id: row.item_id,
+      medicine_name: row.medicine_name,
+      unit: row.unit,
+      outcome: row.outcome,
+      source: row.source,
+      occurred_at: row.occurred_at,
+      amount: row.amount === null ? null : Number(row.amount),
+      notes: row.notes,
+      actor_id: row.actor_id,
+      actor_name: row.actor_name,
+      created_at: row.created_at,
+      idempotency_key: row.idempotency_key,
+    });
+  }
+  async medicationDoses(ctx: Context, id: number): Promise<MedicationDoseLog> {
+    if (ctx.modules && !ctx.modules.includes('clinical'))
+      throw new DomainError(
+        'MODULE_FORBIDDEN',
+        'Clinical access required for patient medication-taking records.',
+        403,
+      );
+    const e = (
+      await this.db.query(
+        'SELECT e.id,e.patient_id,p.name patient_name FROM encounters e JOIN patients p ON p.id=e.patient_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3',
+        [id, ctx.actor.tenantId, ctx.branchId],
+      )
+    ).rows[0];
+    if (!e) throw missing();
+    const rows = (
+      await this.db.query(
+        'SELECT d.*,u.name actor_name FROM prescription_dose_logs d JOIN users u ON u.id=d.actor_id AND u.tenant_id=d.tenant_id WHERE d.encounter_id=$1 AND d.tenant_id=$2 AND d.branch_id=$3 ORDER BY d.occurred_at DESC,d.id DESC LIMIT 500',
+        [id, ctx.actor.tenantId, ctx.branchId],
+      )
+    ).rows;
+    await this.audit(this.db, ctx, 'READ_MEDICATION_DOSES', 'encounter', id, {
+      count: rows.length,
+    });
+    return {
+      encounterId: id,
+      patientId: e.patient_id,
+      patientName: e.patient_name,
+      entries: rows.map((row) => this.doseView(row)),
+    };
+  }
+  async recordMedicationDose(ctx: Context, id: number, input: unknown): Promise<MedicationDose> {
+    if (!['DOCTOR', 'NURSE'].includes(ctx.actor.role))
+      throw new DomainError(
+        'PROFESSIONAL_REQUIRED',
+        'Only a GP or nurse may record patient medication taking.',
+        403,
+      );
+    if (ctx.modules && !ctx.modules.includes('clinical'))
+      throw new DomainError(
+        'MODULE_FORBIDDEN',
+        'Clinical access required for patient medication-taking records.',
+        403,
+      );
+    const value = schemas.medicationDose.parse(input);
+    const hash = createHash('sha256')
+      .update(canonicalJson({ encounterId: id, ...value }))
+      .digest('hex');
+    return this.transact(async (db) => {
+      await lock(db, [`medication-dose:${ctx.branchId}:${value.idempotencyKey}`]);
+      const prior = (
+        await db.query(
+          'SELECT d.*,u.name actor_name FROM prescription_dose_logs d JOIN users u ON u.id=d.actor_id WHERE d.tenant_id=$1 AND d.branch_id=$2 AND d.idempotency_key=$3',
+          [ctx.actor.tenantId, ctx.branchId, value.idempotencyKey],
+        )
+      ).rows[0];
+      if (prior) {
+        if (prior.request_hash !== hash)
+          throw new DomainError(
+            'IDEMPOTENCY_CONFLICT',
+            'Medication report key already has different details.',
+            409,
+          );
+        return this.doseView(prior);
+      }
+      const e = (
+        await db.query(
+          'SELECT status,prescriptions FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+          [id, ctx.actor.tenantId, ctx.branchId],
+        )
+      ).rows[0];
+      if (!e) throw missing();
+      if (e.status !== 'SIGNED')
+        throw new DomainError(
+          'UNSIGNED_PRESCRIPTION',
+          'Sign prescription before recording patient medication taking.',
+        );
+      const prescribedRx = e.prescriptions.find((rx: any) => rx.itemId === value.itemId);
+      if (!prescribedRx)
+        throw new DomainError('NOT_PRESCRIBED', 'Medication is not prescribed in this encounter.');
+      const item = (
+        await db.query(
+          'SELECT name,unit,category FROM inventory_items WHERE id=$1 AND tenant_id=$2 AND branch_id=$3',
+          [value.itemId, ctx.actor.tenantId, ctx.branchId],
+        )
+      ).rows[0];
+      if (!item || item.category !== 'MEDICATION')
+        throw new DomainError(
+          'INVALID_MEDICATION',
+          'Patient taking records require a prescribed medication.',
+        );
+      const row = (
+        await db.query(
+          'INSERT INTO prescription_dose_logs(tenant_id,branch_id,encounter_id,item_id,medicine_name,unit,outcome,source,occurred_at,amount,notes,actor_id,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+          [
+            ctx.actor.tenantId,
+            ctx.branchId,
+            id,
+            value.itemId,
+            prescribedRx.itemName || item.name,
+            prescribedRx.unit || item.unit,
+            value.outcome,
+            value.source,
+            new Date(value.occurredAt),
+            value.amount,
+            value.notes,
+            ctx.actor.id,
+            value.idempotencyKey,
+            hash,
+          ],
+        )
+      ).rows[0];
+      await this.audit(db, ctx, 'RECORD_MEDICATION_DOSE', 'prescription_dose_log', row.id, {
+        encounterId: id,
+        itemId: value.itemId,
+        outcome: value.outcome,
+        source: value.source,
+      });
+      return this.doseView({ ...row, actor_name: ctx.actor.name });
+    });
+  }
+  async prescriptionLog(ctx: Context, id: number): Promise<PrescriptionLog> {
+    const e = (
+      await this.db.query(
+        'SELECT e.id,e.patient_id,e.prescriptions,e.status,e.signed_at,e.created_at,u.name practitioner_name,p.name patient_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3',
+        [id, ctx.actor.tenantId, ctx.branchId],
+      )
+    ).rows[0];
+    if (!e) throw missing();
+    const items = e.prescriptions.length
+      ? (
+          await this.db.query(
+            'SELECT id,name FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND id IN ($3)',
+            [ctx.actor.tenantId, ctx.branchId, e.prescriptions.map((rx: any) => rx.itemId)],
+          )
+        ).rows
+      : [];
+    const names = new Map(items.map((i) => [i.id, i.name]));
+    const events: PrescriptionLogEvent[] = [];
+    const event = (
+      type: PrescriptionLogEvent['type'],
+      rx: any,
+      quantity: number,
+      at: string,
+      actorName: string,
+      batchId?: number,
+      batchNumber?: string,
+    ) =>
+      events.push({
+        type,
+        itemId: rx.itemId,
+        itemName: String(rx.itemName || names.get(rx.itemId) || 'Medication'),
+        quantity,
+        at: camel({ created_at: at }).createdAt,
+        actorName,
+        frequencyPerDay: rx.frequencyPerDay || 1,
+        mealTiming: rx.mealTiming || 'ANY_TIME',
+        dosage: rx.dosage,
+        durationDays: rx.durationDays,
+        ...(batchId ? { batchId, batchNumber } : {}),
+      });
+    if (e.status === 'SIGNED')
+      for (const rx of e.prescriptions)
+        event('PRESCRIBED', rx, rx.quantity, e.signed_at || e.created_at, e.practitioner_name);
+    const holds = (
+      await this.db.query(
+        'SELECT r.*,b.batch_number,u.name actor_name FROM prescription_reservations r JOIN inventory_batches b ON b.id=r.batch_id JOIN encounters e ON e.id=r.encounter_id JOIN users u ON u.id=e.practitioner_id WHERE r.encounter_id=$1 AND r.tenant_id=$2 AND r.branch_id=$3',
+        [id, ctx.actor.tenantId, ctx.branchId],
+      )
+    ).rows;
+    const dispenses = (
+      await this.db.query(
+        'SELECT d.id,u.name actor_name FROM dispenses d JOIN users u ON u.id=d.actor_id WHERE d.encounter_id=$1 AND d.tenant_id=$2 AND d.branch_id=$3',
+        [id, ctx.actor.tenantId, ctx.branchId],
+      )
+    ).rows;
+    for (const h of holds) {
+      const rx = e.prescriptions.find((r: any) => r.itemId === h.item_id);
+      if (!rx) continue;
+      event('RESERVED', rx, h.quantity, h.created_at, h.actor_name, h.batch_id, h.batch_number);
+      if (h.status === 'RELEASED' && h.consumed_at)
+        event(
+          'RELEASED',
+          rx,
+          h.quantity,
+          h.consumed_at,
+          dispenses[0]?.actor_name || h.actor_name,
+          h.batch_id,
+          h.batch_number,
+        );
+    }
+    const movements = (
+      await this.db.query(
+        'SELECT m.*,b.item_id,b.batch_number,u.name actor_name FROM stock_movements m JOIN dispenses d ON d.id=m.dispense_id JOIN inventory_batches b ON b.id=m.batch_id JOIN users u ON u.id=m.actor_id WHERE d.encounter_id=$1 AND m.tenant_id=$2 AND m.branch_id=$3 AND m.quantity_delta<0',
+        [id, ctx.actor.tenantId, ctx.branchId],
+      )
+    ).rows;
+    for (const m of movements) {
+      const rx = e.prescriptions.find((r: any) => r.itemId === m.item_id);
+      if (rx)
+        event(
+          'DISPENSED',
+          rx,
+          -m.quantity_delta,
+          m.created_at,
+          m.actor_name,
+          m.batch_id,
+          m.batch_number,
+        );
+    }
+    const order = { PRESCRIBED: 0, RESERVED: 1, RELEASED: 2, DISPENSED: 3 };
+    events.sort((a, b) => a.at.localeCompare(b.at) || order[a.type] - order[b.type]);
+    await this.audit(this.db, ctx, 'READ_PRESCRIPTION_LOG', 'encounter', id, {
+      count: events.length,
+    });
+    return { encounterId: id, patientId: e.patient_id, patientName: e.patient_name, events };
+  }
+  async document(ctx: Context, id: number, requireIntegrity = false) {
     const { rows } = await this.db.query(
       `SELECT * FROM clinical_documents WHERE id=$1 AND tenant_id=$2 AND branch_id=$3`,
       [id, ctx.actor.tenantId, ctx.branchId],
     );
     if (!rows[0]) throw missing();
+    if (requireIntegrity && !this.documentIntact(rows[0]))
+      throw new DomainError(
+        'DOCUMENT_INTEGRITY_FAILED',
+        'Document integrity check failed; contact clinic administrator.',
+        409,
+      );
     await this.audit(this.db, ctx, 'READ_DOCUMENT', 'document', id);
     return rows[0];
   }
-  async verifyDocument(token: string) {
-    const { rows } = await this.db.query(
-      `SELECT * FROM clinical_documents WHERE verification_hash=$1`,
-      [token],
-    );
-    const d = rows[0];
-    if (!d) throw missing();
+  async documentPreview(ctx: Context, id: number) {
+    const d = await this.document(ctx, id, true);
+    return buildDocumentView({
+      id: d.id,
+      kind: d.kind,
+      documentNumber: d.document_number,
+      payload: d.payload,
+      createdAt: d.created_at,
+      startDate: d.start_date,
+      endDate: d.end_date,
+      diagnosisRedacted: Boolean(d.diagnosis_redacted),
+      revokedAt: d.revoked_at,
+    });
+  }
+  private documentIntact(d: any) {
     const key = process.env.DOCUMENT_SIGNING_KEY || '';
+    if (key.length < 32 || !d.payload || typeof d.payload !== 'object' || Array.isArray(d.payload))
+      return false;
     const intact =
       createHmac('sha256', key).update(canonicalJson(d.payload)).digest('hex') === d.signature_hash;
     const metadataIntact =
@@ -1125,12 +1444,21 @@ export class ClinicService {
       d.payload.endDate === d.end_date &&
       d.payload.issuedAt === camel({ created_at: d.created_at }).createdAt &&
       Boolean(d.payload.diagnosisRedacted) === Boolean(d.diagnosis_redacted);
+    return intact && metadataIntact;
+  }
+  async verifyDocument(token: string) {
+    const { rows } = await this.db.query(
+      `SELECT * FROM clinical_documents WHERE verification_hash=$1`,
+      [token],
+    );
+    const d = rows[0];
+    if (!d) throw missing();
     return {
-      valid: !d.revoked_at && intact && metadataIntact,
+      valid: !d.revoked_at && this.documentIntact(d),
       documentNumber: d.document_number,
       kind: d.kind,
-      clinicName: d.payload.branchName,
-      practitionerName: d.payload.practitionerName,
+      clinicName: d.payload?.branchName,
+      practitionerName: d.payload?.practitionerName,
       startDate: d.start_date,
       endDate: d.end_date,
       issuedAt: d.created_at,

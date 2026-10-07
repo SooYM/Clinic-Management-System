@@ -66,12 +66,16 @@ describe('demo reservation and supplies workflows', () => {
   });
   it('receives and issues non-expiring supplies idempotently, rejects medicine bypass', async () => {
     const { clinic } = await ready();
+    await clinic.request('/auth/logout', 'POST');
+    await clinic.request('/auth/login', 'POST', { email: 'admin@example.test', password: 'demo' });
     const item = await clinic.request('/inventory', 'POST', {
       name: 'Lab coat',
       sku: 'COAT',
       category: 'CONSUMABLE',
       priceCents: 0,
     });
+    await clinic.request('/auth/logout', 'POST');
+    await clinic.request('/auth/login', 'POST', { email: 'gp@example.test', password: 'demo' });
     await clinic.request('/inventory/batches', 'POST', {
       itemId: item.id,
       batchNumber: 'COAT-1',

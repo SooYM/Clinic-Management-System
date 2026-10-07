@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { CatalogEntry } from '../AdminCatalogs';
+import PrescriptionLog from '../PrescriptionLog';
 import { RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import {
@@ -12,6 +14,7 @@ import {
   formText,
   useResource,
   useDebouncedValue,
+  useRole,
 } from '../components';
 import { type InventoryItem, dateTime, humanize } from '../types';
 interface PendingPrescription {
@@ -33,7 +36,17 @@ interface PendingPrescription {
   }[];
 }
 export default function Inventory() {
+  const role = useRole();
+  const units = useResource<CatalogEntry[]>('/references/catalogs?kind=INVENTORY_UNIT');
+  const [editingItem, setEditingItem] = useState<InventoryItem>();
   const [create, setCreate] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+  const [logEncounterId, setLogEncounterId] = useState('');
+  const [logRevision, setLogRevision] = useState(0);
+  const historyTerm = useDebouncedValue(historySearch.trim());
+  const history = useResource<
+    { id: number; patientName: string; patientId: number; dispensed: boolean }[]
+  >(`/dispensary/history?search=${encodeURIComponent(historyTerm)}`);
   const [encounterId, setEncounterId] = useState('');
   const [prescriptionSearch, setPrescriptionSearch] = useState('');
   const [inventorySearch, setInventorySearch] = useState('');
@@ -60,8 +73,10 @@ export default function Inventory() {
     (item) => item.category === 'CONSUMABLE' || item.category === 'RETAIL',
   );
   function refresh() {
+    setLogRevision((revision) => revision + 1);
     resource.refresh();
     pending.refresh();
+    history.refresh();
   }
   return (
     <>
@@ -74,22 +89,32 @@ export default function Inventory() {
               <RefreshCw size={16} />
               Refresh stock
             </button>
-            <button data-guide="open-inventory-item" onClick={() => setCreate(!create)}>
-              {create ? 'Close new item' : 'Add inventory item'}
-            </button>
+            {role === 'ADMIN' && (
+              <button
+                data-guide="open-inventory-item"
+                onClick={() => {
+                  setCreate(!create);
+                  setEditingItem(undefined);
+                }}
+              >
+                {create ? 'Close new item' : 'Add inventory item'}
+              </button>
+            )}
           </div>
         }
       />
-      {create && (
-        <Panel title="Inventory item">
+      {(create || editingItem) && (
+        <Panel title={editingItem ? 'Edit inventory item' : 'Inventory item'}>
           <MutationForm
-            label="Add item"
+            key={editingItem ? `${editingItem.id}:${editingItem.version}` : 'new-item'}
+            label={editingItem ? 'Save inventory item' : 'Add item'}
             onSuccess={() => {
               refresh();
               setCreate(false);
+              setEditingItem(undefined);
             }}
-            onSubmit={(f) =>
-              api.post('/inventory', {
+            onSubmit={(f) => {
+              const body = {
                 name: formText(f, 'name'),
                 sku: formText(f, 'sku'),
                 ingredient: formText(f, 'ingredient'),
@@ -97,40 +122,110 @@ export default function Inventory() {
                 unit: formText(f, 'unit'),
                 priceCents: Math.round(Number(f.get('price')) * 100),
                 reorderLevel: Number(f.get('reorderLevel')),
-              })
-            }
+              };
+              return editingItem
+                ? api.put('/admin/inventory/' + editingItem.id, {
+                    ...body,
+                    active: f.get('active') === 'on',
+                    version: editingItem.version,
+                  })
+                : api.post('/inventory', body);
+            }}
           >
             <div className="form-grid">
               <Field label="Item name">
                 <input
                   name="name"
+                  defaultValue={editingItem?.name}
                   required
                   placeholder="Medicine, gloves, lab coat or other item"
                 />
               </Field>
               <Field label="SKU">
-                <input name="sku" required placeholder="e.g. PARA-500" />
+                <input
+                  name="sku"
+                  defaultValue={editingItem?.sku}
+                  required
+                  placeholder="e.g. PARA-500"
+                />
               </Field>
               <Field label="Active ingredient">
-                <input name="ingredient" placeholder="e.g. Paracetamol" />
+                <input
+                  name="ingredient"
+                  defaultValue={editingItem?.ingredient}
+                  placeholder="e.g. Paracetamol"
+                />
               </Field>
               <Field label="Category">
-                <select name="category">
+                <select name="category" defaultValue={editingItem?.category || 'MEDICATION'}>
                   <option value="MEDICATION">Medication</option>
                   <option value="CONSUMABLE">Consumables and supplies</option>
                   <option value="RETAIL">Retail products (e.g. lab coat)</option>
                 </select>
               </Field>
               <Field label="Unit">
-                <input name="unit" required defaultValue="unit" placeholder="e.g. tablet, piece" />
+                <select name="unit" required defaultValue={editingItem?.unit || ''}>
+                  <option value="">Select configured unit</option>
+                  {editingItem?.unit &&
+                    !units.data?.some((unit) => unit.label === editingItem.unit) && (
+                      <option value={editingItem.unit}>{editingItem.unit} (recorded)</option>
+                    )}
+                  {units.data?.map((unit) => (
+                    <option value={unit.label} key={unit.id}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </select>
+                {!units.data?.length && (
+                  <small>
+                    Ask an administrator to add inventory units under Clinical and inventory
+                    choices.
+                  </small>
+                )}
               </Field>
               <Field label="Price (MYR)">
-                <input name="price" type="number" required min="0" step="0.01" />
+                <input
+                  name="price"
+                  defaultValue={editingItem ? (editingItem.priceCents || 0) / 100 : undefined}
+                  type="number"
+                  required
+                  min="0"
+                  step="0.01"
+                />
               </Field>
               <Field label="Reorder level">
-                <input name="reorderLevel" type="number" min="0" defaultValue="10" required />
+                <input
+                  name="reorderLevel"
+                  type="number"
+                  min="0"
+                  defaultValue={editingItem?.reorderLevel ?? 10}
+                  required
+                />
               </Field>
             </div>
+            {editingItem && (
+              <>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    name="active"
+                    defaultChecked={editingItem.active !== false}
+                  />
+                  Active in new catalog choices
+                </label>
+                <p className="form-help">
+                  Archiving preserves stock and historical prescriptions. Category, ingredient and
+                  unit cannot change after stock or prescribing history.
+                </p>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setEditingItem(undefined)}
+                >
+                  Cancel editing
+                </button>
+              </>
+            )}
           </MutationForm>
         </Panel>
       )}
@@ -171,6 +266,8 @@ export default function Inventory() {
                       <th>Unexpired stock</th>
                       <th>Reserved</th>
                       <th>Reorder level</th>
+                      <th>Status</th>
+                      {role === 'ADMIN' && <th>Action</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -202,6 +299,22 @@ export default function Inventory() {
                         <td>{item.onHandQuantity ?? '—'}</td>
                         <td>{item.reservedQuantity ?? '—'}</td>
                         <td>{item.reorderLevel}</td>
+                        <td>
+                          <Status value={item.active === false ? 'ARCHIVED' : 'ACTIVE'} />
+                        </td>
+                        {role === 'ADMIN' && (
+                          <td>
+                            <button
+                              className="secondary"
+                              onClick={() => {
+                                setEditingItem(item);
+                                setCreate(false);
+                              }}
+                            >
+                              Edit item
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -348,6 +461,7 @@ export default function Inventory() {
                 <MutationForm
                   label="Dispense eligible batches"
                   onSuccess={() => {
+                    setLogEncounterId(encounterId);
                     refresh();
                     setEncounterId('');
                     setDispenseKey(crypto.randomUUID());
@@ -431,6 +545,48 @@ export default function Inventory() {
           </Panel>
         </div>
       </div>
+      <Panel title="Prescription history and activity">
+        <Field
+          label="Search prescription history"
+          hint="Find pending or completed prescriptions by patient, GP or encounter ID."
+        >
+          <input
+            type="search"
+            value={historySearch}
+            onChange={(event) => setHistorySearch(event.target.value)}
+            placeholder="Patient, GP or encounter ID"
+          />
+        </Field>
+        <ResourceState {...history}>
+          {history.data?.length ? (
+            <Field label="Prescription activity record">
+              <select
+                value={logEncounterId}
+                onChange={(event) => setLogEncounterId(event.target.value)}
+              >
+                <option value="">Select pending or completed prescription</option>
+                {history.data.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.patientName} · Patient #{e.patientId} · Encounter #{e.id} ·{' '}
+                    {e.dispensed ? 'Dispensed' : 'Pending'}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <Empty
+              title="No matching prescription history"
+              description="Signed medicine prescriptions appear here, including completed dispensing."
+            />
+          )}
+        </ResourceState>
+        {logEncounterId && (
+          <PrescriptionLog
+            key={`${logEncounterId}:${logRevision}`}
+            encounterId={Number(logEncounterId)}
+          />
+        )}
+      </Panel>
     </>
   );
 }

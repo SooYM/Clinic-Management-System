@@ -1,8 +1,9 @@
 # Entity relationship diagrams
 
-These diagrams describe the final MySQL 8.4 schema after migrations 001–012, including numeric conversion, general supplies and prescription reservations.
+These diagrams describe the final MySQL 8.4 schema after migrations 001–014, including numeric conversion, general supplies and prescription reservations.
 Every displayed entity `id` is `BIGINT UNSIGNED AUTO_INCREMENT`; referenced IDs are unsigned BIGINT.
 Mermaid `bigint` labels omit unsigned/auto-increment syntax for readability. Exact SQL remains authoritative.
+Letter previews reuse `clinical_documents.payload`; prescription activity joins encounters, reservations, dispenses and stock movements. Neither read projection adds an entity.
 
 ## Organization, registry and clinical operations
 
@@ -26,6 +27,9 @@ erDiagram
   users ||--o{ encounters : attends
   queue_tickets o|--o{ encounters : optional_visit
   encounters ||--o{ clinical_documents : documents
+  encounters ||--o{ prescription_dose_logs : taking_reports
+  inventory_items ||--o{ prescription_dose_logs : medicine
+  users ||--o{ prescription_dose_logs : recorded_by
   patients ||--o{ clinical_documents : identifies
   users ||--o{ clinical_documents : issues
   patients ||--o{ notification_outbox : recipient
@@ -138,6 +142,24 @@ erDiagram
     varchar status
     int version
     datetime signed_at
+  }
+  prescription_dose_logs {
+    bigint id PK
+    bigint tenant_id FK
+    bigint branch_id FK
+    bigint encounter_id FK
+    bigint item_id FK
+    varchar medicine_name
+    varchar unit
+    varchar outcome
+    varchar source
+    datetime occurred_at
+    decimal amount "nullable for missed dose"
+    text notes
+    bigint actor_id FK
+    varchar idempotency_key
+    varchar request_hash
+    datetime created_at
   }
   clinical_documents {
     bigint id PK
@@ -395,3 +417,25 @@ See [database dictionary and upgrades](DATABASE.md) and [system flow](SYSTEM_FLO
 
 These relationships describe the real MySQL application. Browser demo records are sessionStorage objects without database FK enforcement.
 Preloaded fictional business records belong only to the browser demo; normal MySQL bootstrap does not insert them into these tables.
+
+## Managed reference choices
+
+```mermaid
+erDiagram
+  tenants ||--o{ reference_catalogs : owns
+  branches ||--o{ reference_catalogs : configures
+  reference_catalogs {
+    bigint id PK
+    bigint tenant_id FK
+    bigint branch_id FK
+    varchar kind
+    varchar label
+    boolean active
+    int sort_order
+    int version
+    datetime created_at
+    datetime updated_at
+  }
+```
+
+Inventory items also carry active status, optimistic version and update time after migration 014.

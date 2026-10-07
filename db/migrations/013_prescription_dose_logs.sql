@@ -1,0 +1,25 @@
+-- Append-only reports of patient medication taking; this table never changes clinic stock.
+CREATE TABLE prescription_dose_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  branch_id BIGINT UNSIGNED NOT NULL,
+  encounter_id BIGINT UNSIGNED NOT NULL,
+  item_id BIGINT UNSIGNED NOT NULL,
+  medicine_name VARCHAR(200) NOT NULL,
+  unit VARCHAR(50) NOT NULL,
+  outcome VARCHAR(10) NOT NULL CHECK (outcome IN ('TAKEN','MISSED')),
+  source VARCHAR(30) NOT NULL CHECK (source IN ('PATIENT_REPORTED','STAFF_OBSERVED')),
+  occurred_at DATETIME(3) NOT NULL,
+  amount DECIMAL(12,3) NULL,
+  notes TEXT NOT NULL,
+  actor_id BIGINT UNSIGNED NOT NULL,
+  idempotency_key VARCHAR(100) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  CHECK ((outcome='TAKEN' AND amount IS NOT NULL AND amount>0 AND amount<=1000000) OR (outcome='MISSED' AND amount IS NULL)),
+  UNIQUE KEY dose_idempotency (branch_id,idempotency_key),
+  KEY dose_history (tenant_id,branch_id,encounter_id,occurred_at,id),
+  FOREIGN KEY (tenant_id,branch_id,encounter_id) REFERENCES encounters(tenant_id,branch_id,id),
+  FOREIGN KEY (tenant_id,branch_id,item_id) REFERENCES inventory_items(tenant_id,branch_id,id),
+  FOREIGN KEY (tenant_id,actor_id) REFERENCES users(tenant_id,id)
+) ENGINE=InnoDB;

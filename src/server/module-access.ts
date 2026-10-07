@@ -24,6 +24,8 @@ export async function effectiveModules(
   return Array.isArray(configured) ? moduleIds.filter((module) => configured.includes(module)) : [];
 }
 function routeModule(path: string): ModuleId | undefined {
+  if (/^\/encounters\/[^/]+\/prescription-log$/.test(path)) return undefined;
+  if (path === '/dispensary/history') return undefined;
   if (/^\/patients\/[^/]+\/deposit-balance$/.test(path)) return 'billing';
   if (/^\/patients\/[^/]+\/encounters$/.test(path)) return 'clinical';
   if (/^\/(queue|dashboard)(\/|$)/.test(path)) return 'queue';

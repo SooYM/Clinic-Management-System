@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-012, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-014, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -241,12 +241,16 @@ CREATE TABLE `inventory_items` (
   `unit` varchar(50) NOT NULL DEFAULT 'unit',
   `price_cents` int NOT NULL,
   `reorder_level` int NOT NULL DEFAULT '10',
+  `active` tinyint(1) NOT NULL DEFAULT '1',
+  `version` int NOT NULL DEFAULT '1',
+  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `branch_id` (`branch_id`,`sku`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
   CONSTRAINT `inventory_items_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `inventory_items_chk_1` CHECK ((`price_cents` >= 0)),
-  CONSTRAINT `inventory_items_chk_2` CHECK ((`reorder_level` >= 0))
+  CONSTRAINT `inventory_items_chk_2` CHECK ((`reorder_level` >= 0)),
+  CONSTRAINT `inventory_items_chk_3` CHECK ((`version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `inventory_usages` (
@@ -409,6 +413,36 @@ CREATE TABLE `payments` (
   CONSTRAINT `payments_chk_2` CHECK ((`amount_cents` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `prescription_dose_logs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint unsigned NOT NULL,
+  `branch_id` bigint unsigned NOT NULL,
+  `encounter_id` bigint unsigned NOT NULL,
+  `item_id` bigint unsigned NOT NULL,
+  `medicine_name` varchar(200) NOT NULL,
+  `unit` varchar(50) NOT NULL,
+  `outcome` varchar(10) NOT NULL,
+  `source` varchar(30) NOT NULL,
+  `occurred_at` datetime(3) NOT NULL,
+  `amount` decimal(12,3) DEFAULT NULL,
+  `notes` text NOT NULL,
+  `actor_id` bigint unsigned NOT NULL,
+  `idempotency_key` varchar(100) NOT NULL,
+  `request_hash` char(64) NOT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `dose_idempotency` (`branch_id`,`idempotency_key`),
+  KEY `dose_history` (`tenant_id`,`branch_id`,`encounter_id`,`occurred_at`,`id`),
+  KEY `tenant_id` (`tenant_id`,`branch_id`,`item_id`),
+  KEY `tenant_id_2` (`tenant_id`,`actor_id`),
+  CONSTRAINT `prescription_dose_logs_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `encounter_id`) REFERENCES `encounters` (`tenant_id`, `branch_id`, `id`),
+  CONSTRAINT `prescription_dose_logs_ibfk_2` FOREIGN KEY (`tenant_id`, `branch_id`, `item_id`) REFERENCES `inventory_items` (`tenant_id`, `branch_id`, `id`),
+  CONSTRAINT `prescription_dose_logs_ibfk_3` FOREIGN KEY (`tenant_id`, `actor_id`) REFERENCES `users` (`tenant_id`, `id`),
+  CONSTRAINT `prescription_dose_logs_chk_1` CHECK ((`outcome` in (_utf8mb4'TAKEN',_utf8mb4'MISSED'))),
+  CONSTRAINT `prescription_dose_logs_chk_2` CHECK ((`source` in (_utf8mb4'PATIENT_REPORTED',_utf8mb4'STAFF_OBSERVED'))),
+  CONSTRAINT `prescription_dose_logs_chk_3` CHECK ((((`outcome` = _utf8mb4'TAKEN') and (`amount` is not null) and (`amount` > 0) and (`amount` <= 1000000)) or ((`outcome` = _utf8mb4'MISSED') and (`amount` is null))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `prescription_reservations` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `tenant_id` bigint unsigned NOT NULL,
@@ -464,6 +498,26 @@ CREATE TABLE `queue_tickets` (
   CONSTRAINT `queue_tickets_ibfk_4` FOREIGN KEY (`tenant_id`, `branch_id`, `room_id`) REFERENCES `rooms` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `queue_tickets_chk_1` CHECK ((`status` in (_utf8mb4'REGISTERED',_utf8mb4'TRIAGE_WAITING',_utf8mb4'CALLED_TO_ROOM',_utf8mb4'IN_CONSULTATION',_utf8mb4'DISPENSARY_WAITING',_utf8mb4'PAYMENT_WAITING',_utf8mb4'COMPLETED',_utf8mb4'SKIPPED'))),
   CONSTRAINT `queue_tickets_chk_2` CHECK ((`priority` in (_utf8mb4'NORMAL',_utf8mb4'URGENT')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `reference_catalogs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint unsigned NOT NULL,
+  `branch_id` bigint unsigned NOT NULL,
+  `kind` varchar(30) NOT NULL,
+  `label` varchar(200) NOT NULL,
+  `active` tinyint(1) NOT NULL DEFAULT '1',
+  `sort_order` int NOT NULL DEFAULT '0',
+  `version` int NOT NULL DEFAULT '1',
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `catalog_label` (`branch_id`,`kind`,`label`),
+  KEY `catalog_choices` (`tenant_id`,`branch_id`,`kind`,`active`,`sort_order`,`id`),
+  CONSTRAINT `reference_catalogs_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
+  CONSTRAINT `reference_catalogs_chk_1` CHECK ((`kind` in (_utf8mb4'LAB_PANEL',_utf8mb4'SPECIMEN_TYPE',_utf8mb4'INVENTORY_UNIT',_utf8mb4'REFERRAL_DESTINATION'))),
+  CONSTRAINT `reference_catalogs_chk_2` CHECK (((`sort_order` >= 0) and (`sort_order` <= 1000000))),
+  CONSTRAINT `reference_catalogs_chk_3` CHECK ((`version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `resource_locks` (

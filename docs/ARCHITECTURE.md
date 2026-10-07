@@ -37,6 +37,12 @@ flowchart TB
 Classes encapsulate behavior where invariants matter. Simple record projections remain data rather than empty OOP wrappers.
 Shared contracts and reusable forms reduce duplicated logic. Existing services are concrete; a universal repository-interface layer is not claimed.
 
+Clinical document snapshots project through a shared letter view model for browser preview and PDF rendering.
+Authenticated projections apply diagnosis redaction and expose display fields rather than signing or verification secrets.
+Prescription activity reads existing encounter, reservation and stock-movement ledgers; displaying history does not allocate stock.
+Patient medication-taking is a separate scoped clinical ledger with outcome, source, amount, occurrence time and recording staff.
+It records reports or observations rather than inferring adherence from stock movements; entries do not alter inventory.
+
 Prescription signing and physical dispensing share the FEFO allocator through explicit reservation-ledger operations.
 Signing holds eligible batches inside its encounter transaction; dispensing excludes other holds and records physical movements once.
 Inventory item locks serialize competing allocations. General supply usage has its own idempotent header and audited movement allocations, with no medication bypass.
@@ -48,7 +54,7 @@ Responsive navigation, forms and scroll-contained tables share the workspace sty
 ## Authorization and projections
 
 Authentication resolves an active user, tenant, authorized branch and CSRF token.
-Role module permissions refresh on every request. ADMIN retains all modules; professional clinical writes still require DOCTOR.
+Role module permissions refresh on every request. ADMIN retains all modules; chart creation/signing still requires DOCTOR. Patient-taking reports permit DOCTOR or NURSE with clinical access.
 Branch membership remains mandatory even when a module is granted.
 
 Composite foreign keys constrain organization relationships, while scoped queries validate selected-branch ownership.
@@ -113,3 +119,7 @@ Demo-only account switching and workflow validation are simulations, not server 
 SSE is disabled. PDFs and receipts show an unavailable explanation instead of pretending to issue clinical documents.
 The sample-data banner remains visible on login, operational screens and display pages.
 Tab refresh preserves demo records; tab-session termination usually discards them, while browser session restore can retain them.
+
+## Administrator catalog boundary
+
+CatalogService and catalog-router.ts own branch-scoped reference choices and inventory metadata changes. Shared catalogs.ts defines kinds and DTOs. Active choices feed clinical and inventory selectors; ADMIN writes require CSRF, scoped transactions, versions and audit. Workflow statuses and role codes remain application invariants. Signed prescriptions capture authoritative medication metadata, preserving new history after display-name edits.

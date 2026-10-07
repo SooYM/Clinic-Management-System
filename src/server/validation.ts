@@ -180,6 +180,9 @@ export const schemas = {
               durationDays: integer.max(365),
               frequencyPerDay: integer.max(24).default(1),
               mealTiming: z.enum(['BEFORE_MEAL', 'AFTER_MEAL', 'ANY_TIME']).default('ANY_TIME'),
+              itemName: z.string().max(200).optional(),
+              ingredient: z.string().max(2000).optional(),
+              unit: z.string().max(50).optional(),
             })
             .strict(),
         )
@@ -199,7 +202,7 @@ export const schemas = {
       sku: text,
       ingredient: z.string().max(500).default(''),
       category: z.enum(['MEDICATION', 'CONSUMABLE', 'RETAIL']).default('MEDICATION'),
-      unit: text.default('unit'),
+      unit: z.string().trim().min(1).max(50).default('unit'),
       priceCents: cents,
       reorderLevel: z.number().int().min(0).max(100000).default(10),
     })
@@ -213,6 +216,41 @@ export const schemas = {
     })
     .strict(),
   dispense: z.object({ encounterId: id, idempotencyKey: z.string().min(8).max(100) }).strict(),
+  medicationDose: z
+    .object({
+      itemId: id,
+      outcome: z.enum(['TAKEN', 'MISSED']),
+      source: z.enum(['PATIENT_REPORTED', 'STAFF_OBSERVED']),
+      occurredAt: z
+        .string()
+        .datetime({ offset: true })
+        .refine(
+          (value) => new Date(value).getTime() <= Date.now() + 5 * 60 * 1000,
+          'Medication occurrence cannot be more than five minutes in the future.',
+        )
+        .transform((value) => new Date(value).toISOString()),
+      amount: z
+        .number()
+        .finite()
+        .positive()
+        .max(1000000)
+        .refine((value) => Number(value.toFixed(3)) === value, 'Use at most three decimal places.')
+        .nullable(),
+      notes: z.string().trim().max(2000).default(''),
+      idempotencyKey: z.string().min(8).max(100),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      if (
+        (value.outcome === 'TAKEN' && value.amount === null) ||
+        (value.outcome === 'MISSED' && value.amount !== null)
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['amount'],
+          message: 'TAKEN requires a positive amount; MISSED requires null amount.',
+        });
+    }),
   inventoryUsage: z
     .object({
       itemId: id,
@@ -290,6 +328,7 @@ export const schemas = {
       days: integer.max(365).optional(),
       diagnosisRedacted: z.boolean().default(true),
       lightDuty: z.boolean().default(false),
+      employer: z.string().trim().max(200).optional(),
       target: z.string().trim().max(200).optional(),
       urgency: z
         .enum(['ROUTINE', 'SEMI_URGENT', 'URGENT_SAME_DAY', 'EMERGENCY'])

@@ -14,6 +14,7 @@ import {
   useResource,
 } from '../components';
 import { type Reference, type User, dateTime } from '../types';
+import AdminCatalogs from '../AdminCatalogs';
 import RoleModules from './RoleModules';
 import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
 interface Staff extends User {
@@ -270,6 +271,7 @@ export default function Admin({
           )}
         </ResourceState>
       </Panel>
+      <AdminCatalogs />
       <Panel title="Audit trail">
         <ResourceState {...audit}>
           {audit.data?.length ? (

@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–012. No records or credentials are included.
+Schema-only reference after migrations001–014. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -165,18 +165,21 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## inventory_items
 
-| Column        | Type            | Nullable | Default    | Extra / generated expression |
-| ------------- | --------------- | -------- | ---------- | ---------------------------- |
-| id            | bigint unsigned | NO       | NULL       | auto_increment               |
-| tenant_id     | bigint unsigned | NO       | NULL       |                              |
-| branch_id     | bigint unsigned | NO       | NULL       |                              |
-| name          | varchar(200)    | NO       | NULL       |                              |
-| sku           | varchar(200)    | NO       | NULL       |                              |
-| ingredient    | varchar(2000)   | NO       |            |                              |
-| category      | varchar(30)     | NO       | MEDICATION |                              |
-| unit          | varchar(50)     | NO       | unit       |                              |
-| price_cents   | int             | NO       | NULL       |                              |
-| reorder_level | int             | NO       | 10         |                              |
+| Column        | Type            | Nullable | Default              | Extra / generated expression |
+| ------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id            | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id     | bigint unsigned | NO       | NULL                 |                              |
+| branch_id     | bigint unsigned | NO       | NULL                 |                              |
+| name          | varchar(200)    | NO       | NULL                 |                              |
+| sku           | varchar(200)    | NO       | NULL                 |                              |
+| ingredient    | varchar(2000)   | NO       |                      |                              |
+| category      | varchar(30)     | NO       | MEDICATION           |                              |
+| unit          | varchar(50)     | NO       | unit                 |                              |
+| price_cents   | int             | NO       | NULL                 |                              |
+| reorder_level | int             | NO       | 10                   |                              |
+| active        | tinyint(1)      | NO       | 1                    |                              |
+| version       | int             | NO       | 1                    |                              |
+| updated_at    | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
 ## inventory_usages
 
@@ -296,6 +299,27 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | reference    | varchar(200)    | NO       |                      |                              |
 | created_at   | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
+## prescription_dose_logs
+
+| Column          | Type            | Nullable | Default              | Extra / generated expression |
+| --------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id              | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id       | bigint unsigned | NO       | NULL                 |                              |
+| branch_id       | bigint unsigned | NO       | NULL                 |                              |
+| encounter_id    | bigint unsigned | NO       | NULL                 |                              |
+| item_id         | bigint unsigned | NO       | NULL                 |                              |
+| medicine_name   | varchar(200)    | NO       | NULL                 |                              |
+| unit            | varchar(50)     | NO       | NULL                 |                              |
+| outcome         | varchar(10)     | NO       | NULL                 |                              |
+| source          | varchar(30)     | NO       | NULL                 |                              |
+| occurred_at     | datetime(3)     | NO       | NULL                 |                              |
+| amount          | decimal(12,3)   | YES      | NULL                 |                              |
+| notes           | text            | NO       | NULL                 |                              |
+| actor_id        | bigint unsigned | NO       | NULL                 |                              |
+| idempotency_key | varchar(100)    | NO       | NULL                 |                              |
+| request_hash    | char(64)        | NO       | NULL                 |                              |
+| created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+
 ## prescription_reservations
 
 | Column       | Type            | Nullable | Default              | Extra / generated expression |
@@ -331,6 +355,21 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | created_at        | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED                                                                                                                 |
 | active_patient_id | bigint unsigned | YES      | NULL                 | STORED GENERATED; (case when (`status` not in (_utf8mb4\'COMPLETED\',_utf8mb4\'SKIPPED\')) then `patient_id` else NULL end)       |
 | occupied_room_id  | bigint unsigned | YES      | NULL                 | STORED GENERATED; (case when (`status` in (_utf8mb4\'CALLED_TO_ROOM\',_utf8mb4\'IN_CONSULTATION\')) then `room_id` else NULL end) |
+
+## reference_catalogs
+
+| Column     | Type            | Nullable | Default              | Extra / generated expression |
+| ---------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id         | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id  | bigint unsigned | NO       | NULL                 |                              |
+| branch_id  | bigint unsigned | NO       | NULL                 |                              |
+| kind       | varchar(30)     | NO       | NULL                 |                              |
+| label      | varchar(200)    | NO       | NULL                 |                              |
+| active     | tinyint(1)      | NO       | 1                    |                              |
+| sort_order | int             | NO       | 0                    |                              |
+| version    | int             | NO       | 1                    |                              |
+| created_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| updated_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
 ## resource_locks
 

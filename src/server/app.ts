@@ -17,6 +17,9 @@ import { recordRouter } from './record-router.js';
 import { administrationRouter } from './administration.js';
 import { authorizeModules } from './module-access.js';
 import { referenceRouter } from './reference-router.js';
+import { buildDocumentView } from '../shared/document-view.js';
+import { renderDocumentPdf } from './document-renderer.js';
+import { catalogRouter } from './catalog-router.js';
 const asyncRoute =
   (fn: (req: Request, res: Response) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) =>
@@ -136,6 +139,7 @@ export function createApp(service = new ClinicService()) {
   api.use(referenceRouter());
   api.use(recordRouter());
   api.use(administrationRouter());
+  api.use(catalogRouter());
   api.get('/auth/me', (req, res) =>
     res.json({
       user: req.context.actor,
@@ -335,78 +339,65 @@ export function createApp(service = new ClinicService()) {
     return { id: idSchema.parse(r.params.id), status: 'PENDING' };
   });
   api.get(
+    '/documents/:id',
+    asyncRoute(async (req, res) => {
+      res.json(await service.documentPreview(req.context, idSchema.parse(req.params.id)));
+    }),
+  );
+  api.get(
+    '/encounters/:id/prescription-log',
+    asyncRoute(async (req, res) => {
+      if (!req.context.modules?.some((module) => ['clinical', 'inventory'].includes(module)))
+        throw new DomainError('MODULE_FORBIDDEN', 'Clinical or inventory access required.', 403);
+      res.json(await service.prescriptionLog(req.context, idSchema.parse(req.params.id)));
+    }),
+  );
+  api.get(
+    '/encounters/:id/medication-doses',
+    asyncRoute(async (req, res) => {
+      res.json(await service.medicationDoses(req.context, idSchema.parse(req.params.id)));
+    }),
+  );
+  api.post(
+    '/encounters/:id/medication-doses',
+    asyncRoute(async (req, res) => {
+      res
+        .status(201)
+        .json(
+          await service.recordMedicationDose(req.context, idSchema.parse(req.params.id), req.body),
+        );
+    }),
+  );
+  api.get(
     '/documents/:id/pdf',
     asyncRoute(async (req, res) => {
-      const d = await service.document(req.context, idSchema.parse(req.params.id)),
-        p = d.payload;
-      const doc = new PDFDocument({ size: 'A4', margin: 55 });
+      const d = await service.document(req.context, idSchema.parse(req.params.id), true);
+      const view = buildDocumentView({
+        id: d.id,
+        kind: d.kind,
+        documentNumber: d.document_number,
+        payload: d.payload,
+        createdAt: d.created_at,
+        startDate: d.start_date,
+        endDate: d.end_date,
+        diagnosisRedacted: Boolean(d.diagnosis_redacted),
+        revokedAt: d.revoked_at,
+      });
       const qr = await QRCode.toBuffer(
         `${process.env.PUBLIC_URL || process.env.APP_ORIGIN || 'http://localhost:5173'}/verify/${d.verification_hash}`,
       );
+      const download = z.enum(['1']).optional().parse(req.query.download);
+      const doc = new PDFDocument({ size: 'A4', margin: 55 });
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${d.document_number}.pdf"`);
+      res.setHeader(
+        'Content-Disposition',
+        `${download ? 'attachment' : 'inline'}; filename="${d.document_number.replace(/[^A-Za-z0-9_-]/g, '_')}.pdf"`,
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      doc.on('error', () => res.destroy());
       doc.pipe(res);
-      doc
-        .fontSize(22)
-        .text(p.branchName)
-        .fontSize(10)
-        .text(p.branchAddress || '')
-        .moveDown();
-      doc
-        .fontSize(18)
-        .text(
-          d.kind === 'MC'
-            ? 'Medical Certificate'
-            : d.kind === 'REFERRAL'
-              ? 'Referral Letter'
-              : 'Lab Investigation Requisition',
-        )
-        .fontSize(10)
-        .text(`Reference: ${d.document_number}`)
-        .moveDown();
-      if (d.revoked_at) doc.fillColor('red').text('REVOKED').fillColor('black');
-      doc
-        .text(`Patient: ${p.patientName}`)
-        .text(`National ID: ${p.nationalId}`)
-        .text(
-          `Practitioner: ${p.practitionerName} | Registration: ${p.licenseNumber || 'Not recorded'}`,
-        )
-        .moveDown();
-      if (d.kind === 'MC') {
-        doc
-          .text(
-            `Leave: ${String(d.start_date).slice(0, 10)} to ${String(d.end_date).slice(0, 10)} (${p.days} days)`,
-          )
-          .text(p.lightDuty ? 'Fit for light duties only.' : 'Unfit for duty.');
-        if (!d.diagnosis_redacted) doc.text(`Assessment: ${p.assessment}`);
-      }
-      if (d.kind === 'REFERRAL')
-        doc
-          .text(`To: ${p.target}`)
-          .text(`Urgency: ${p.urgency}`)
-          .text(`Reason: ${p.reason}`)
-          .text(`Clinical summary: ${p.assessment}`)
-          .text(`Vitals: ${JSON.stringify(p.vitals)}`)
-          .text(`Allergies: ${p.allergies.join(', ') || 'None recorded'}`)
-          .text(`Conditions: ${p.conditions.join(', ') || 'None recorded'}`)
-          .text(`Medications: ${JSON.stringify(p.prescriptions)}`);
-      if (d.kind === 'LAB')
-        doc
-          .text(`Panels: ${p.panels.join(', ')}`)
-          .text(`Specimen: ${p.specimenType}`)
-          .text(
-            `Fasting: ${p.fastingRequired ? 'Required, confirm duration with practitioner' : 'Not required'}`,
-          )
-          .text(`Notes: ${p.clinicalNotes}`);
-      doc
-        .moveDown()
-        .fontSize(8)
-        .text(`Issued: ${new Date(d.created_at).toISOString()}`)
-        .text(
-          'Scan QR to verify certificate status. Verification does not disclose patient or diagnosis.',
-        )
-        .image(qr, { width: 90 })
-        .end();
+      renderDocumentPdf(doc, view, qr);
+      doc.end();
     }),
   );
   const listeners = new Map<number, Set<Response>>();

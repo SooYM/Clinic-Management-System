@@ -121,6 +121,13 @@ Booking messages include calendar/maps context. Queue-near and refill reminders 
 Issuance locks MC overlap scope where relevant, snapshots signed clinical data and stores a signing HMAC plus verification hash.
 Authenticated PDF reads and public verification check integrity. Public responses exclude patient names and diagnosis.
 The issuing GP revokes with a reason; replacement creates a new document rather than modifying the old snapshot.
+Issued and historical document actions open a readable letter preview. Downloading its PDF is a separate explicit action.
+Certificate redaction and revocation status remain visible in the preview and rendered output.
+
+Prescription history reads the encounter, reservation and dispense/movement ledgers without changing stock.
+It shows clinic actions and prescribed frequency; patient dose-taking is not inferred from stock movements.
+Clinical staff separately record taken or missed doses against signed prescriptions, with patient-report or staff-observation source.
+Medication-taking entries stay in the clinical workspace and do not consume physical stock or prescription holds.
 
 ## Administrative lifecycle
 
@@ -137,3 +144,5 @@ The demo follows the same screen sequence using sample records in sessionStorage
 It does not execute server authentication, MySQL transactions, provider sends or cryptographic clinical issuance.
 Reset demo clears that browser namespace and returns to login; local MySQL records are unaffected.
 Reset restores the original fictional workflow examples. They are never loaded by normal MySQL bootstrap.
+
+Administrators configure branch choices → active choices appear in clinical/stock forms → server validates and captures medication metadata → signed prescriptions preserve snapshots → archival hides future choices while preserving historical dispensing and stock operations.

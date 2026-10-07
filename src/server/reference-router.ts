@@ -72,11 +72,13 @@ export function referenceRouter() {
     '/references/medications',
     route(async (req, res) => {
       anyModule(req, ['clinical', 'inventory']);
+      const search = z.string().max(200).default('').parse(req.query.search);
+      const includeInactive = z.enum(['1']).optional().parse(req.query.includeInactive);
       const { rows } = await pool.query(
-        "SELECT id,name,ingredient,unit,category,price_cents FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND category='MEDICATION' ORDER BY name LIMIT 200",
-        [req.context.actor.tenantId, req.context.branchId],
+        "SELECT id,name,ingredient,unit,category,price_cents,active,version FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND category='MEDICATION' AND ($4=1 OR active=1) AND (name LIKE $3 OR sku LIKE $3 OR ingredient LIKE $3) ORDER BY name LIMIT 200",
+        [req.context.actor.tenantId, req.context.branchId, `%${search}%`, includeInactive ? 1 : 0],
       );
-      res.json({ data: camel(rows) });
+      res.json({ data: camel(rows.map((row) => ({ ...row, active: Boolean(row.active) }))) });
     }),
   );
   router.get(
@@ -122,12 +124,32 @@ export function referenceRouter() {
       for (const row of rows)
         row.prescriptions = row.prescriptions.map((rx: any) => ({
           ...rx,
-          itemName: names.get(rx.itemId) || 'Medication',
+          itemName: rx.itemName || names.get(rx.itemId) || 'Medication',
           frequencyPerDay: rx.frequencyPerDay || 1,
           mealTiming: rx.mealTiming || 'ANY_TIME',
         }));
       await audit(req, 'READ_DISPENSARY', 'encounter', null, rows.length);
       res.json({ data: camel(rows) });
+    }),
+  );
+  router.get(
+    '/dispensary/history',
+    route(async (req, res) => {
+      anyModule(req, ['inventory', 'clinical']);
+      const search = z.string().max(200).default('').parse(req.query.search);
+      const { rows } = await pool.query(
+        `SELECT e.id,e.patient_id,p.name patient_name,u.name practitioner_name,e.created_at,e.status,
+      EXISTS(SELECT 1 FROM dispenses d WHERE d.encounter_id=e.id) dispensed
+      FROM encounters e JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id
+      JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id
+      WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.status='SIGNED' AND JSON_LENGTH(e.prescriptions)>0
+      AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR u.name LIKE $3 OR EXISTS (
+        SELECT 1 FROM JSON_TABLE(e.prescriptions,'$[*]' COLUMNS(item_id BIGINT PATH '$.itemId')) rx JOIN inventory_items i ON i.id=rx.item_id AND i.tenant_id=e.tenant_id AND i.branch_id=e.branch_id WHERE i.name LIKE $3))
+      ORDER BY e.created_at DESC LIMIT 200`,
+        [req.context.actor.tenantId, req.context.branchId, `%${search}%`],
+      );
+      await audit(req, 'READ_PRESCRIPTION_HISTORY', 'encounter', null, rows.length);
+      res.json({ data: camel(rows.map((row) => ({ ...row, dispensed: Boolean(row.dispensed) }))) });
     }),
   );
   return router;

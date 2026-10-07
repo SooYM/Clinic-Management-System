@@ -1,3 +1,5 @@
+import { catalogKinds } from '../shared/catalogs';
+import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { schemas } from '../server/validation';
 import {
   ClinicalEncounter,
@@ -44,6 +46,37 @@ const today = () =>
 const fail = (message: string, status = 422): never => {
   throw new DomainError('DEMO_ERROR', message, status);
 };
+function sampleCatalogs(): Row[] {
+  const choices = [
+    ['LAB_PANEL', 'Full Blood Count'],
+    ['LAB_PANEL', 'HbA1c'],
+    ['LAB_PANEL', 'Renal Profile'],
+    ['SPECIMEN_TYPE', 'Blood'],
+    ['SPECIMEN_TYPE', 'Urine'],
+    ['SPECIMEN_TYPE', 'Swab'],
+    ['INVENTORY_UNIT', 'tablet'],
+    ['INVENTORY_UNIT', 'capsule'],
+    ['INVENTORY_UNIT', 'piece'],
+    ['INVENTORY_UNIT', 'box'],
+    ['INVENTORY_UNIT', 'unit'],
+    ['REFERRAL_DESTINATION', 'Demo Medical Centre – Cardiology'],
+    ['REFERRAL_DESTINATION', 'Demo Specialist Clinic – Dermatology'],
+  ];
+  return [1, 2].flatMap((branchId) =>
+    choices.map(([kind, label], index) => ({
+      id: (branchId - 1) * choices.length + index + 1,
+      tenantId: 1,
+      branchId,
+      kind,
+      label,
+      active: true,
+      sortOrder: index,
+      version: 1,
+      createdAt: now(),
+      updatedAt: now(),
+    })),
+  );
+}
 const stateLabels: Record<string, string> = {
   JOHOR: 'Johor',
   KEDAH: 'Kedah',
@@ -175,6 +208,7 @@ function seed(): State {
     ],
     users,
     patients,
+    catalogs: sampleCatalogs(),
     rooms: [
       { id: 1, tenantId: 1, branchId: 1, name: 'Room 01', active: true },
       { id: 2, tenantId: 1, branchId: 1, name: 'Room 02', active: true },
@@ -357,8 +391,18 @@ function seed(): State {
       },
     ],
     usages: [],
+    medicationDoses: [],
     audit: [],
   };
+  for (const item of rows.inventory) {
+    item.active = true;
+    item.version = 1;
+  }
+  for (const encounter of rows.encounters)
+    for (const rx of encounter.prescriptions) {
+      const item = rows.inventory.find((i) => i.id === rx.itemId);
+      Object.assign(rx, { itemName: item?.name, ingredient: item?.ingredient, unit: item?.unit });
+    }
   return {
     version: 1,
     counters: Object.fromEntries(
@@ -429,9 +473,17 @@ export class DemoClinic {
       this.state = seed();
     }
     // Existing browser sessions retain historical prescriptions without adding retroactive holds.
-    for (const table of ['reservations', 'usages']) {
+    for (const table of ['reservations', 'usages', 'medicationDoses']) {
       this.state.rows[table] ||= [];
       this.state.counters[table] ??= Math.max(0, ...this.state.rows[table].map((r) => r.id));
+    }
+    if (!this.state.rows.catalogs) {
+      this.state.rows.catalogs = sampleCatalogs();
+      this.state.counters.catalogs = this.state.rows.catalogs.length;
+    }
+    for (const item of this.state.rows.inventory) {
+      item.active ??= true;
+      item.version ??= 1;
     }
     // Upgrade only unchanged original demo accounts; retain records and user-changed passwords.
     for (const [index, alias] of ['admin', 'gp', 'reception', 'nurse', 'therapist'].entries()) {
@@ -614,28 +666,32 @@ export class DemoClinic {
     if (/^\/(packages|commissions|photos)(\/|$)/.test(route)) fail('Feature retired.', 410);
     if (route.startsWith('/admin/') && user.role !== 'ADMIN')
       fail('Demo administration requires administrator role.', 403);
-    const module = /deposit-balance$/.test(route)
-      ? 'billing'
-      : /^\/patients\/\d+\/encounters$/.test(route)
+    const module = /^\/encounters\/\d+\/prescription-log$/.test(route)
+      ? modules.includes('clinical')
         ? 'clinical'
-        : /^\/(queue|dashboard)(\/|$)/.test(route)
-          ? 'queue'
-          : /^\/patients(\/|$)/.test(route)
-            ? 'patients'
-            : /^\/appointments(\/|$)/.test(route)
-              ? 'appointments'
-              : /^\/(encounters|documents|clinical)(\/|$)/.test(route)
-                ? 'clinical'
-                : /^\/(inventory|dispensary|dispenses)(\/|$)/.test(route)
-                  ? 'inventory'
-                  : /^\/(invoices|deposits)(\/|$)/.test(route)
-                    ? 'billing'
-                    : /^\/(notifications|reports)(\/|$)/.test(route)
-                      ? 'reports'
-                      : undefined;
+        : 'inventory'
+      : /deposit-balance$/.test(route)
+        ? 'billing'
+        : /^\/patients\/\d+\/encounters$/.test(route)
+          ? 'clinical'
+          : /^\/(queue|dashboard)(\/|$)/.test(route)
+            ? 'queue'
+            : /^\/patients(\/|$)/.test(route)
+              ? 'patients'
+              : /^\/appointments(\/|$)/.test(route)
+                ? 'appointments'
+                : /^\/(encounters|documents|clinical)(\/|$)/.test(route)
+                  ? 'clinical'
+                  : /^\/(inventory|dispensary|dispenses)(\/|$)/.test(route)
+                    ? 'inventory'
+                    : /^\/(invoices|deposits)(\/|$)/.test(route)
+                      ? 'billing'
+                      : /^\/(notifications|reports)(\/|$)/.test(route)
+                        ? 'reports'
+                        : undefined;
     if (module && !modules.includes(module as any))
       fail('This demo role has no access to that module.', 403);
-    const foundId = route.match(/^\/[^/]+\/(\d+)(?:\/|$)/),
+    const foundId = route.match(/^\/(?:admin\/)?[^/]+\/(\d+)(?:\/|$)/),
       id = foundId ? idSchema.parse(foundId[1]) : undefined;
     if (method !== 'GET' && !route.startsWith('/auth/'))
       this.add(
@@ -707,13 +763,120 @@ export class DemoClinic {
           })),
       };
     }
+    if (
+      route === '/references/catalogs' ||
+      route === '/admin/catalogs' ||
+      /^\/admin\/catalogs\/\d+$/.test(route)
+    ) {
+      const kind = url.searchParams.get('kind');
+      if (
+        route === '/references/catalogs' &&
+        (!kind || !catalogKinds.some((value) => value === kind))
+      )
+        fail('Select a valid choice list.');
+      if (
+        route === '/references/catalogs' &&
+        !modules.includes(kind === 'INVENTORY_UNIT' ? 'inventory' : 'clinical')
+      )
+        fail('Choice list access denied.', 403);
+      if (method === 'GET')
+        return {
+          data: this.scoped('catalogs', branch)
+            .filter((c) => (!kind || c.kind === kind) && (route === '/admin/catalogs' || c.active))
+            .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)),
+        };
+      if (user.role !== 'ADMIN') fail('Only administrators can edit choices.', 403);
+      const label = String(body.label || '').trim();
+      const labelKind = id ? this.record('catalogs', id, branch).kind : body.kind;
+      if (
+        label.length >
+        (labelKind === 'INVENTORY_UNIT' ? 50 : labelKind === 'SPECIMEN_TYPE' ? 100 : 200)
+      )
+        fail('Choice label is too long.');
+      if (
+        !label ||
+        label.length > 200 ||
+        !Number.isInteger(body.sortOrder ?? 0) ||
+        (body.sortOrder ?? 0) < 0 ||
+        (body.sortOrder ?? 0) > 1000000 ||
+        (body.active !== undefined && typeof body.active !== 'boolean')
+      )
+        fail('Use a label up to 200 characters and a valid display order.');
+      const existing = id ? this.record('catalogs', id, branch) : undefined;
+      const entryKind = existing?.kind || body.kind;
+      if (!catalogKinds.some((value) => value === entryKind)) fail('Select a valid choice list.');
+      if (
+        this.scoped('catalogs', branch).some(
+          (c) =>
+            c.id !== id && c.kind === entryKind && c.label.toLowerCase() === label.toLowerCase(),
+        )
+      )
+        fail('This choice already exists.', 409);
+      if (existing) {
+        if (existing.version !== body.version) fail('Choice changed; refresh before saving.', 409);
+        Object.assign(existing, {
+          label,
+          sortOrder: body.sortOrder ?? 0,
+          active: body.active ?? true,
+          version: existing.version + 1,
+          updatedAt: now(),
+        });
+        return existing;
+      }
+      return this.add(
+        'catalogs',
+        {
+          kind: entryKind,
+          label,
+          sortOrder: body.sortOrder ?? 0,
+          active: body.active ?? true,
+          updatedAt: now(),
+        },
+        branch,
+      );
+    }
+    if (/^\/admin\/inventory\/\d+$/.test(route) && method === 'PUT') {
+      const item = this.record('inventory', id!, branch);
+      const { active, version, ...fields } = body;
+      const value = schemas.item.parse(fields);
+      if (typeof active !== 'boolean' || version !== item.version)
+        fail('Inventory item changed; refresh before saving.', 409);
+      if (this.scoped('inventory', branch).some((i) => i.id !== item.id && i.sku === value.sku))
+        fail('SKU already exists.', 409);
+      const used =
+        this.scoped('batches', branch).some((b) => b.itemId === item.id) ||
+        this.scoped('encounters', branch).some((e) =>
+          e.prescriptions.some((rx: Row) => rx.itemId === item.id),
+        );
+      if (
+        used &&
+        (value.category !== item.category ||
+          value.unit !== item.unit ||
+          value.ingredient !== item.ingredient)
+      )
+        fail(
+          'Category, ingredient and unit cannot change after stock or prescribing history.',
+          409,
+        );
+      Object.assign(item, value, { active, version: item.version + 1 });
+      return item;
+    }
     if (route === '/references/medications') {
       if (!modules.some((m) => ['clinical', 'inventory'].includes(m)))
         fail('Medication selector access denied.', 403);
       return {
         data: this.scoped('inventory', branch)
-          .filter((i) => i.category === 'MEDICATION')
-          .map(({ id, name, ingredient, unit, category, priceCents }) => ({
+          .filter(
+            (i) =>
+              [i.name, i.sku, i.ingredient]
+                .join(' ')
+                .toLowerCase()
+                .includes((url.searchParams.get('search') || '').toLowerCase()) &&
+              i.category === 'MEDICATION' &&
+              (i.active !== false || url.searchParams.get('includeInactive') === '1'),
+          )
+          .map(({ id, name, ingredient, unit, category, priceCents, active }) => ({
+            active,
             id,
             name,
             ingredient,
@@ -910,6 +1073,36 @@ export class DemoClinic {
       const v = schemas.encounter.parse(body),
         p = this.record('patients', v.patientId, branch);
       this.checkPrescription(v.prescriptions, p, branch);
+      const priorPrescriptions = id ? this.record('encounters', id, branch).prescriptions : [];
+      v.prescriptions = v.prescriptions.map((rx) => {
+        const old = priorPrescriptions.find(
+          (previous: Row) =>
+            previous.itemId === rx.itemId &&
+            previous.quantity === rx.quantity &&
+            previous.dosage === rx.dosage &&
+            previous.durationDays === rx.durationDays,
+        );
+        const item = this.record('inventory', rx.itemId, branch);
+        return {
+          ...rx,
+          itemName: old?.itemName || item.name,
+          ingredient: old?.ingredient ?? item.ingredient,
+          unit: old?.unit || item.unit,
+        };
+      });
+      const previousRx = id ? this.record('encounters', id, branch).prescriptions : [];
+      for (const rx of v.prescriptions)
+        if (
+          this.record('inventory', rx.itemId, branch).active === false &&
+          !previousRx.some(
+            (old: Row) =>
+              old.itemId === rx.itemId &&
+              old.quantity === rx.quantity &&
+              old.dosage === rx.dosage &&
+              old.durationDays === rx.durationDays,
+          )
+        )
+          fail('Archived medicine cannot be added to a new prescription.');
       if (id) {
         const e = this.record('encounters', id, branch);
         if (e.practitionerId !== user.id) fail('Only attending GP can edit.', 403);
@@ -935,10 +1128,12 @@ export class DemoClinic {
       return this.enrich(e);
     }
     if (route === '/inventory' && method === 'POST') {
+      if (user.role !== 'ADMIN') fail('Only administrators can add inventory items.', 403);
       const v = schemas.item.parse(body);
       if (this.scoped('inventory', branch).some((i) => i.sku === v.sku))
         fail('SKU already exists.', 409);
-      return this.add('inventory', v, branch);
+      this.validateCatalogChoice('INVENTORY_UNIT', v.unit, branch);
+      return this.add('inventory', { ...v, active: true }, branch);
     }
     if (route === '/inventory/batches' && method === 'POST') {
       const v = schemas.batch.parse(body);
@@ -1013,11 +1208,179 @@ export class DemoClinic {
               createdAt: e.createdAt,
               prescriptions: e.prescriptions.map((rx: Row) => ({
                 ...rx,
-                itemName: this.record('inventory', rx.itemId, branch).name,
+                itemName: rx.itemName || this.record('inventory', rx.itemId, branch).name,
               })),
             };
           }),
       };
+    if (/^\/encounters\/\d+\/medication-doses$/.test(route)) {
+      const encounter = this.record('encounters', id!, branch);
+      if (method === 'GET')
+        return {
+          encounterId: encounter.id,
+          patientId: encounter.patientId,
+          patientName: this.record('patients', encounter.patientId, branch).name,
+          entries: this.scoped('medicationDoses', branch)
+            .filter((d) => d.encounterId === encounter.id)
+            .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+            .map(({ requestHash, ...dose }) => dose),
+        };
+      if (method === 'POST') {
+        if (!['DOCTOR', 'NURSE'].includes(user.role))
+          fail('Only GPs and nurses with clinical access can record medication doses.', 403);
+        const value = schemas.medicationDose.parse(body);
+        if (encounter.status !== 'SIGNED')
+          fail('Sign the medicine prescription before recording doses.', 409);
+        if (!encounter.prescriptions.some((rx: Row) => rx.itemId === value.itemId))
+          fail('Choose a medicine prescribed in this consultation.');
+        const prior = this.scoped('medicationDoses', branch).find(
+          (d) => d.idempotencyKey === value.idempotencyKey,
+        );
+        if (prior) {
+          if (prior.encounterId !== encounter.id || JSON.stringify(value) !== prior.requestHash)
+            fail('Dose key belongs to different input.', 409);
+          const { requestHash, ...safe } = prior;
+          return safe;
+        }
+        const medicine = this.record('inventory', value.itemId, branch);
+        const row = this.add(
+          'medicationDoses',
+          {
+            ...value,
+            encounterId: encounter.id,
+            patientId: encounter.patientId,
+            medicineName:
+              encounter.prescriptions.find((rx: Row) => rx.itemId === value.itemId)?.itemName ||
+              medicine.name,
+            unit:
+              encounter.prescriptions.find((rx: Row) => rx.itemId === value.itemId)?.unit ||
+              medicine.unit,
+            actorId: user.id,
+            actorName: user.name,
+            requestHash: JSON.stringify(value),
+          },
+          branch,
+        );
+        const { requestHash, ...safe } = row;
+        return safe;
+      }
+    }
+    if (route === '/dispensary/history' && method === 'GET') {
+      const search = (url.searchParams.get('search') || '').toLowerCase();
+      return {
+        data: this.scoped('encounters', branch)
+          .filter((e) => e.status === 'SIGNED' && e.prescriptions.length)
+          .map((e) => ({
+            id: e.id,
+            patientId: e.patientId,
+            patientName: this.record('patients', e.patientId, branch).name,
+            practitionerName:
+              this.state.rows.users.find((u) => u.id === e.practitionerId)?.name || '',
+            createdAt: e.createdAt,
+            status: e.status,
+            dispensed: this.scoped('dispenses', branch).some((d) => d.encounterId === e.id),
+          }))
+          .filter((e) =>
+            (e.patientName + ' ' + e.patientId + ' ' + e.id + ' ' + e.practitionerName)
+              .toLowerCase()
+              .includes(search),
+          )
+          .slice(0, 200),
+      };
+    }
+    if (/^\/encounters\/\d+\/prescription-log$/.test(route) && method === 'GET') {
+      const e = this.record('encounters', id!, branch);
+      const events: PrescriptionLogEvent[] = [];
+      const actorName = (actorId: number) =>
+        this.state.rows.users.find((u) => u.id === actorId)?.name || 'Recorded staff';
+      const addEvent = (
+        type: PrescriptionLogEvent['type'],
+        rx: Row,
+        quantity: number,
+        at: string,
+        actorId: number,
+        batchId?: number,
+      ) =>
+        events.push({
+          type,
+          itemId: rx.itemId,
+          itemName: rx.itemName || this.record('inventory', rx.itemId, branch).name,
+          quantity,
+          at,
+          actorName: actorName(actorId),
+          batchId,
+          batchNumber: batchId ? this.record('batches', batchId, branch).batchNumber : undefined,
+          frequencyPerDay: rx.frequencyPerDay || 1,
+          mealTiming: rx.mealTiming || 'ANY_TIME',
+          dosage: rx.dosage,
+          durationDays: rx.durationDays,
+        });
+      if (e.status === 'SIGNED')
+        for (const rx of e.prescriptions || [])
+          addEvent('PRESCRIBED', rx, rx.quantity, e.signedAt || e.createdAt, e.practitionerId);
+      for (const hold of this.scoped('reservations', branch).filter(
+        (r) => r.encounterId === e.id,
+      )) {
+        const rx = e.prescriptions.find((r: Row) => r.itemId === hold.itemId);
+        if (!rx) continue;
+        addEvent('RESERVED', rx, hold.quantity, hold.createdAt, e.practitionerId, hold.batchId);
+        if (hold.status === 'RELEASED' && hold.consumedAt)
+          addEvent(
+            'RELEASED',
+            rx,
+            hold.quantity,
+            hold.consumedAt,
+            this.scoped('dispenses', branch).find((d) => d.encounterId === e.id)?.actorId ||
+              e.practitionerId,
+            hold.batchId,
+          );
+      }
+      for (const dispense of this.scoped('dispenses', branch).filter(
+        (d) => d.encounterId === e.id,
+      )) {
+        for (const allocation of dispense.allocations || e.prescriptions) {
+          const rx = e.prescriptions.find((r: Row) => r.itemId === allocation.itemId);
+          if (rx)
+            addEvent(
+              'DISPENSED',
+              rx,
+              allocation.quantity,
+              dispense.createdAt,
+              dispense.actorId,
+              allocation.batchId,
+            );
+        }
+      }
+      events.sort((a, b) => a.at.localeCompare(b.at));
+      return {
+        encounterId: e.id,
+        patientId: e.patientId,
+        patientName: this.record('patients', e.patientId, branch).name,
+        events,
+      };
+    }
+    if (/^\/documents\/\d+$/.test(route) && method === 'GET') {
+      const document = this.record('documents', id!, branch);
+      const patient = this.record('patients', document.patientId, branch);
+      const encounter = this.record('encounters', document.encounterId, branch);
+      const practitioner = this.state.rows.users.find((u) => u.id === document.practitionerId);
+      const clinic = this.state.rows.branches.find((b) => b.id === branch);
+      const defaults = {
+        patientName: patient.name,
+        nationalId: patient.nationalId,
+        branchName: clinic?.name,
+        branchAddress: clinic?.address,
+        practitionerName: practitioner?.name,
+        licenseNumber: practitioner?.licenseNumber,
+        assessment: encounter.assessment,
+        allergies: patient.allergies,
+        conditions: patient.conditions,
+      };
+      document.payload ||= {};
+      for (const [key, value] of Object.entries(defaults))
+        if (!(key in document.payload)) document.payload[key] = value;
+      return buildDocumentView(document as any);
+    }
     if (route === '/dispenses' && method === 'POST') {
       const v = schemas.dispense.parse(body),
         prior = this.scoped('dispenses', branch).find((d) => d.idempotencyKey === v.idempotencyKey);
@@ -1038,6 +1401,7 @@ export class DemoClinic {
         hold.consumedAt = now();
         hold.status = 'RELEASED';
       }
+      const usedAllocations: Row[] = [];
       for (const rx of e.prescriptions) {
         const allocations = FefoAllocator.allocate(
           this.availableBatches(rx.itemId, branch),
@@ -1045,6 +1409,7 @@ export class DemoClinic {
           today(),
         );
         for (const allocation of allocations) {
+          usedAllocations.push({ ...allocation, itemId: rx.itemId });
           this.record('batches', allocation.batchId, branch).quantity -= allocation.quantity;
           const original = holds.find(
             (h) => h.batchId === allocation.batchId && h.quantity === allocation.quantity,
@@ -1052,7 +1417,11 @@ export class DemoClinic {
           if (original) original.status = 'FULFILLED';
         }
       }
-      return this.add('dispenses', { ...v, patientId: e.patientId, actorId: user.id }, branch);
+      return this.add(
+        'dispenses',
+        { ...v, patientId: e.patientId, actorId: user.id, allocations: usedAllocations },
+        branch,
+      );
     }
     if (route === '/deposits' && method === 'POST') {
       const v = schemas.deposit.parse(body);
@@ -1121,6 +1490,12 @@ export class DemoClinic {
         )
           fail('Sick leave dates overlap an existing active certificate.', 409);
       }
+      if (v.kind === 'REFERRAL' && v.target)
+        this.validateCatalogChoice('REFERRAL_DESTINATION', v.target, branch);
+      if (v.kind === 'LAB') {
+        for (const label of v.panels || []) this.validateCatalogChoice('LAB_PANEL', label, branch);
+        this.validateCatalogChoice('SPECIMEN_TYPE', v.specimenType, branch);
+      }
       if (v.kind === 'REFERRAL' && (!v.target || !v.reason))
         fail('Target and referral reason required.');
       if (v.kind === 'LAB' && !v.panels?.length) fail('Select at least one investigation panel.');
@@ -1134,7 +1509,21 @@ export class DemoClinic {
           endDate,
           documentNumber: 'DEMO-UNSIGNED-' + (this.state.counters.documents + 1),
           verificationUrl: '/demo-unavailable',
-          payload: { ...v, endDate, demo: true },
+          payload: {
+            ...v,
+            endDate,
+            demo: true,
+            employer: v.employer,
+            branchName: this.state.rows.branches.find((b) => b.id === branch)?.name,
+            branchAddress: this.state.rows.branches.find((b) => b.id === branch)?.address,
+            patientName: this.record('patients', e.patientId, branch).name,
+            nationalId: this.record('patients', e.patientId, branch).nationalId,
+            practitionerName: user.name,
+            licenseNumber: user.licenseNumber,
+            assessment: e.assessment,
+            allergies: [...this.record('patients', e.patientId, branch).allergies],
+            conditions: [...this.record('patients', e.patientId, branch).conditions],
+          },
         },
         branch,
       );
@@ -1303,6 +1692,11 @@ export class DemoClinic {
     );
     if (!doctor) fail('Choose an active GP in this branch.');
     return doctor!;
+  }
+  private validateCatalogChoice(kind: string, label: string, branch: number) {
+    const choices = this.scoped('catalogs', branch).filter((entry) => entry.kind === kind);
+    if (choices.length && !choices.some((entry) => entry.active && entry.label === label))
+      fail('Choose an active configured ' + kind.toLowerCase().replaceAll('_', ' ') + '.');
   }
   private checkPrescription(prescriptions: Row[], patient: Row, branch: number) {
     if (new Set(prescriptions.map((rx) => rx.itemId)).size !== prescriptions.length)

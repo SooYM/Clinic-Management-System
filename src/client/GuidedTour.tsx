@@ -135,7 +135,7 @@ const tours: Record<string, Step[]> = {
     {
       target: panel('clinical-documents'),
       title: 'Issue documents separately',
-      text: 'Select a signed consultation to issue MC, referral or laboratory documents. The guide never signs or issues anything.',
+      text: 'Select a signed consultation to issue documents. Issuance opens a letter preview; PDF download is a separate action. The guide never signs or issues anything.',
     },
   ],
   inventory: [
@@ -163,7 +163,7 @@ const tours: Record<string, Step[]> = {
     {
       target: panel('dispense-a-signed-prescription'),
       title: 'Review pending prescriptions',
-      text: 'Only signed, medicine-bearing consultations not already dispensed appear. Empty work is legitimate; do not create records merely to fill it.',
+      text: 'Only signed prescriptions not already dispensed appear here. Prescription history and activity below includes completed work and clinic stock events. The clinical medication-taking log separately records patient reports or staff observations without changing stock. Empty work is legitimate.',
     },
     {
       target: `${panel('stock-catalogue')} .panel-heading`,
@@ -277,7 +277,14 @@ export function GuidedTour({
             text: 'Your module grant permits review. Only an attending GP can edit, sign or issue clinical documents.',
           },
         ]
-      : tours[module] || [];
+      : role !== 'ADMIN' && module === 'inventory'
+        ? tours.inventory.filter(
+            (step) =>
+              step.open !== 'open-inventory-item' &&
+              !step.target.includes('field-item-name') &&
+              !step.target.includes('open-inventory-item'),
+          )
+        : tours[module] || [];
   const step = steps[index];
   useLayoutEffect(() => {
     if (!step) return;

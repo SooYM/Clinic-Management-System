@@ -60,6 +60,9 @@ export interface Appointment {
   version: number;
 }
 export interface InventoryItem {
+  active?: boolean;
+  version?: number;
+  priceCents?: number;
   id: number;
   name: string;
   sku: string;

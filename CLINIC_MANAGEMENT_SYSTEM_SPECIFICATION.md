@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 24 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–012.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–014.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -118,6 +118,10 @@ Insufficient free stock aborts signing without saving a signed encounter or part
 `stockQuantity` is available stock; `onHandQuantity` is eligible unexpired physical stock; `reservedQuantity` is active eligible prescription holds.
 
 Pending work includes only branch-scoped signed encounters containing prescriptions that have not already been dispensed.
+Prescription activity logs show clinic prescribing, stock reservation and dispensing history with quantities, batches, staff and timestamps.
+These logs do not establish whether a patient took a dose.
+Clinical staff can separately record patient medication-taking events, distinguishing patient reports from staff observations.
+Taking or missing a dose never deducts clinic stock again; the dispensing ledger remains the inventory boundary.
 The dispensary projection includes medicine instructions and allergies but excludes full SOAP notes.
 FEFO consumes the earliest eligible expiry first. Expiry on or before the clinic date is ineligible; undated supplies sort after dated batches.
 Dispensing releases its own holds and allocates eligible stock excluding other prescriptions' holds, then deducts physical units once.
@@ -145,6 +149,9 @@ The MC form defaults leave start using Malaysia time: before 17:00 uses today; 1
 Staff can override the default date. Draft or other-practitioner encounters show an eligibility explanation before issuance.
 Documents retain payload snapshots, document numbers, a signing HMAC and hashed public verification tokens.
 PDF generation includes verification QR codes. Public verification returns minimal authenticity metadata without patient names or diagnoses.
+Document actions open an authenticated in-page preview before any explicit PDF download.
+MC layout follows a centered clinic letterhead, ruled patient/leave fields, practitioner block and issue-time/reference footer.
+Clinic and practitioner details come from the issued snapshot; reference-image branding and handwritten signatures are not copied.
 
 MCs use inclusive date ranges, prevent overlapping active periods and support diagnosis redaction and light-duty details.
 Referral data includes target, urgency, reason and clinical context. Laboratory requests capture panels, specimen and fasting details.
@@ -184,7 +191,7 @@ It uses OOP where behavior needs invariants rather than adding empty entity wrap
 Shared identity, module and identifier contracts reduce duplicated validation.
 Reusable UI forms and minimal reference endpoints support independent module grants.
 
-The final schema has 24 entity tables, composite membership/policy keys, secret-keyed sessions and resource locks.
+The final schema has 26 entity tables, composite membership/policy keys, secret-keyed sessions and resource locks.
 Unsigned numeric keys support long-term growth, while API inputs remain within JavaScript's positive safe-integer range.
 Composite foreign keys enforce tenant/branch relationships; generated queue keys protect active-patient and room uniqueness.
 JSON captures prescriptions, vitals and immutable snapshots; typed references inside JSON require application validation.
@@ -228,3 +235,10 @@ Demo operations simulate workflows without actual database transactions, externa
 PDF/receipt links lead to a clear unavailable explanation. Live SSE is disabled; local refresh reads browser state.
 The demo must contain sample data only. Browser session restoration may retain tab storage; explicit reset clears it.
 No real patient information, provider secrets or database credentials belong in its bundle.
+
+
+## Administrator-managed catalog choices
+
+Administrators edit drugs, supplies, rooms, lab panels, specimen types, inventory units and referral destinations. Choices are branch scoped and can be archived/restored. New prescribing uses active medication items. Used item categories, ingredients and units stay fixed. New signed prescriptions retain authoritative medicine snapshots; legacy records without snapshots use catalog fallback. Existing signed prescriptions remain dispensable after archival. Workflow statuses and role codes remain fixed application rules.
+
+Patient phone numbers accept Malaysian and foreign formatting, including country codes, up to 50 characters.
