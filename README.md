@@ -11,7 +11,7 @@ Two deployment modes share the interface:
 
 Demo records stay in the current tab, survive refresh, and normally disappear when its tab/session closes. Reset Demo clears them immediately. Browser session restoration can retain session storage. Demo identities and permissions simulate workflows; they provide no server security. No real patient data, clinical certificates, payment processing or provider delivery belongs in this mode.
 
-Render preloads fictional patients, staff, appointments, a queue visit, a signed prescription, medicine stock and billing examples. Reset restores these fixtures. This preload runs only in the demo adapter; local MySQL receives no demo business data.
+Render preloads plausible fictional Malaysian patient/staff names, addresses, appointments, a queue visit, a signed prescription, medicine stock and billing examples. Existing tabs retain their records; use Reset Demo to load the refreshed examples. Reset restores these fixtures. This preload runs only in the demo adapter; local MySQL receives no demo business data.
 
 Read the [documentation index](docs/README.md) for system specification, architecture, schema, ERD, workflows, test cases and prerequisites.
 
@@ -48,7 +48,7 @@ npm run build:demo
 npm run start:demo
 ```
 
-Demo builds write `dist-demo`; normal builds write `dist`. Demo hosting requires no database or private credentials. The login screen shows the public fictional accounts; each default demo password is `00000000000000` (14 zeros). This does not change local MySQL credentials. The demo server serves static assets and an explicit unavailable page for features requiring the full backend.
+Demo builds write `dist-demo`; normal builds write `dist`. Demo hosting requires no database or private credentials. The login screen shows the public fictional accounts; each default demo password is `demo`. This does not change local MySQL credentials. The demo server serves static assets and an explicit unavailable page for features requiring the full backend.
 
 [render.yaml](render.yaml) reconfigures the existing **Clinic Management System** web service in its existing **Production** environment. It retains the service name, region and main branch, and uses the free demo build/start commands. See [Render upgrade](docs/RENDER_UPGRADE.md) before syncing. Git publication and Render Blueprint synchronization are separate operations; remote deployment remains unverified until its health and browser checks pass.
 

@@ -4,7 +4,8 @@
 
 - Interactive staff walkthroughs highlight real controls, respect module access and explain workflows without submitting records.
 - Phone layout improvements for navigation, guide instructions, forms and tables.
-- Default fictional demo accounts use `00000000000000` (14 zeros); unchanged legacy defaults upgrade without losing session records.
+- Default fictional demo accounts use `demo`; unchanged previous defaults upgrade without losing session records.
+- Demo fixtures use realistic fictional patient/staff names, branch addresses and ordinary clinic workflow descriptions.
 
 ## 2.0.0 — 2026-10-07
 

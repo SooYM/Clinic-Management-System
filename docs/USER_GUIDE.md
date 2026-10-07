@@ -76,11 +76,11 @@ Change your password in **Account security**. New passwords require 14–128 cha
 ## Browser demo
 
 The free-hosted demo displays a **Browser demo** banner on every screen. Use sample data only, never real patient records.
-Sign in with `admin@example.test`, `gp@example.test`, `reception@example.test`, `nurse@example.test` or `therapist@example.test`; password is `00000000000000` (14 zeros).
+Sign in with `admin@example.test`, `gp@example.test`, `reception@example.test`, `nurse@example.test` or `therapist@example.test`; password is `demo`.
 These accounts illustrate roles and are not real clinic authentication.
 Changes stay in that tab's browser sessionStorage. Refresh preserves them; closing the session normally discards them.
 Browsers can restore previous tab storage, so select **Reset demo** when you need a fresh sample workspace.
-Reset clears only demo storage, restores the initial fictional examples and returns to login. It never changes local MySQL records.
+Existing tabs retain prior records and edited passwords. Use Reset demo to load the refreshed fictional Malaysian names, addresses and history examples. Reset clears only demo storage, restores the current fictional examples and returns to login. It never changes local MySQL records.
 Patients, appointments, queue visits, prescriptions, stock and billing examples are preloaded only in the browser demo.
 Normal MySQL bootstrap creates clinic/staff/room setup without business fixtures. Development seeding is a separate guarded command.
 Messages are simulated; receipt and document downloads explain their demo limitation. Use the normal MySQL application for durable clinic work.

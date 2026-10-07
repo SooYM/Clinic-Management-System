@@ -84,8 +84,8 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
           {isDemo && (
             <p className="demo-credentials">
               Demo accounts: admin@example.test, gp@example.test, reception@example.test,
-              nurse@example.test or therapist@example.test. Password:{' '}
-              <strong>00000000000000</strong>. Use sample data only.
+              nurse@example.test or therapist@example.test. Password: <strong>demo</strong>. Use
+              sample data only.
             </p>
           )}
           <MutationForm

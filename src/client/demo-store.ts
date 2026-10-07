@@ -32,7 +32,7 @@ interface State {
   grants: Record<string, string[]>;
 }
 const key = 'clinic-session-demo-v1';
-const defaultDemoPassword = '00000000000000';
+const defaultDemoPassword = 'demo';
 const now = () => new Date().toISOString();
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -65,82 +65,112 @@ const stateLabels: Record<string, string> = {
 function seed(): State {
   const timestamp = now(),
     expiry = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+  const nextVisit = new Date(`${today()}T09:30:00+08:00`);
+  nextVisit.setUTCDate(nextVisit.getUTCDate() + 1);
   const users = roleIds.map((role, index) => ({
     id: index + 1,
     tenantId: 1,
     branchId: 1,
     branchIds: [1, 2],
     email: `${['admin', 'gp', 'reception', 'nurse', 'therapist'][index]}@example.test`,
-    name: [
-      'Demo Administrator',
-      'Dr. Aisha Demo',
-      'Demo Receptionist',
-      'Demo Nurse',
-      'Demo Therapist',
-    ][index],
+    name: ['Nur Farah Aziz', 'Dr. Aiman Hafiz', 'Aina Sofia', 'Nur Syafiqah', 'Kavitha Raman'][
+      index
+    ],
     role,
     licenseNumber: role === 'DOCTOR' ? 'DEMO-NOT-A-LICENSE' : null,
     password: defaultDemoPassword,
     active: true,
     createdAt: timestamp,
   }));
-  const patients = ['Demo Amir Example', 'Demo Mei Example'].map((name, index) => ({
+  // Invented identities and reserved example.test contacts; never copied from clinic data.
+  const identities = [
+    {
+      firstName: 'Arjun',
+      lastName: 'Nair',
+      nationality: 'NON_MALAYSIAN',
+      nationalId: 'DEMO-PASSPORT-1',
+      dateOfBirth: '1987-11-08',
+      sex: 'MALE',
+      addressLine1: '18 Jalan Kenanga',
+      addressLine2: 'Taman Seri Harmoni',
+      postcode: '43000',
+      city: 'Kajang',
+      state: 'Selangor',
+      email: 'arjun@example.test',
+      allergies: ['Penicillin'],
+      conditions: ['Seasonal allergic rhinitis'],
+    },
+    {
+      firstName: 'Mei Lin',
+      lastName: 'Tan',
+      nationality: 'NON_MALAYSIAN',
+      nationalId: 'DEMO-PASSPORT-2',
+      dateOfBirth: '1994-04-12',
+      sex: 'FEMALE',
+      addressLine1: '7 Jalan Cempaka',
+      addressLine2: 'Taman Seri Harmoni',
+      postcode: '43000',
+      city: 'Kajang',
+      state: 'Selangor',
+      email: 'meilin@example.test',
+      allergies: [],
+      conditions: [],
+    },
+    {
+      firstName: 'Amir',
+      lastName: 'Hakimi',
+      nationality: 'MALAYSIAN',
+      nationalId: '900615000001',
+      addressLine1: '12 Jalan Meranti',
+      addressLine2: 'Taman Bukit Sentosa',
+      postcode: '50000',
+      city: 'Kuala Lumpur',
+      state: 'Wilayah Persekutuan Kuala Lumpur',
+      email: 'amir@example.test',
+      allergies: [],
+      conditions: ['Hypertension'],
+    },
+    {
+      firstName: 'Aisyah',
+      lastName: 'Rahman',
+      nationality: 'MALAYSIAN',
+      nationalId: '920320000002',
+      addressLine1: '24 Jalan Cempaka',
+      addressLine2: 'Taman Seri Murni',
+      postcode: '50000',
+      city: 'Kuala Lumpur',
+      state: 'Wilayah Persekutuan Kuala Lumpur',
+      email: 'aisyah@example.test',
+      allergies: [],
+      conditions: [],
+    },
+  ];
+  const patients = identities.map((identity, index) => ({
     id: index + 1,
     patientNumber: index + 1,
     tenantId: 1,
     branchId: 1,
-    ...schemas.patient.parse({
-      name,
-      nationalId: `DEMO-PASSPORT-${index + 1}`,
-      nationality: 'NON_MALAYSIAN',
-      dateOfBirth: '1990-06-15',
-      sex: index ? 'FEMALE' : 'MALE',
-      allergies: index ? [] : ['Penicillin'],
-    }),
+    ...schemas.patient.parse(identity),
     version: 1,
     createdAt: timestamp,
     updatedAt: timestamp,
   }));
-  for (const [name, nationalId] of [
-    ['Demo Malaysian Example', '900615000001'],
-    ['Demo Malaysian Second', '920320000002'],
-  ]) {
-    const id = patients.length + 1;
-    patients.push({
-      id,
-      patientNumber: id,
-      tenantId: 1,
-      branchId: 1,
-      ...schemas.patient.parse({
-        firstName: name,
-        nationality: 'MALAYSIAN',
-        nationalId,
-        addressLine1: 'Fictional demo address',
-        postcode: '50000',
-        city: 'Kuala Lumpur',
-        state: 'Wilayah Persekutuan Kuala Lumpur',
-      }),
-      version: 1,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-  }
   const rows: Record<string, Row[]> = {
-    tenants: [{ id: 1, tenantNumber: 1, name: 'Clinic browser demo' }],
+    tenants: [{ id: 1, tenantNumber: 1, name: 'Klinik Seri Harmoni' }],
     branches: [
       {
         id: 1,
         branchNumber: 1,
         tenantId: 1,
-        name: 'Demo Main Branch',
-        address: 'Fictional Kuala Lumpur clinic',
+        name: 'Kuala Lumpur',
+        address: '32 Jalan Seri Harmoni, 50000 Kuala Lumpur (fictional)',
       },
       {
         id: 2,
         branchNumber: 2,
         tenantId: 1,
-        name: 'Demo Second Branch',
-        address: 'Fictional branch',
+        name: 'Kajang',
+        address: '10 Jalan Kenanga, 43000 Kajang, Selangor (fictional)',
       },
     ],
     users,
@@ -155,7 +185,7 @@ function seed(): State {
         id: 1,
         tenantId: 1,
         branchId: 1,
-        name: 'Demo Paracetamol 500mg',
+        name: 'Paracetamol 500mg',
         sku: 'DEMO-PARA',
         ingredient: 'Paracetamol',
         category: 'MEDICATION',
@@ -167,7 +197,7 @@ function seed(): State {
         id: 2,
         tenantId: 1,
         branchId: 1,
-        name: 'Demo Amoxicillin 500mg',
+        name: 'Amoxicillin 500mg',
         sku: 'DEMO-AMOX',
         ingredient: 'Penicillin;Amoxicillin',
         category: 'MEDICATION',
@@ -204,9 +234,9 @@ function seed(): State {
         patientId: 3,
         practitionerId: 2,
         roomId: 2,
-        startsAt: new Date(Date.now() + 86400000).toISOString(),
-        endsAt: new Date(Date.now() + 86400000 + 1800000).toISOString(),
-        reason: 'Fictional demo appointment',
+        startsAt: nextVisit.toISOString(),
+        endsAt: new Date(nextVisit.getTime() + 1800000).toISOString(),
+        reason: 'Blood pressure follow-up',
         status: 'BOOKED',
         version: 1,
         createdAt: timestamp,
@@ -235,16 +265,17 @@ function seed(): State {
         ...schemas.encounter.parse({
           patientId: 2,
           specialty: 'GP',
-          subjective: 'Fictional demo complaint',
-          objective: 'Fictional demo observation',
-          assessment: 'Demo assessment only; no clinical advice.',
-          plan: 'Demo workflow only.',
-          vitals: {},
+          subjective: 'Sore throat and mild discomfort since yesterday.',
+          objective: 'Comfortable at rest; no acute distress recorded in this fictional visit.',
+          assessment:
+            'Upper respiratory symptoms — fictional training record, not a clinical diagnosis.',
+          plan: 'Record reviewed and dispensing workflow prepared; public demo contains no treatment advice.',
+          vitals: { temperature: 36.8, bloodPressure: '118/76', pulse: 78 },
           prescriptions: [
             {
               itemId: 1,
               quantity: 3,
-              dosage: 'Demo instruction only; not treatment advice.',
+              dosage: 'Sample dispensing label; no treatment instructions in public demo.',
               durationDays: 3,
               frequencyPerDay: 1,
               mealTiming: 'ANY_TIME',
@@ -268,7 +299,7 @@ function seed(): State {
         invoiceNumber: 'DEMO-INV-001',
         lines: [
           {
-            description: 'Demo consultation',
+            description: 'General practitioner consultation',
             quantity: 1,
             unitPriceCents: 12000,
             category: 'SERVICE',
@@ -391,7 +422,7 @@ export class DemoClinic {
           row.email.toLowerCase().replace('@demo.clinic', '@example.test') ===
             `${alias}@example.test`,
       );
-      if (user?.password === 'demo') user.password = defaultDemoPassword;
+      if (user?.password === '00000000000000') user.password = defaultDemoPassword;
     }
   }
   reset() {
@@ -488,7 +519,7 @@ export class DemoClinic {
     if (route === '/auth/login' && method === 'POST') {
       const user = this.state.rows.users.find(
         (u) =>
-          u.email.toLowerCase() ===
+          u.email.toLowerCase().replace('@demo.clinic', '@example.test') ===
             String(body?.email).toLowerCase().replace('@demo.clinic', '@example.test') &&
           u.password === body?.password &&
           u.active,

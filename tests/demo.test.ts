@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { createDemoServer } from '../scripts/demo-server';
 import { describe, expect, it, vi } from 'vitest';
 import { DemoClinic } from '../src/client/demo-store';
+import { parseMalaysianIc } from '../src/shared/patient-identity';
 class MemoryStorage {
   readonly entries = new Map<string, string>();
   getItem(key: string) {
@@ -26,7 +27,7 @@ const request = async (
 const login = async (clinic: DemoClinic, role = 'admin') =>
   request(clinic, '/auth/login', 'POST', {
     email: role + '@demo.clinic',
-    password: '00000000000000',
+    password: 'demo',
   });
 const patientPayload = (nationalId = 'DEMO-PASSPORT') => ({
   firstName: 'Demo',
@@ -74,7 +75,7 @@ const rx = (itemId: number, quantity: number) => ({
 });
 
 describe('browser-session demo simulation', () => {
-  it('uses exactly fourteen zeros for every default demo account and rejects the old password', async () => {
+  it('uses demo for every default demo account and rejects the former fourteen-zero password', async () => {
     const clinic = new DemoClinic(new MemoryStorage());
     for (const role of ['admin', 'gp', 'reception', 'nurse', 'therapist']) {
       const signedIn = await login(clinic, role);
@@ -83,7 +84,7 @@ describe('browser-session demo simulation', () => {
       await expect(
         request(clinic, '/auth/login', 'POST', {
           email: role + '@example.test',
-          password: 'demo',
+          password: '00000000000000',
         }),
       ).rejects.toMatchObject({ status: 401 });
     }
@@ -100,7 +101,9 @@ describe('browser-session demo simulation', () => {
     );
     const storedKey = [...storage.entries.keys()][0];
     const legacy = JSON.parse(storage.getItem(storedKey)!);
-    for (const user of legacy.rows.users) user.password = 'demo';
+    for (const user of legacy.rows.users) user.password = '00000000000000';
+    legacy.rows.users[0].email = 'admin@demo.clinic';
+    legacy.rows.patients[0].name = 'Prior session record';
     legacy.rows.users.find((user: any) => user.email === 'gp@example.test').password =
       'custom-password-unchanged';
     storage.setItem(storedKey, JSON.stringify(legacy));
@@ -109,14 +112,18 @@ describe('browser-session demo simulation', () => {
     expect(await request(upgraded, '/patients/' + patient.id)).toMatchObject({
       nationalId: 'PASSWORD-UPGRADE-RECORD',
     });
+    expect(await request(upgraded, '/patients/1')).toMatchObject({ name: 'Prior session record' });
     await request(upgraded, '/auth/logout', 'POST');
     await expect(
-      request(upgraded, '/auth/login', 'POST', { email: 'admin@example.test', password: 'demo' }),
+      request(upgraded, '/auth/login', 'POST', {
+        email: 'admin@example.test',
+        password: '00000000000000',
+      }),
     ).rejects.toMatchObject({ status: 401 });
     await expect(
       request(upgraded, '/auth/login', 'POST', {
         email: 'gp@example.test',
-        password: '00000000000000',
+        password: 'demo',
       }),
     ).rejects.toMatchObject({ status: 401 });
     expect(
@@ -128,9 +135,7 @@ describe('browser-session demo simulation', () => {
       ).user.role,
     ).toBe('DOCTOR');
     const persisted = JSON.parse(storage.getItem(storedKey)!);
-    expect(
-      persisted.rows.users.find((user: any) => user.email === 'admin@example.test').password,
-    ).toBe('00000000000000');
+    expect(persisted.rows.users.find((user: any) => user.id === 1).password).toBe('demo');
     expect(
       persisted.rows.users.find((user: any) => user.email === 'gp@example.test').password,
     ).toBe('custom-password-unchanged');
@@ -442,6 +447,67 @@ describe('browser-session demo simulation', () => {
         (p: any) => p.nationalId === 'RESTORE-FIXTURES',
       ),
     ).toBe(false);
+  });
+  it('preloads plausible fictional identities with coherent related records and safe contact markers', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    await login(clinic);
+    const patients = (await request(clinic, '/patients')).data;
+    expect(patients.map((p: any) => p.name)).toEqual([
+      'Arjun Nair',
+      'Mei Lin Tan',
+      'Amir Hakimi',
+      'Aisyah Rahman',
+    ]);
+    for (const patient of patients) {
+      expect(patient.name).toBe([patient.firstName, patient.lastName].filter(Boolean).join(' '));
+      expect(patient.email).toMatch(/@example\.test$/);
+      expect(patient.phone).toBe('');
+      expect(patient.notificationConsent).toBe(false);
+      expect(patient.addressLine1).not.toBe('');
+      if (patient.nationality === 'MALAYSIAN') {
+        expect(patient.nationalId.split('-')[1]).toBe('00');
+        expect(parseMalaysianIc(patient.nationalId)).toMatchObject({
+          dateOfBirth: patient.dateOfBirth,
+          sex: patient.sex,
+        });
+      } else expect(patient.nationalId).toMatch(/^DEMO-PASSPORT-/);
+    }
+    const bootstrap = await request(clinic, '/bootstrap');
+    expect(bootstrap.practitioners[0]).toMatchObject({
+      id: 2,
+      name: 'Dr. Aiman Hafiz',
+      licenseNumber: 'DEMO-NOT-A-LICENSE',
+    });
+    const [appointment] = (await request(clinic, '/appointments')).data;
+    expect(appointment.patientId).toBe(3);
+    expect(appointment.patientName).toBe('Amir Hakimi');
+    expect(new Date(appointment.startsAt).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(appointment.endsAt).getTime() - new Date(appointment.startsAt).getTime()).toBe(
+      30 * 60 * 1000,
+    );
+    const [pending] = (await request(clinic, '/dispensary/encounters')).data;
+    expect(pending).toMatchObject({
+      id: 1,
+      patientId: 2,
+      patientName: 'Mei Lin Tan',
+      practitionerId: 2,
+    });
+    expect(pending.prescriptions[0]).toMatchObject({ itemId: 1, quantity: 3 });
+    const [invoice] = (await request(clinic, '/invoices')).data;
+    expect(invoice).toMatchObject({
+      id: 1,
+      patientId: 1,
+      patientName: 'Arjun Nair',
+      practitionerId: 2,
+      status: 'PAID',
+    });
+    expect(invoice.payments.reduce((sum: number, p: any) => sum + p.amountCents, 0)).toBe(
+      invoice.totalCents,
+    );
+    expect((await request(clinic, '/inventory')).data.map((i: any) => i.name)).toEqual([
+      'Paracetamol 500mg',
+      'Amoxicillin 500mg',
+    ]);
   });
   it('keeps normal API mode on real fetch rather than browser demo storage', async () => {
     const { api, isDemo } = await import('../src/client/api');
