@@ -1,0 +1,112 @@
+x-runtime-environment: &runtime-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 3001
+  DATABASE_URL: ${DATABASE_URL:?Set URL-encoded non-root runtime MySQL URL with database host db}
+  APP_ORIGIN: ${APP_ORIGIN:?Set exact HTTPS clinic origin}
+  PUBLIC_URL: ${APP_ORIGIN:?Set exact HTTPS clinic origin}
+  DOCUMENT_SIGNING_KEY: ${DOCUMENT_SIGNING_KEY:?Set random nonplaceholder signing key of at least 32 characters}
+  PHOTO_ENCRYPTION_KEY: ${PHOTO_ENCRYPTION_KEY:-}
+  TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+  DATABASE_TLS: ${DATABASE_TLS:-false}
+  ALLOW_PRIVATE_DATABASE_PLAINTEXT: ${ALLOW_PRIVATE_DATABASE_PLAINTEXT:-false}
+
+x-application: &application
+  build: .
+  image: clinic-management:local
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  mem_limit: 1g
+  pids_limit: 128
+  stop_grace_period: 30s
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: clinic
+      MYSQL_USER: clinic_migrator
+      MYSQL_PASSWORD: ${MYSQL_MIGRATION_PASSWORD:?Set migration database password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set separate root password}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - clinic-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 1g
+  migrate:
+    <<: *application
+    profiles: ["tools"]
+    restart: "no"
+    environment:
+      <<: *runtime-environment
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?Set URL-encoded migration MySQL URL with database host db}
+    command: ["npm", "run", "db:migrate"]
+    healthcheck:
+      disable: true
+    depends_on:
+      db:
+        condition: service_healthy
+  bootstrap:
+    <<: *application
+    profiles: ["tools"]
+    restart: "no"
+    environment:
+      <<: *runtime-environment
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?Set URL-encoded migration MySQL URL with database host db}
+      BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+      CLINIC_NAME: ${CLINIC_NAME:-Clinic}
+    command: ["npm", "run", "db:bootstrap"]
+    healthcheck:
+      disable: true
+    depends_on:
+      db:
+        condition: service_healthy
+  app:
+    <<: *application
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment: *runtime-environment
+    depends_on:
+      db:
+        condition: service_healthy
+  worker:
+    <<: *application
+    profiles: ["notifications"]
+    environment:
+      <<: *runtime-environment
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-}
+      WHATSAPP_LANGUAGE: ${WHATSAPP_LANGUAGE:-en}
+      WHATSAPP_TEMPLATE_BOOKING: ${WHATSAPP_TEMPLATE_BOOKING:-}
+      WHATSAPP_TEMPLATE_ROOM_CALL: ${WHATSAPP_TEMPLATE_ROOM_CALL:-}
+      WHATSAPP_TEMPLATE_QUEUE_NEAR: ${WHATSAPP_TEMPLATE_QUEUE_NEAR:-}
+      WHATSAPP_TEMPLATE_REFILL: ${WHATSAPP_TEMPLATE_REFILL:-}
+    command: ["npm", "run", "worker:notifications"]
+    healthcheck:
+      disable: true
+    stop_grace_period: 60s
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  clinic-mysql:

@@ -1,22 +1,32 @@
-# Documentation index
+# Documentation index — V2
 
-This documentation distinguishes the **specified target**, the **database foundation**, and the **implemented application**. It describes PostgreSQL as requested and treats Supabase as the current hosted PostgreSQL/Auth adapter.
+These documents replace V1 Next.js/Supabase documentation. Git history retains the earlier design. Full-system documents describe MySQL operation; free-demo differences are documented separately.
 
-| Document | Audience | Contents |
-| --- | --- | --- |
-| [System design](system-design.md) | Product, clinic operations, engineering | Scope, Malaysia context, user flows, boundaries, design decisions |
-| [Architecture](architecture.md) | Engineering and deployment | Components, request/data paths, deployment topology, current state |
-| [Database](database.md) | Database, backend, security | Exact migration schema, relations, indexes, constraints, RLS |
-| [API and documents](api-and-documents.md) | Frontend/backend integrators | Existing auth API, session contract, print/reissue and QR behavior |
-| [Operations and security](operations-security.md) | Operators and maintainers | Setup, migrations, backups, deployment, security, testing, roadmap |
+| Document                                                             | Purpose                                                           |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [System specification](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md) | Functional/nonfunctional scope and acceptance requirements        |
+| [Product scope](../PRODUCT.md)                                       | Users and operating boundaries                                    |
+| [Prerequisites](PREREQUISITES.md)                                    | Software, configuration, accounts and hosting preparation         |
+| [Architecture](ARCHITECTURE.md)                                      | Components, boundaries, authentication and transactions           |
+| [Architecture decisions](ADRS.md)                                    | Reasons for major design choices                                  |
+| [System flows](SYSTEM_FLOW.md)                                       | Patient, scheduling, clinical, dispensary and billing diagrams    |
+| [ERD](ERD.md)                                                        | Entity relationships and retained legacy tables                   |
+| [Database schema](DATABASE.md)                                       | Tables, keys, constraints, indexes and migrations                 |
+| [Complete column dictionary](DATA_DICTIONARY.md)                     | Every column, type, nullability, default and generated expression |
+| [Final schema SQL](schema.mysql.sql)                                 | Schema-only reference snapshot after migration 009; no records    |
+| [API contracts](API.md)                                              | Routes, authorization, errors and payloads                        |
+| [Requirements traceability](REQUIREMENTS.md)                         | Scope mapped to implementation and evidence                       |
+| [Test cases](TEST_CASES.md)                                          | Preconditions, actions, expected results and coverage             |
+| [Testing](TESTING.md)                                                | Reproducible automated and browser verification                   |
+| [Validation](VALIDATION.md)                                          | Actual evidence and unverified deployment boundaries              |
+| [Security](SECURITY.md)                                              | Implemented controls and operator obligations                     |
+| [User guide](USER_GUIDE.md)                                          | Staff workflows and troubleshooting                               |
+| [Operations](OPERATIONS.md)                                          | Daily use and numeric-ID maintenance upgrade                      |
+| [Database access](DATABASE_ACCESS.md)                                | Local read-only table inspection                                  |
+| [Deployment](DEPLOYMENT.md)                                          | Full-system installation, backup and workers                      |
+| [Render upgrade](RENDER_UPGRADE.md)                                  | V1 replacement with free browser-session demo                     |
+| [Third-party notices](THIRD_PARTY_NOTICES.md)                        | Reused data and licenses                                          |
+| [Changelog](../CHANGELOG.md)                                         | Release changes and compatibility notes                           |
+| [Contributing](../CONTRIBUTING.md)                                   | Development and publication expectations                          |
 
-## Source of truth
-
-- Requirements: [`CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md`](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md)
-- Current database definition: Ordered migrations in [`supabase/migrations/`](../supabase/migrations) (01 foundation, 02 queue transitions, 03 clinical documents, 04 scheduling & rooms, 05 encounters & prescriptions, 06 inventory & packages, 07 billing lifecycle) and seeds in [`supabase/seed.sql`](../supabase/seed.sql)
-- Supabase setup notes: [`SUPABASE_SETUP.md`](../SUPABASE_SETUP.md)
-- UI demo data/state: [`lib/data/clinic-store.ts`](../lib/data/clinic-store.ts), [`app/page.tsx`](../app/page.tsx)
-- Server backend & database: [`lib/server/db.ts`](../lib/server/db.ts), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts), [`lib/server/scheduling-api.ts`](../lib/server/scheduling-api.ts), [`lib/server/clinical-care.ts`](../lib/server/clinical-care.ts), and [`app/api/`](../app/api)
-- Document preview implementation: [`components/documents`](../components/documents)
-
-The migrations (01 through 07), not the older aspirational DDL in the requirements document, are authoritative for the current PostgreSQL tables, column names, RPCs, and RLS policies.
+SQL under [`db/migrations`](../db/migrations) and implementation are authoritative for diagnosis. Migration 009 executes through its versioned TypeScript helper; never execute its SQL marker alone.

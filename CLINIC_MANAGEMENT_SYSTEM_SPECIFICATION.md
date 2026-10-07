@@ -1,409 +1,210 @@
-# CLINIC MANAGEMENT SYSTEM (CMS) - ENTERPRISE SPECIFICATION & ARCHITECTURE
-**Benchmark**: Enterprise Clinical Management System | **UI Aesthetic**: Pastel Blue & Slate | **Standards**: OOP (SOLID/DDD) & Human-Computer Interaction (HCI)
+# Clinic Management System V2 — System Specification
 
----
+## 1. Scope and authority
 
-## 1. EXECUTIVE OPERATIONAL CHARTER & COO BRIEF
+This specification describes the implemented GP clinic application replacing the earlier V1 demonstration.
+It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
-### 1.1 Objective & System Scope
-Cloud-native enterprise **Clinic Management System (CMS)** designed for multi-branch general practices, specialized outpatient centers, dental clinics, and aesthetic medical centers.
+The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
+All 22 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migration 009.
+Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
-The system automates core clinic operations across four operational pillars:
-1. **Intake, Queue & Scheduling**: Real-time queue tracking, consultation room allocation displays, multi-channel automated WhatsApp/email alert pipelines (bookings, live queue bumps, post-visit medication refills).
-2. **Clinical EMR & Documentation**: SOAP consultation charting, procedure notes, before/after photo comparison, and digital issuance of **Medical Certificates (MC)**, **Referral Letters**, and **Lab Investigation Requisitions**.
-3. **Treatment Packages & Dispensary Inventory**: Prepaid session punch cards, session sign-offs, and pharmacy inventory managed via **First-Expiry-First-Out (FEFO)** batch depletion.
-4. **POS Billing & Practitioner Commissions**: Multi-rail split payments, patient deposits, and tiered commission ledgers for doctors and therapists.
+Executable migrations and validators are authoritative for exact column types and bounds.
+This document records required behavior, delivered boundaries and remaining integration work.
+See [requirement traceability](docs/REQUIREMENTS.md) for implementation evidence.
 
-> [!NOTE]
-> **Operational Scope Note**: The system is dedicated exclusively to operational clinical administration, outpatient EMR charting, treatment packages, POS billing, and dispensary inventory. It has no dependency on medical scanning apparatus or external laboratory scan OCR engines.
+## 2. Users, permissions and branches
 
----
+| Role | Default modules |
+| --- | --- |
+| ADMIN | All seven operational modules and administration |
+| DOCTOR, displayed as GP | Queue, patients, appointments, clinical, inventory |
+| RECEPTIONIST | Queue, patients, appointments, billing, reports |
+| NURSE | Queue, patients, inventory |
+| THERAPIST | Queue, patients, appointments; retained account role without a specialty treatment workflow |
 
-## 2. BENCHMARK ANALYSIS: CLINICAL SYSTEM PARITY MATRIX
+Administrators configure tenant-wide non-administrator role grants for `queue`, `patients`, `appointments`, `clinical`, `inventory`, `billing` and `reports`.
+The server evaluates grants on every authenticated request. Navigation and direct screen access follow effective grants.
+Account security and the user guide remain available to all staff. Administrator access cannot be removed through the matrix.
 
-| Core Operational Feature | CMS Architecture Solution | Operational Value |
-| :--- | :--- | :--- |
-| **Real-Time Queue & Room Allocation** | Aggregate Root `QueueTicket` + WebSocket Room Dispatch Engine | Dynamic waiting room TV board; live mobile queue position |
-| **Automated Patient Alerting** | Observer & Strategy Pattern `ClinicAlertDispatcher` (WhatsApp & Email) | Zero-friction booking confirmations, queue bump alerts, proactive 3-day refill reminders |
-| **Digital Clinical Documents** | Domain Service `ClinicalDocumentService` issuing QR-verified MCs, referral letters, and lab requisitions | 1-click generation from SOAP chart; employer QR verification portal |
-| **Cloud EMR & Clinical Charting** | Encapsulated Domain Aggregate `ClinicalEncounter` with specialized SOAP templates (GP, Aesthetic, Dental) | Sub-second chart loading; allergy conflict prevention |
-| **Treatment Packages & Prepaid Credits** | Aggregate Root `TreatmentPackage` with session redemption invariants & expiry enforcement | Eliminates manual package balance errors; real-time session sign-off |
-| **Multi-Doctor Appointment Scheduler** | Reactive calendar engine with optimistic locking and multi-room assignment | Eliminates double-booking; syncs directly to WhatsApp notifications |
-| **Pharmacy & Consumable Inventory** | Domain Entity `InventoryItem` with automated FEFO (First-Expiry-First-Out) batch depletion | Prevents dispensing expired stock; automatic par-level reorder alerts |
-| **Point of Sale (POS) & Billing** | Strategy Pattern `IPaymentStrategy` supporting Split Payments (Cash, Card, QR, Package Redemptions) | Fast checkout; automated receipt generation and deposit handling |
-| **Doctor & Therapist Commission Ledger** | Domain Service `CommissionCalculator` supporting tiered service and retail product splits | Full revenue attribution transparency; automated month-end payroll sync |
+Module access enables ordinary operations, including billing for a nurse granted that module.
+Only `DOCTOR` can create, edit or sign consultations and issue clinical documents.
+An administrator can review records but cannot acquire GP authority through module grants.
+Document revocation requires the issuing GP through the deployed API.
 
----
+Each request resolves the authenticated tenant and an authorized selected branch.
+Numeric IDs never substitute for ownership checks. Branch membership remains independent of module grants.
+Active GP accounts assigned to a branch automatically populate practitioner selectors; a separate practitioner profile is unnecessary.
+GP creation requires a professional registration number.
 
-## 3. HUMAN-COMPUTER INTERACTION (HCI) DESIGN SPECIFICATION
+## 3. Patient registration and history
 
-### 3.1 Cognitive Ergonomics & Persona Flows
-Clinical environments impose high cognitive load. System ergonomics optimize four distinct user touchpoints:
+Registration stores first name, optional last name, derived display name, nationality, IC/passport number, birth date and sex.
+Single legal names are supported. Contact, blood group, allergies, chronic conditions and notification consent are recorded explicitly.
+Address fields are line 1, line 2, postcode, city and state.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   HCI CLINICAL PERSONA ERGONOMICS                      │
-├─────────────────────┬──────────────────────────────────────────────────┤
-│ 1. Waiting Patient  │ Glanceable TV display + mobile WhatsApp progress │
-│ 2. Front Desk Staff │ Rapid queue check-in & automated booking dispatch│
-│ 3. Attending Doctor │ 1-click Digital MC issuance & room call button   │
-│ 4. Dispensary Nurse │ Automated refill reminder trigger & FEFO verify  │
-└─────────────────────┴──────────────────────────────────────────────────┘
-```
+Malaysian IC entry accepts 12 digits and formats `YYMMDD-SS-NNNN`.
+Valid calendar digits derive birth date; final-digit parity derives male or female.
+The two-digit year permits an older-century correction matching the IC date digits.
+These checks validate structure and consistency; they do not verify identity with a government registry.
+Non-Malaysian registration requires passport number and manually reviewed birth date/sex.
 
-#### 3.1.1 Nielsen's 10 Usability Heuristics Applied
-1. **Visibility of System Status**: 
-   - **Live Queue Room Display**: High-contrast, glanceable public monitor (`Ticket Q-104` ➔ `Room 02 - Dr. Tan`) with subtle audio chime.
-   - **WhatsApp Live Queue Indicator**: Real-time progress updates delivered to patient phone ("2 patients ahead of you; estimated wait: 15 mins").
-2. **Match Between System and Real World**: 
-   - Clinical documents follow Malaysian clinic workflows and include QR verification references.
-   - Package tracking displays intuitive punch-card visual meters (`[●][●][●][○][○]`).
-3. **User Control and Freedom**: 
-   - Doctors can revoke, reissue, or extend Digital MCs with audited remarks.
-   - 1-click "Undo" on queue skip or incorrect room re-allocation.
-4. **Consistency and Standards**: 
-   - Pinned patient banner across all views (Name, NRIC, Age, Blood Group, Allergy Badge).
-   - Uniform status colors (Blue = Active, Mint = Completed, Amber = Waiting, Red = Urgent/Alert).
-5. **Error Prevention**: 
-   - **Duplicate MC Prevention**: Prevents issuing overlapping sick leave periods for the same patient.
-   - **Allergy Collision Shield**: Impassable modal warning if a prescribed item matches patient allergies.
-   - **FEFO Dispense Shield**: System refuses checkout scan if batch is expired.
-6. **Recognition Rather Than Recall**: 
-   - Digital MC and referral letters auto-populate patient demographics, doctor license, and diagnosis directly from the current consultation SOAP note.
-   - Employer privacy toggle: 1-click option to redact diagnosis on employer-facing MC while retaining clinical code for medical records.
-7. **Flexibility and Efficiency of Use**: 
-   - **Doctor Quick-MC Buttons**: One-tap presets for sick leave duration (`[1 Day]`, `[2 Days]`, `[3 Days]`, `[Custom]`).
-   - Global keyboard shortcuts (`Cmd+K` global search, `Cmd+M` issue MC, `Cmd+R` referral).
-8. **Aesthetic and Minimalist Design**: 
-   - Pastel surfaces prevent eye strain over 12-hour shifts.
-   - Clean, uncluttered digital certificates with crisp official typography and verification QR code.
-9. **Help Users Recognize, Diagnose, and Recover from Errors**: 
-   - Plain-English validation banners (e.g. *"Cannot issue referral letter: Target hospital/specialty required before generating PDF"*).
-10. **Help and Documentation**: 
-    - Explanatory tooltips on referral urgency categories (`Routine` vs `Urgent Same Day` vs `Emergency Ambulance`).
+A bundled offline five-digit Malaysian postcode lookup assists city/state entry.
+Unique compatible matches fill missing fields. Multiple localities require a choice; unknown codes allow manual entry.
+Existing custom address values and manual overrides are preserved. Non-Malaysian addresses bypass automatic lookup.
 
----
+National identity numbers are unique within a tenant. Patients and ordinary registry reads remain branch scoped.
+Edits require the current optimistic version. Patient ID is the numeric database record ID, distinct from identity-document numbers.
+Clinical history is patient scoped and cursor paged in batches of 50; it never infers complete history from a global recent-record list.
 
-### 3.2 Visual Design System: Pastel Blue & Mint Palette
+## 4. Appointments and queue
 
-```
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                           COLOR TOKEN SPECIFICATION                            │
-├───────────────┬──────────────┬──────────────┬──────────────────────────────────┤
-│ Token Name    │ Hex Value    │ Tailwind Eq. │ Functional Semantics             │
-├───────────────┼──────────────┼──────────────┼──────────────────────────────────┤
-│ --brand-600   │ #2563EB      │ blue-600     │ Primary CTA, "Call Next Patient" │
-│ --brand-500   │ #3B82F6      │ blue-500     │ Active Room Status, Selected Tab │
-│ --brand-100   │ #DBEAFE      │ blue-100     │ Queue Highlight, Hover Rows      │
-│ --brand-50    │ #EFF6FF      │ blue-50      │ App Canvas Background Tint       │
-│               │              │              │                                  │
-│ --pastel-mint │ #CCFBF1      │ teal-100     │ "Room Ready" Badge, Active MC    │
-│ --pastel-teal │ #14B8A6      │ teal-500     │ Completed Queue State, Verified  │
-│ --pastel-lav  │ #EEF2FF      │ indigo-50    │ Document Card Surface Container  │
-│ --pastel-purp │ #818CF8      │ indigo-400   │ WhatsApp Trigger, Copy QR URL    │
-│               │              │              │                                  │
-│ --surface-0   │ #FFFFFF      │ white        │ High-Elevation Cards, Modals     │
-│ --surface-50  │ #F8FAFC      │ slate-50     │ Base Screen Backdrop             │
-│ --surface-100 │ #F1F5F9      │ slate-100    │ Subtle Card Borders, Dividers    │
-│               │              │              │                                  │
-│ --text-900    │ #0F172A      │ slate-900    │ Headings, Queue Numbers (AAA)    │
-│ --text-700    │ #334155      │ slate-700    │ Clinical Notes, Document Body    │
-│ --text-400    │ #94A3B8      │ slate-400    │ Timestamps, Subtitles            │
-│               │              │              │                                  │
-│ --alert-red   │ #EF4444      │ red-500      │ Critical Allergies, Stock Alerts │
-│ --alert-bg    │ #FEF2F2      │ red-50       │ Allergy Alert Container          │
-└───────────────┴──────────────┴──────────────┴──────────────────────────────────┘
-```
+Appointments select a searched patient, active GP, optional active room, start/end times and reason.
+Transactional locks reject overlapping practitioner or room bookings. Adjacent intervals are permitted.
+The API supports versioned booking cancellation; the current booking screen does not expose a cancellation control.
 
----
-
-## 4. OBJECT-ORIENTED PROGRAMMING (OOP) ARCHITECTURE
-
-System enforces **Domain-Driven Design (DDD)** and **Clean Architecture (Hexagonal)**.
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        CLEAN ARCHITECTURE STACK                        │
-├────────────────────────────────────────────────────────────────────────┤
-│ [DOMAIN LAYER]                                                         │
-│ • Aggregates: QueueTicket, ClinicalEncounter, TreatmentPackage         │
-│ • Entities: DigitalMedicalCertificate, ReferralLetter, LabOrder        │
-│ • Value Objects: NationalId, Money, TimeSlot, SOAPNotes, Allergy       │
-│ • Domain Services: CommissionCalculator, ClinicAlertDispatcher, FEFO   │
-│                                                                        │
-│ [APPLICATION LAYER]                                                    │
-│ • Use Cases: CallNextPatient, IssueDigitalMC, SendRefillAlerts         │
-│ • Ports: IQueueRepository, INotificationStrategy, IDocumentSigner      │
-│                                                                        │
-│ [ADAPTER & INFRASTRUCTURE LAYER]                                       │
-│ • WebSocket Gateway (Real-Time TV Queue Screen)                        │
-│ • WhatsApp Cloud API & AWS SES (Multi-channel notifications)           │
-│ • PostgreSQL Database & PDF Generation Engine (Puppeteer/PDFKit)       │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### 4.1 SOLID Principles Applied
-1. **Single Responsibility Principle (SRP)**:
-   - `QueueTicket` handles queue transitions and room allocations only.
-   - `ClinicAlertDispatcher` manages multi-channel delivery without knowing queue scheduling logic.
-   - `ClinicalDocumentService` encapsulates certificate generation and cryptographic hash signing.
-2. **Open/Closed Principle (OCP)**:
-   - Notification channels implement `INotificationChannelStrategy` (`WhatsAppNotificationStrategy`, `EmailNotificationStrategy`, `SMSNotificationStrategy`). New notification providers (e.g. Telegram, Push Notifications) are introduced without touching core dispatcher.
-3. **Liskov Substitution Principle (LSP)**:
-   - All notification channels adhere to `INotificationChannelStrategy` and can be substituted transparently in runtime delivery pools.
-4. **Interface Segregation Principle (ISP)**:
-   - Split fine-grained contracts: `ISignableDocument`, `INotifiableRecipient`, `IPrescribableItem`, `ISchedulableResource`.
-5. **Dependency Inversion Principle (DIP)**:
-   - Application use cases depend upon domain abstractions (`IQueueRepository`, `INotificationChannelStrategy`), decoupled from WhatsApp API or database drivers.
-
----
-
-### 4.2 Domain Model & UML Class Diagram
+Queue check-in creates a branch/service-date ticket and rejects duplicate active visits.
+State transitions follow the server domain model:
 
 ```mermaid
-classDiagram
-    direction TB
-
-    class Entity {
-        <<Abstract>>
-        +UUID id
-        +DateTime createdAt
-        +DateTime updatedAt
-    }
-
-    class QueueTicket {
-        -String ticketNumber
-        -UUID patientId
-        -QueueStatus status
-        -ConsultationRoom allocatedRoom
-        -UUID assignedPractitionerId
-        -DateTime calledAt
-        +callToRoom(ConsultationRoom room) void
-        +startConsultation() void
-        +routeToDispensaryAndPayment() void
-        +markCompleted() void
-    }
-
-    class ConsultationRoom {
-        +String roomId
-        +String roomNumber
-        +UUID attendingPractitionerId
-        +bool isOccupied
-    }
-
-    class ClinicalDocumentService {
-        +issueMedicalCertificate(UUID patientId, int days) DigitalMedicalCertificate
-        +generateReferralLetter(UUID patientId, String specialty) ReferralLetter
-        +createLabInvestigationOrder(UUID patientId, List~String~ panels) LabInvestigationOrder
-    }
-
-    class DigitalMedicalCertificate {
-        +String mcNumber
-        +UUID patientId
-        +UUID practitionerId
-        +Date startDate
-        +int numberOfDays
-        +Date endDate
-        +bool isDiagnosisRedactedForEmployer
-        +String digitalSignatureHash
-        +String verificationQrUrl
-    }
-
-    class ReferralLetter {
-        +String referralId
-        +UUID patientId
-        +String targetSpecialtyOrHospital
-        +ReferralUrgency urgency
-        +String clinicalSummary
-        +List~String~ currentMedications
-    }
-
-    class LabInvestigationOrder {
-        +String orderId
-        +UUID patientId
-        +List~String~ panelNames
-        +SpecimenType specimenType
-        +bool isFastingRequired
-        +String status
-    }
-
-    class ClinicAlertDispatcher {
-        -Map~ChannelType, INotificationChannelStrategy~ strategies
-        +dispatchBookingConfirmation(...) void
-        +dispatchQueueStatusUpdate(...) void
-        +dispatchMedicationRefillReminder(...) void
-    }
-
-    class INotificationChannelStrategy {
-        <<Interface>>
-        +sendMessage(NotificationMessagePayload payload) Promise~Result~
-    }
-
-    class WhatsAppNotificationStrategy {
-        +sendMessage(NotificationMessagePayload payload) Promise~Result~
-    }
-
-    class EmailNotificationStrategy {
-        +sendMessage(NotificationMessagePayload payload) Promise~Result~
-    }
-
-    Entity <|-- QueueTicket
-    QueueTicket o-- ConsultationRoom
-    INotificationChannelStrategy <|.. WhatsAppNotificationStrategy
-    INotificationChannelStrategy <|.. EmailNotificationStrategy
-    ClinicAlertDispatcher --> INotificationChannelStrategy : uses
-    ClinicalDocumentService ..> DigitalMedicalCertificate : creates
-    ClinicalDocumentService ..> ReferralLetter : creates
-    ClinicalDocumentService ..> LabInvestigationOrder : creates
+stateDiagram-v2
+  REGISTERED --> TRIAGE_WAITING
+  REGISTERED --> SKIPPED
+  TRIAGE_WAITING --> CALLED_TO_ROOM
+  CALLED_TO_ROOM --> IN_CONSULTATION
+  CALLED_TO_ROOM --> TRIAGE_WAITING: undo call
+  IN_CONSULTATION --> DISPENSARY_WAITING
+  IN_CONSULTATION --> PAYMENT_WAITING: no dispensing
+  DISPENSARY_WAITING --> PAYMENT_WAITING
+  PAYMENT_WAITING --> COMPLETED
+  TRIAGE_WAITING --> SKIPPED
+  SKIPPED --> TRIAGE_WAITING: restore
 ```
 
----
+Every transition uses the current version. Calling assigns an active room and GP; occupied rooms cannot be double booked.
+SSE refresh events and periodic reads keep the workspace current. SSE fanout is process local.
+The waiting-room screen requires staff authentication and displays only ticket numbers and rooms.
+Queue-clearance estimates require at least five qualifying recent consultation observations and remain explicitly approximate.
 
-## 5. CORE FUNCTIONAL SPECIFICATIONS (NEW REQUIREMENTS INTEGRATION)
+## 5. GP consultation and prescribing
 
-### 5.1 Subsystem A: Queue Management & Scheduling Engine
-- **Real-Time Clinic Queue Tracking**:
-  - Live state progression: `REGISTERED` ➔ `TRIAGE_WAITING` ➔ `CALLED_TO_ROOM` ➔ `IN_CONSULTATION` ➔ `DISPENSARY_WAITING` ➔ `PAYMENT_WAITING` ➔ `COMPLETED`.
-  - Estimated waiting time dynamically computed based on active doctors and historical consultation speeds.
-- **Consultation Room Allocation Displays**:
-  - Dedicated web TV application (runs on Chrome / smart displays in waiting lounge).
-  - Split screen: Left panel displays current active calls (e.g. `Room 01: Q-102`, `Room 02: Q-105`), Right panel displays general waiting queue list and clinic service announcements.
-  - Chime alert audio tone triggers on room call.
-- **Automated WhatsApp and Email Notification Pipeline**:
-  - **Appointment Booking Confirmations**: Dispatched immediately upon scheduling. Contains practitioner name, date/time, Google/Apple calendar `.ics` link, and Google Maps clinic directions.
-  - **Live Queue Status Alerts**: Triggered when patient is 2-3 turns away ("*You are 2 turns away at the Clinic! Please head to the waiting lounge.*") and upon room allocation ("*Please proceed to Room 02 to see Dr. Tan.*").
-  - **Post-Visit Medication Refill Reminders**: Scheduled cron job scans prescription durations and automatically messages patients 3 days before medication supply ends ("*Your supply of Amlodipine 5mg runs out in 3 days. Tap here to request a repeat prescription or book a follow-up consultation.*").
+The clinical workspace records subjective history, objective findings, assessment, plan, vitals and procedure notes.
+Allergies and conditions are visible before prescribing. The application does not generate diagnoses or medication decisions.
+Drafts are editable by their attending GP with optimistic versions. Signed encounters are immutable.
 
-### 5.2 Subsystem B: Digital Clinical Documents & Certification Engine
-- **Digital Medical Certificates (MC)**:
-  - Doctor specifies start date, duration (presets: 1, 2, 3, or custom days), and duty restrictions (unfit for duty vs light duty).
-  - **Employer Verification Portal**: Generates unique cryptographic verification hash and scannable QR code. Employers scan QR to verify legitimacy against clinic server (DigiMC model).
-  - **Privacy Guardrail**: Toggle to hide/redact clinical diagnosis from the employer-facing verification view while preserving clinical audit integrity.
-- **Referral Letters**:
-  - Structured templates for referrals to public hospitals, private medical centers, and allied health professionals.
-  - Automatically incorporates patient vitals, active chronic conditions, allergies, and current medications from the consultation chart.
-  - Categorized urgency ratings: `Routine`, `Semi-Urgent`, `Urgent (Same Day)`, and `Emergency Ambulance Transfer`.
-- **Lab Investigation Requisition Forms**:
-  - Pre-configured test panels (Full Blood Count, Lipid Profile, Liver Function, Renal Panel, HbA1c, Hormonal Screen, Urine FEME).
-  - Auto-flags special instructions: Fasting required (e.g. 8-10 hours), specimen collection tube color codes, and urgent turnaround indicators.
+Each prescription records catalog medicine ID, total quantity, dosage instructions, frequency per day, meal timing and supply days.
+Frequency is an integer from 1 through 24. Meal timing is `BEFORE_MEAL`, `AFTER_MEAL` or `ANY_TIME`.
+Existing prescriptions and vitals are preserved when editing a draft.
+Medication selectors use a minimal reference API so clinical access does not require broad inventory access.
 
----
+## 6. Inventory and dispensary
 
-## 6. RELATIONAL DATABASE SCHEMA (POSTGRESQL DDL)
+Catalog items store SKU, name, ingredient, category, unit, price in cents and reorder level.
+Creating an item does not create stock. Batch receipt records batch number, expiry, quantity and a movement ledger entry.
 
-```sql
--- Consultation Rooms
-CREATE TABLE consultation_rooms (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id UUID NOT NULL,
-    room_number VARCHAR(50) NOT NULL,
-    attending_practitioner_id UUID,
-    is_occupied BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+Pending work includes only branch-scoped signed encounters containing prescriptions that have not already been dispensed.
+The dispensary projection includes medicine instructions and allergies but excludes full SOAP notes.
+FEFO consumes the earliest eligible expiry first. Expiry on or before the clinic date is ineligible.
+All prescribed quantities are allocated atomically; insufficient stock leaves the whole dispense unchanged.
+Idempotency keys and unique encounter dispensing prevent duplicate depletion.
+Stock totals and pending work refresh after successful actions.
 
--- Queue Tickets
-CREATE TABLE queue_tickets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ticket_number VARCHAR(20) NOT NULL,
-    patient_id UUID NOT NULL REFERENCES patients(id),
-    branch_id UUID NOT NULL,
-    status VARCHAR(30) NOT NULL DEFAULT 'REGISTERED',
-    allocated_room_id UUID REFERENCES consultation_rooms(id),
-    assigned_practitioner_id UUID NOT NULL,
-    called_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+## 7. Billing
 
--- Digital Medical Certificates (MC)
-CREATE TABLE digital_medical_certificates (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    mc_number VARCHAR(50) UNIQUE NOT NULL,
-    patient_id UUID NOT NULL REFERENCES patients(id),
-    practitioner_id UUID NOT NULL,
-    start_date DATE NOT NULL,
-    number_of_days INT NOT NULL,
-    end_date DATE NOT NULL,
-    is_light_duty_only BOOLEAN DEFAULT FALSE,
-    diagnosis_code VARCHAR(50),
-    is_diagnosis_redacted BOOLEAN DEFAULT TRUE,
-    digital_signature_hash VARCHAR(255) NOT NULL,
-    verification_qr_url TEXT NOT NULL,
-    issued_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+Checkout stores itemized invoice snapshots and split cash, card, QR or deposit tender records in one transaction.
+All monetary values use integer MYR cents. Positive tender amounts must exactly equal the invoice total.
+Deposit spending locks the patient balance and rejects overspending. Invoice retries reuse the original idempotency key.
+The same key with a changed financial payload returns a conflict.
 
--- Referral Letters
-CREATE TABLE referral_letters (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    referral_number VARCHAR(50) UNIQUE NOT NULL,
-    patient_id UUID NOT NULL REFERENCES patients(id),
-    referring_practitioner_id UUID NOT NULL,
-    target_specialty_or_hospital VARCHAR(200) NOT NULL,
-    urgency VARCHAR(30) NOT NULL, -- ROUTINE, SEMI_URGENT, URGENT_SAME_DAY, EMERGENCY
-    reason_for_referral TEXT NOT NULL,
-    clinical_summary TEXT NOT NULL,
-    current_medications JSONB DEFAULT '[]'::JSONB,
-    issued_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+Receipts are generated from persisted invoices and payments. Card/QR records declare received tender; gateway authorization is not integrated.
+Current GP checkout does not generate commission ledger entries.
+Refunds, fiscal e-invoice integration and automated settlement reconciliation are separate future requirements.
 
--- Lab Investigation Orders
-CREATE TABLE lab_investigation_orders (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_number VARCHAR(50) UNIQUE NOT NULL,
-    patient_id UUID NOT NULL REFERENCES patients(id),
-    ordering_practitioner_id UUID NOT NULL,
-    panel_names JSONB NOT NULL,
-    specimen_type VARCHAR(50) NOT NULL,
-    is_fasting_required BOOLEAN DEFAULT FALSE,
-    clinical_notes TEXT,
-    status VARCHAR(30) NOT NULL DEFAULT 'ORDERED',
-    ordered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+## 8. Clinical documents
 
--- Notification Audit Logs
-CREATE TABLE notification_delivery_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    patient_id UUID NOT NULL REFERENCES patients(id),
-    channel VARCHAR(20) NOT NULL, -- WHATSAPP, EMAIL
-    template_type VARCHAR(50) NOT NULL,
-    recipient VARCHAR(150) NOT NULL,
-    status VARCHAR(30) NOT NULL, -- SENT, DELIVERED, FAILED
-    sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+The attending GP issues MC, referral and laboratory documents from signed consultations.
+Documents retain payload snapshots, document numbers, a signing HMAC and hashed public verification tokens.
+PDF generation includes verification QR codes. Public verification returns minimal authenticity metadata without patient names or diagnoses.
 
--- Real-Time Indexing
-CREATE INDEX idx_queue_tickets_status ON queue_tickets(branch_id, status, created_at ASC);
-CREATE INDEX idx_mc_verification ON digital_medical_certificates(mc_number);
-CREATE INDEX idx_lab_orders_patient ON lab_investigation_orders(patient_id, ordered_at DESC);
+MCs use inclusive date ranges, prevent overlapping active periods and support diagnosis redaction and light-duty details.
+Referral data includes target, urgency, reason and clinical context. Laboratory requests capture panels, specimen and fasting details.
+Revocation records a reason and audit entry. Corrections require revocation and replacement rather than overwriting issued payloads.
+Automatic MC extension and shortcut-driven issuance are not delivered workflows.
+
+## 9. Notifications
+
+Consent-based transactional outbox records support booking messages with calendar/maps information, queue calls, queue-near alerts and refill reminders.
+A separate worker sends through configured email or WhatsApp adapters.
+States distinguish `PENDING`, `PROCESSING`, `SENT`, `FAILED` and `UNCONFIGURED`.
+`SENT` means provider acceptance, not proof of patient delivery or reading.
+Administrators can retry eligible failed/unconfigured records. Provider credentials and message-template approvals are deployment prerequisites.
+
+## 10. Administration
+
+Administrators create branches and staff, toggle staff activity, manage rooms, inspect audit records and save role module grants.
+Self-deactivation and loss of the final administrator are protected.
+Room rename/archive operations reject active occupancy and future bookings. Archived rooms preserve historical references and disappear from active selectors.
+Staff password changes require the current password and 14–128 character new passwords; session invalidation requires signing in again.
+
+## 11. Architecture and schema
+
+```mermaid
+flowchart LR
+  UI[React staff workspace] --> HTTP[Express validation and security]
+  HTTP --> Services[Application services and transactions]
+  Services --> Domain[Money, queue, encounter, FEFO behavior]
+  Services --> DB[(MySQL 8.4 InnoDB)]
+  DB --> Worker[Notification worker]
+  Worker --> Provider[Configured providers]
+  Verify[Public document verification] --> HTTP
 ```
 
----
+The modular monolith separates browser components, HTTP adapters, services, domain behavior and database adapters.
+It uses OOP where behavior needs invariants rather than adding empty entity wrappers.
+Shared identity, module and identifier contracts reduce duplicated validation.
+Reusable UI forms and minimal reference endpoints support independent module grants.
 
-## 7. COO WORKSTREAM ROADMAP & SUBAGENT DEPLOYMENT
+The final schema has 22 entity tables, composite membership/policy keys, secret-keyed sessions and resource locks.
+Unsigned numeric keys support long-term growth, while API inputs remain within JavaScript's positive safe-integer range.
+Composite foreign keys enforce tenant/branch relationships; generated queue keys protect active-patient and room uniqueness.
+JSON captures prescriptions, vitals and immutable snapshots; typed references inside JSON require application validation.
+See [database dictionary](docs/DATABASE.md), [ERD](docs/ERD.md), [architecture](docs/ARCHITECTURE.md) and [system flow](docs/SYSTEM_FLOW.md).
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   COO MULTI-AGENT EXECUTION GRAPH                      │
-├────────────────────────────────────────────────────────────────────────┤
-│ Workstream 1: Real-Time TV Queue & Room Display UI                     │
-│ Lead Agent: agency-ui-designer & agency-frontend-developer             │
-│ Scope: Split-screen TV monitor dashboard, live chime audio, pastel UI  │
-├────────────────────────────────────────────────────────────────────────┤
-│ Workstream 2: Automated WhatsApp & Email Pipeline                      │
-│ Lead Agent: agency-backend-architect / agency-api-platform-engineer    │
-│ Scope: WhatsApp Cloud API webhook, booking/queue/refill trigger jobs   │
-├────────────────────────────────────────────────────────────────────────┤
-│ Workstream 3: Digital MC & Clinical Document Engine                    │
-│ Lead Agent: agency-backend-architect & agency-pdf-engine-architect     │
-│ Scope: PDF generation, QR hash signing, employer verification endpoint│
-├────────────────────────────────────────────────────────────────────────┤
-│ Workstream 4: Treatment Packages & FEFO Inventory                      │
-│ Lead Agent: agency-backend-architect                                   │
-│ Scope: Treatment package punch cards, FEFO batch depletion, split POS   │
-├────────────────────────────────────────────────────────────────────────┤
-│ Workstream 5: Quality Assurance & Reality Checking                     │
-│ Lead Agent: agency-reality-checker                                     │
-│ Scope: End-to-end queue lifecycle tests, tamper-proof MC verification  │
-└────────────────────────────────────────────────────────────────────────┘
-```
+## 12. Security and operational requirements
+
+Authentication uses server sessions, hashed session tokens, password hashing and an HttpOnly SameSite cookie.
+State changes require CSRF tokens; supplied origins are checked. Input schemas reject unexpected mutation fields.
+Queries bind parameters. Role/module and tenant/branch checks occur server side. Responses do not cache clinical API records.
+Security headers, rate limits, optimistic concurrency and audit entries provide implemented controls.
+
+Production requires HTTPS, restricted database access, protected keys, verified backups/restoration and provider configuration.
+Clinical and financial retention rules require operator policy. The repository does not establish regulatory certification.
+Use [prerequisites](docs/PREREQUISITES.md) and the repository deployment/security documents before deployment.
+
+## 13. Verification and exclusions
+
+Acceptance includes fresh migration/bootstrap, authenticated branch access, cross-branch denial, IC/postcode registration, module-only workflows, GP signing, FEFO rollback, retry-safe billing and private document verification.
+Concurrency cases cover booking overlaps, occupied rooms, stale versions, stock depletion and deposit overspending.
+Upgrade tests must preserve historical document integrity and foreign keys while converting actual numeric keys.
+See [test documentation](docs/TESTING.md) for executable checks and recorded limitations.
+
+Retired features are treatment packages, commissions, payroll exports and clinical photos. Deployed paths reject them with `410 FEATURE_RETIRED`.
+Historical storage and migration code remain intentionally retained; their existence does not advertise active product functionality.
+Dental/aesthetic workflows, online patient portals, OCR/hardware, insurance claims, payment gateways and third-party EMR integrations need separate approved specifications.
+V1 external data import requires a known source schema, validated mapping and rehearsed rollback; generic compatibility is not promised.
+
+## 14. Separate browser demo mode
+
+The free-hosting demonstration build is explicitly separate from the MySQL application.
+`VITE_DEMO_MODE` equal to the string `true` selects a browser-only transport backed by tab-scoped `sessionStorage`.
+The banner labels sample data and tab-session persistence. Login shows demo-only accounts; Reset demo clears only its storage namespace.
+Fictitious patient, appointment, queue, prescription, stock and billing fixtures belong only to `DemoClinic`.
+Reset restores the initial demo examples. Real MySQL bootstrap creates clinic/staff/room setup without patient or business fixtures.
+The explicit development seed command remains guarded and is not invoked by normal bootstrap or demo startup.
+Normal application builds continue to use authenticated HTTP requests and MySQL without this transport.
+
+Demo account switching illustrates screens and role grants; it is not server authentication or an authorization boundary.
+Demo operations simulate workflows without actual database transactions, external messages, payment authorization or cryptographically issued documents.
+PDF/receipt links lead to a clear unavailable explanation. Live SSE is disabled; local refresh reads browser state.
+The demo must contain sample data only. Browser session restoration may retain tab storage; explicit reset clears it.
+No real patient information, provider secrets or database credentials belong in its bundle.

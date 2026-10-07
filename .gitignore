@@ -1,24 +1,11 @@
-# Dependencies and build output
-node_modules
-.next/
-out/
-build/
+node_modules/
 dist/
-coverage/
-*.tsbuildinfo
-
-# Local configuration and secrets
+dist-demo/
 .env
 .env.*
 !.env.example
-*.pem
-*.key
-
-# Supabase local state and generated files
-supabase/.temp/
-supabase/.branches/
-
-# Editor and OS files
-.DS_Store
-.idea/
-.vscode/
+coverage/
+.playwright-cli/
+test-results/
+*.log
+.local/

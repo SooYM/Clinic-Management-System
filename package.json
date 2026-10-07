@@ -1,31 +1,66 @@
 {
   "name": "clinic-management-system",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
-    "start": "next start",
-    "lint": "eslint ."
+    "dev": "concurrently -n api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "tsx watch src/server/index.ts",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "build:demo": "tsc --noEmit && vite build --mode demo",
+    "start:demo": "tsx scripts/demo-server.ts",
+    "start": "tsx src/server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "tsx src/server/db/migrate.ts",
+    "db:bootstrap": "tsx src/server/db/bootstrap.ts",
+    "db:seed": "tsx src/server/db/seed.ts",
+    "db:view": "tsx scripts/db-viewer.ts",
+    "worker:notifications": "tsx src/server/notification-worker.ts",
+    "format": "prettier --write src scripts tests *.ts *.json",
+    "format:check": "prettier --check src scripts tests *.ts *.json"
   },
   "dependencies": {
-    "@types/pg": "^8.23.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
     "lucide-react": "^0.475.0",
-    "next": "^16.2.12",
-    "pg": "^8.23.1",
+    "mysql2": "^3.24.5",
+    "nodemailer": "^10.0.15",
+    "pdfkit": "^0.17.2",
     "qrcode": "^1.5.4",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "server-only": "^0.0.1"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "ws": "^8.18.3",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.2.1",
-    "@types/node": "22.19.19",
-    "@types/qrcode": "^1.5.6",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
-    "tailwindcss": "4.2.1",
-    "typescript": "5.9.3"
+    "@tailwindcss/vite": "4.3.3",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.4",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pdfkit": "^0.17.3",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "6.1.2",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "postcss": "^8.5.2",
+    "prettier": "^3.9.9",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.7.3",
+    "vite": "8.3.3",
+    "vitest": "5.0.3"
   },
-  "type": "module"
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "overrides": {
+    "shell-quote": "1.12.0"
+  }
 }

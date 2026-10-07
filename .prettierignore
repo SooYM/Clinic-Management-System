@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-demo/
+.local/
+.playwright-cli/
+CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md
+package-lock.json

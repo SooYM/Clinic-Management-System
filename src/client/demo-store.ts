@@ -1,0 +1,1110 @@
+import { schemas } from '../server/validation';
+import {
+  ClinicalEncounter,
+  DomainError,
+  FefoAllocator,
+  Money,
+  QueueTicket,
+  type QueueStatus,
+} from '../domain/models';
+import {
+  defaultRoleModules,
+  moduleDefinitions,
+  moduleIds,
+  roleIds,
+  type RoleId,
+} from '../shared/module-permissions';
+import { idSchema } from '../shared/identifiers';
+import postcodes from '../server/data/postcodes.json';
+
+/** Browser-only simulation. These checks demonstrate workflows, never provide backend security. */
+export interface DemoStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+type Row = Record<string, any>;
+interface State {
+  version: 1;
+  counters: Record<string, number>;
+  userId: number | null;
+  rows: Record<string, Row[]>;
+  grants: Record<string, string[]>;
+}
+const key = 'clinic-session-demo-v1';
+const now = () => new Date().toISOString();
+const today = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+const fail = (message: string, status = 422): never => {
+  throw new DomainError('DEMO_ERROR', message, status);
+};
+const stateLabels: Record<string, string> = {
+  JOHOR: 'Johor',
+  KEDAH: 'Kedah',
+  KELANTAN: 'Kelantan',
+  MELAKA: 'Melaka',
+  NEGERI_SEMBILAN: 'Negeri Sembilan',
+  PAHANG: 'Pahang',
+  PULAU_PINANG: 'Pulau Pinang',
+  PERAK: 'Perak',
+  PERLIS: 'Perlis',
+  SABAH: 'Sabah',
+  SARAWAK: 'Sarawak',
+  SELANGOR: 'Selangor',
+  TERENGGANU: 'Terengganu',
+  WP_KUALA_LUMPUR: 'Wilayah Persekutuan Kuala Lumpur',
+  WP_LABUAN: 'Wilayah Persekutuan Labuan',
+  WP_PUTRAJAYA: 'Wilayah Persekutuan Putrajaya',
+};
+function seed(): State {
+  const timestamp = now(),
+    expiry = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+  const users = roleIds.map((role, index) => ({
+    id: index + 1,
+    tenantId: 1,
+    branchId: 1,
+    branchIds: [1, 2],
+    email: `${['admin', 'gp', 'reception', 'nurse', 'therapist'][index]}@example.test`,
+    name: [
+      'Demo Administrator',
+      'Dr. Aisha Demo',
+      'Demo Receptionist',
+      'Demo Nurse',
+      'Demo Therapist',
+    ][index],
+    role,
+    licenseNumber: role === 'DOCTOR' ? 'DEMO-NOT-A-LICENSE' : null,
+    password: 'demo',
+    active: true,
+    createdAt: timestamp,
+  }));
+  const patients = ['Demo Amir Example', 'Demo Mei Example'].map((name, index) => ({
+    id: index + 1,
+    patientNumber: index + 1,
+    tenantId: 1,
+    branchId: 1,
+    ...schemas.patient.parse({
+      name,
+      nationalId: `DEMO-PASSPORT-${index + 1}`,
+      nationality: 'NON_MALAYSIAN',
+      dateOfBirth: '1990-06-15',
+      sex: index ? 'FEMALE' : 'MALE',
+      allergies: index ? [] : ['Penicillin'],
+    }),
+    version: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }));
+  for (const [name, nationalId] of [
+    ['Demo Malaysian Example', '900615000001'],
+    ['Demo Malaysian Second', '920320000002'],
+  ]) {
+    const id = patients.length + 1;
+    patients.push({
+      id,
+      patientNumber: id,
+      tenantId: 1,
+      branchId: 1,
+      ...schemas.patient.parse({
+        firstName: name,
+        nationality: 'MALAYSIAN',
+        nationalId,
+        addressLine1: 'Fictional demo address',
+        postcode: '50000',
+        city: 'Kuala Lumpur',
+        state: 'Wilayah Persekutuan Kuala Lumpur',
+      }),
+      version: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+  const rows: Record<string, Row[]> = {
+    tenants: [{ id: 1, tenantNumber: 1, name: 'Clinic browser demo' }],
+    branches: [
+      {
+        id: 1,
+        branchNumber: 1,
+        tenantId: 1,
+        name: 'Demo Main Branch',
+        address: 'Fictional Kuala Lumpur clinic',
+      },
+      {
+        id: 2,
+        branchNumber: 2,
+        tenantId: 1,
+        name: 'Demo Second Branch',
+        address: 'Fictional branch',
+      },
+    ],
+    users,
+    patients,
+    rooms: [
+      { id: 1, tenantId: 1, branchId: 1, name: 'Room 01', active: true },
+      { id: 2, tenantId: 1, branchId: 1, name: 'Room 02', active: true },
+      { id: 3, tenantId: 1, branchId: 2, name: 'Room 01', active: true },
+    ],
+    inventory: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        name: 'Demo Paracetamol 500mg',
+        sku: 'DEMO-PARA',
+        ingredient: 'Paracetamol',
+        category: 'MEDICATION',
+        unit: 'tablet',
+        priceCents: 50,
+        reorderLevel: 10,
+      },
+      {
+        id: 2,
+        tenantId: 1,
+        branchId: 1,
+        name: 'Demo Amoxicillin 500mg',
+        sku: 'DEMO-AMOX',
+        ingredient: 'Penicillin;Amoxicillin',
+        category: 'MEDICATION',
+        unit: 'capsule',
+        priceCents: 180,
+        reorderLevel: 10,
+      },
+    ],
+    batches: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        itemId: 1,
+        batchNumber: 'DEMO-001',
+        expiresOn: expiry,
+        quantity: 100,
+      },
+      {
+        id: 2,
+        tenantId: 1,
+        branchId: 1,
+        itemId: 2,
+        batchNumber: 'DEMO-002',
+        expiresOn: expiry,
+        quantity: 50,
+      },
+    ],
+    appointments: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        patientId: 3,
+        practitionerId: 2,
+        roomId: 2,
+        startsAt: new Date(Date.now() + 86400000).toISOString(),
+        endsAt: new Date(Date.now() + 86400000 + 1800000).toISOString(),
+        reason: 'Fictional demo appointment',
+        status: 'BOOKED',
+        version: 1,
+        createdAt: timestamp,
+      },
+    ],
+    queue: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        patientId: 3,
+        ticketNumber: 'Q-001',
+        serviceDate: today(),
+        priority: 'NORMAL',
+        status: 'TRIAGE_WAITING',
+        version: 1,
+        createdAt: timestamp,
+      },
+    ],
+    encounters: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        practitionerId: 2,
+        ...schemas.encounter.parse({
+          patientId: 2,
+          specialty: 'GP',
+          subjective: 'Fictional demo complaint',
+          objective: 'Fictional demo observation',
+          assessment: 'Demo assessment only; no clinical advice.',
+          plan: 'Demo workflow only.',
+          vitals: {},
+          prescriptions: [
+            {
+              itemId: 1,
+              quantity: 3,
+              dosage: 'Demo instruction only; not treatment advice.',
+              durationDays: 3,
+              frequencyPerDay: 1,
+              mealTiming: 'ANY_TIME',
+            },
+          ],
+          status: 'SIGNED',
+        }),
+        signedAt: timestamp,
+        createdAt: timestamp,
+        version: 1,
+      },
+    ],
+    dispenses: [],
+    invoices: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        patientId: 1,
+        practitionerId: 2,
+        invoiceNumber: 'DEMO-INV-001',
+        lines: [
+          {
+            description: 'Demo consultation',
+            quantity: 1,
+            unitPriceCents: 12000,
+            category: 'SERVICE',
+          },
+        ],
+        totalCents: 12000,
+        payments: [{ method: 'CASH', amountCents: 12000, reference: 'DEMO-NO-REAL-PAYMENT' }],
+        idempotencyKey: 'demo-preloaded-invoice',
+        requestHash: 'demo-preloaded',
+        status: 'PAID',
+        createdAt: timestamp,
+        version: 1,
+      },
+    ],
+    deposits: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        patientId: 2,
+        amountCents: 3000,
+        reference: 'DEMO-NO-REAL-DEPOSIT',
+        createdAt: timestamp,
+        version: 1,
+      },
+    ],
+    documents: [],
+    notifications: [
+      {
+        id: 1,
+        tenantId: 1,
+        branchId: 1,
+        patientId: 3,
+        channel: 'DEMO',
+        template: 'BOOKING',
+        status: 'UNCONFIGURED',
+        attempts: 0,
+        lastError: 'Fictional demo notification; never sent.',
+        createdAt: timestamp,
+        version: 1,
+      },
+    ],
+    audit: [],
+  };
+  return {
+    version: 1,
+    counters: Object.fromEntries(
+      Object.entries(rows).map(([table, items]) => [table, Math.max(0, ...items.map((i) => i.id))]),
+    ),
+    userId: null,
+    rows,
+    grants: {},
+  };
+}
+export class DemoClinic {
+  private state: State;
+  constructor(private readonly storage: DemoStorage = sessionStorage) {
+    try {
+      const raw = storage.getItem(key),
+        parsed = raw ? JSON.parse(raw) : null;
+      const tables = [
+        'tenants',
+        'branches',
+        'users',
+        'patients',
+        'rooms',
+        'inventory',
+        'batches',
+        'appointments',
+        'queue',
+        'encounters',
+        'dispenses',
+        'invoices',
+        'deposits',
+        'documents',
+        'notifications',
+        'audit',
+      ];
+      const valid =
+        parsed?.version === 1 &&
+        parsed.rows &&
+        parsed.counters &&
+        parsed.grants &&
+        (parsed.userId === null || idSchema.safeParse(parsed.userId).success) &&
+        tables.every(
+          (table) =>
+            Array.isArray(parsed.rows[table]) &&
+            Number.isSafeInteger(parsed.counters[table]) &&
+            parsed.counters[table] >= 0 &&
+            parsed.rows[table].every(
+              (row: Row) =>
+                row && idSchema.safeParse(row.id).success && row.id <= parsed.counters[table],
+            ),
+        ) &&
+        parsed.rows.users.length > 0 &&
+        parsed.rows.users.every(
+          (user: Row) =>
+            roleIds.includes(user.role) &&
+            typeof user.email === 'string' &&
+            typeof user.password === 'string' &&
+            Array.isArray(user.branchIds) &&
+            user.branchIds.every((id: unknown) => idSchema.safeParse(id).success),
+        ) &&
+        Object.entries(parsed.grants).every(
+          ([role, modules]) =>
+            roleIds.includes(role as RoleId) &&
+            Array.isArray(modules) &&
+            modules.every((module) => moduleIds.includes(module)),
+        );
+      this.state = valid ? parsed : seed();
+    } catch {
+      this.state = seed();
+    }
+  }
+  reset() {
+    this.storage.removeItem(key);
+    this.state = seed();
+  }
+  private add(table: string, body: Row, branchId: number): Row {
+    const id = (this.state.counters[table] || 0) + 1;
+    this.state.counters[table] = id;
+    const row = { ...body, id, tenantId: 1, branchId, createdAt: now(), version: 1 };
+    this.state.rows[table].push(row);
+    return row;
+  }
+  private modules(user: Row) {
+    return user.role === 'ADMIN'
+      ? [...moduleIds]
+      : this.state.grants[user.role] || [...defaultRoleModules[user.role as RoleId]];
+  }
+  private actor() {
+    const user = this.state.rows.users.find((u) => u.id === this.state.userId && u.active);
+    if (!user) fail('Choose a demo account to continue.', 401);
+    return user!;
+  }
+  private publicUser(user: Row) {
+    const { password, branchIds, ...safe } = user;
+    return safe;
+  }
+  private scoped(table: string, branch: number) {
+    return this.state.rows[table].filter((r) => r.tenantId === 1 && r.branchId === branch);
+  }
+  private record(table: string, id: number, branch: number) {
+    return (
+      this.scoped(table, branch).find((r) => r.id === id) ||
+      fail('Record not found in this demo branch.', 404)
+    );
+  }
+  private enrich(row: Row) {
+    const patient = this.state.rows.patients.find((p) => p.id === row.patientId),
+      doctor = this.state.rows.users.find((u) => u.id === row.practitionerId),
+      room = this.state.rows.rooms.find((r) => r.id === row.roomId);
+    return {
+      ...row,
+      ...(patient ? { patientName: patient.name, patientNumber: patient.id } : {}),
+      ...(doctor ? { practitionerName: doctor.name } : {}),
+      ...(room ? { roomName: room.name } : {}),
+    };
+  }
+  private inventory(branch: number): Row[] {
+    return this.scoped('inventory', branch).map((item) => ({
+      ...item,
+      batches: this.scoped('batches', branch).filter((b) => b.itemId === item.id),
+      stockQuantity: this.scoped('batches', branch)
+        .filter((b) => b.itemId === item.id && b.expiresOn > today())
+        .reduce((sum, b) => sum + b.quantity, 0),
+    }));
+  }
+  private notice(patient: Row, template: string, branch: number) {
+    if (patient.notificationConsent)
+      this.add(
+        'notifications',
+        {
+          patientId: patient.id,
+          patientName: patient.name,
+          template,
+          channel: 'DEMO',
+          status: 'UNCONFIGURED',
+          lastError: 'Browser demo never sends messages.',
+          attempts: 0,
+        },
+        branch,
+      );
+  }
+  async request(
+    path: string,
+    method = 'GET',
+    body: any = undefined,
+    branchId?: number,
+  ): Promise<any> {
+    const previous = structuredClone(this.state);
+    try {
+      const response = this.dispatch(path, method.toUpperCase(), body, branchId);
+      if (method.toUpperCase() !== 'GET') {
+        this.storage.setItem(key, JSON.stringify(this.state));
+      }
+      return structuredClone(response);
+    } catch (error) {
+      this.state = previous;
+      throw error;
+    }
+  }
+  private dispatch(path: string, method: string, body: any, branchId?: number): any {
+    const url = new URL(path, 'https://demo.invalid'),
+      route = url.pathname;
+    if (route === '/auth/login' && method === 'POST') {
+      const user = this.state.rows.users.find(
+        (u) =>
+          u.email.toLowerCase() ===
+            String(body?.email).toLowerCase().replace('@demo.clinic', '@example.test') &&
+          u.password === body?.password &&
+          u.active,
+      );
+      if (!user) fail('Use a listed demo account and demo password.', 401);
+      this.state.userId = user!.id;
+      return {
+        user: this.publicUser(user!),
+        branchId: user!.branchId,
+        csrfToken: 'demo-no-real-session',
+        modules: this.modules(user!),
+      };
+    }
+    if (route === '/auth/logout') {
+      this.state.userId = null;
+      return {};
+    }
+    if (route.startsWith('/verify/'))
+      fail('Demo certificates are not signed or verifiable. Use the MySQL application.', 503);
+    const user = this.actor(),
+      branch = idSchema.parse(
+        branchId || Number(url.searchParams.get('branchId')) || user.branchId,
+      );
+    if (!user.branchIds.includes(branch))
+      fail('This demo account has no access to that branch.', 403);
+    const modules = this.modules(user);
+    if (/^\/(packages|commissions|photos)(\/|$)/.test(route)) fail('Feature retired.', 410);
+    if (route.startsWith('/admin/') && user.role !== 'ADMIN')
+      fail('Demo administration requires administrator role.', 403);
+    const module = /deposit-balance$/.test(route)
+      ? 'billing'
+      : /^\/patients\/\d+\/encounters$/.test(route)
+        ? 'clinical'
+        : /^\/(queue|dashboard)(\/|$)/.test(route)
+          ? 'queue'
+          : /^\/patients(\/|$)/.test(route)
+            ? 'patients'
+            : /^\/appointments(\/|$)/.test(route)
+              ? 'appointments'
+              : /^\/(encounters|documents|clinical)(\/|$)/.test(route)
+                ? 'clinical'
+                : /^\/(inventory|dispensary|dispenses)(\/|$)/.test(route)
+                  ? 'inventory'
+                  : /^\/(invoices|deposits)(\/|$)/.test(route)
+                    ? 'billing'
+                    : /^\/(notifications|reports)(\/|$)/.test(route)
+                      ? 'reports'
+                      : undefined;
+    if (module && !modules.includes(module as any))
+      fail('This demo role has no access to that module.', 403);
+    const foundId = route.match(/^\/[^/]+\/(\d+)(?:\/|$)/),
+      id = foundId ? idSchema.parse(foundId[1]) : undefined;
+    if (method !== 'GET' && !route.startsWith('/auth/'))
+      this.add(
+        'audit',
+        {
+          actorName: user.name,
+          action: method,
+          entityType: route.split('/')[1],
+          entityId: id || null,
+          requestId: 'browser-demo',
+        },
+        branch,
+      );
+    if (route === '/auth/me')
+      return {
+        user: this.publicUser(user),
+        branchId: branch,
+        csrfToken: 'demo-no-real-session',
+        modules,
+      };
+    if (route === '/bootstrap')
+      return {
+        tenant: this.state.rows.tenants[0],
+        user: this.publicUser(user),
+        branchId: branch,
+        branches: this.state.rows.branches.filter((b) => user.branchIds.includes(b.id)),
+        rooms: this.scoped('rooms', branch).filter((r) => r.active),
+        practitioners: this.state.rows.users
+          .filter((u) => u.active && u.role === 'DOCTOR' && u.branchIds.includes(branch))
+          .map((u) => this.publicUser(u)),
+        modules,
+      };
+    if (route === '/auth/change-password') {
+      if (user.password !== body.currentPassword) fail('Current demo password is incorrect.', 401);
+      if (typeof body.newPassword !== 'string' || body.newPassword.length < 14)
+        fail('Use at least 14 characters.');
+      user.password = body.newPassword;
+      this.state.userId = null;
+      return { message: 'Demo password changed in this browser tab only.' };
+    }
+    if (route === '/dashboard')
+      return {
+        patients: this.scoped('patients', branch).length,
+        waiting: this.scoped('queue', branch).filter(
+          (q) => !['COMPLETED', 'SKIPPED'].includes(q.status),
+        ).length,
+        encountersToday: this.scoped('encounters', branch).length,
+        revenueCents: this.scoped('invoices', branch).reduce((sum, i) => sum + i.totalCents, 0),
+      };
+    if (route === '/references/patients') {
+      if (
+        !modules.some((m) =>
+          ['queue', 'patients', 'appointments', 'clinical', 'billing'].includes(m),
+        )
+      )
+        fail('Patient selector access denied.', 403);
+      const search = (url.searchParams.get('search') || '').toLowerCase();
+      return {
+        data: this.scoped('patients', branch)
+          .filter((p) =>
+            [p.name, p.nationalId, p.phone].some((v) => v.toLowerCase().includes(search)),
+          )
+          .map((p) => ({
+            id: p.id,
+            patientNumber: p.id,
+            name: p.name,
+            nationalId: p.nationalId,
+            phone: p.phone,
+          })),
+      };
+    }
+    if (route === '/references/medications') {
+      if (!modules.some((m) => ['clinical', 'inventory'].includes(m)))
+        fail('Medication selector access denied.', 403);
+      return {
+        data: this.scoped('inventory', branch)
+          .filter((i) => i.category === 'MEDICATION')
+          .map(({ id, name, ingredient, unit, category, priceCents }) => ({
+            id,
+            name,
+            ingredient,
+            unit,
+            category,
+            priceCents,
+          })),
+      };
+    }
+    if (route.startsWith('/references/postcodes/')) {
+      if (!modules.includes('patients')) fail('Patient access denied.', 403);
+      const postcode = route.split('/').at(-1)!;
+      if (!/^\d{5}$/.test(postcode)) fail('Use a five-digit postcode.', 400);
+      const table = postcodes as Record<string, string[][]>;
+      return {
+        data: (Object.hasOwn(table, postcode) ? table[postcode] : []).map(([city, state]) => ({
+          postcode,
+          city,
+          state: stateLabels[state] || state,
+        })),
+      };
+    }
+    if (/^\/clinical\/patients\//.test(route)) {
+      const p = this.record('patients', idSchema.parse(route.split('/').at(-1)), branch);
+      return Object.fromEntries(
+        [
+          'id',
+          'patientNumber',
+          'name',
+          'firstName',
+          'lastName',
+          'nationalId',
+          'dateOfBirth',
+          'sex',
+          'bloodGroup',
+          'allergies',
+          'conditions',
+        ].map((k) => [k, p[k]]),
+      );
+    }
+    if (/^\/patients\/\d+\/deposit-balance$/.test(route)) {
+      this.record('patients', id!, branch);
+      return {
+        balanceCents: this.scoped('deposits', branch)
+          .filter((d) => d.patientId === id)
+          .reduce((sum, d) => sum + d.amountCents, 0),
+      };
+    }
+    if (/^\/patients\/\d+\/encounters$/.test(route)) {
+      this.record('patients', id!, branch);
+      return {
+        data: this.scoped('encounters', branch)
+          .filter((e) => e.patientId === id)
+          .map((e) => this.enrich(e)),
+        nextCursor: null,
+      };
+    }
+    if (route === '/patients' && method === 'GET') {
+      const search = (url.searchParams.get('search') || '').toLowerCase();
+      return {
+        data: this.scoped('patients', branch).filter((p) =>
+          [p.name, p.nationalId, p.phone].some((v) => v.toLowerCase().includes(search)),
+        ),
+      };
+    }
+    if (/^\/patients\/\d+$/.test(route) && method === 'GET')
+      return this.record('patients', id!, branch);
+    if (
+      (route === '/patients' && method === 'POST') ||
+      (/^\/patients\/\d+$/.test(route) && method === 'PUT')
+    ) {
+      const value = schemas.patient.parse(body);
+      const choices = (postcodes as Record<string, string[][]>)[value.postcode] || [];
+      if (choices.length === 1) {
+        const [city, code] = choices[0],
+          state = stateLabels[code] || code;
+        if (
+          (!value.city || value.city.toLowerCase() === city.toLowerCase()) &&
+          (!value.state || value.state.toLowerCase() === state.toLowerCase())
+        ) {
+          value.city = value.city || city;
+          value.state = value.state || state;
+        }
+      }
+      if (
+        this.scoped('patients', branch).some(
+          (p) => p.nationalId === value.nationalId && p.id !== id,
+        )
+      )
+        fail('National identifier already registered.', 409);
+      if (id) {
+        const p = this.record('patients', id, branch);
+        if (p.version !== value.version) fail('Patient changed. Refresh before saving.', 409);
+        Object.assign(p, value, { version: p.version + 1, updatedAt: now() });
+        return p;
+      }
+      const p = this.add('patients', value, branch);
+      p.patientNumber = p.id;
+      return p;
+    }
+    if (route === '/appointments' && method === 'POST') {
+      const v = schemas.appointment.parse(body);
+      this.record('patients', v.patientId, branch);
+      this.doctor(v.practitionerId, branch);
+      if (v.roomId && !this.record('rooms', v.roomId, branch).active) fail('Room is archived.');
+      if (
+        this.scoped('appointments', branch).some(
+          (a) =>
+            a.status === 'BOOKED' &&
+            (a.practitionerId === v.practitionerId || (v.roomId && a.roomId === v.roomId)) &&
+            a.startsAt < v.endsAt &&
+            a.endsAt > v.startsAt,
+        )
+      )
+        fail('Appointment overlaps practitioner or room booking.', 409);
+      const a = this.add('appointments', { ...v, status: 'BOOKED' }, branch);
+      this.notice(this.record('patients', v.patientId, branch), 'BOOKING', branch);
+      return this.enrich(a);
+    }
+    if (/^\/appointments\/\d+\/cancel$/.test(route)) {
+      const a = this.record('appointments', id!, branch);
+      if (a.version !== body.version) fail('Appointment changed.', 409);
+      a.status = 'CANCELLED';
+      a.version++;
+      return a;
+    }
+    if (route === '/queue' && method === 'POST') {
+      const v = schemas.queue.parse(body);
+      this.record('patients', v.patientId, branch);
+      if (
+        this.scoped('queue', branch).some(
+          (q) => q.patientId === v.patientId && !['COMPLETED', 'SKIPPED'].includes(q.status),
+        )
+      )
+        fail('Patient already has an active ticket.', 409);
+      const q = this.add('queue', { ...v, status: 'TRIAGE_WAITING', serviceDate: today() }, branch);
+      q.ticketNumber = 'Q-' + String(q.id).padStart(3, '0');
+      return this.enrich(q);
+    }
+    if (/^\/queue\/\d+\/transition$/.test(route)) {
+      const v = schemas.transition.parse(body),
+        q = this.record('queue', id!, branch);
+      if (q.version !== v.version) fail('Ticket changed.', 409);
+      if (user.role === 'DOCTOR' && q.practitionerId && q.practitionerId !== user.id)
+        fail('GP can only manage own consultations.', 403);
+      new QueueTicket(q.status as QueueStatus).transition(v.status);
+      if (v.status === 'CALLED_TO_ROOM') {
+        if (!v.roomId || !v.practitionerId) fail('Choose room and GP.');
+        const room = this.record('rooms', v.roomId!, branch);
+        if (!room.active) fail('Room archived.');
+        this.doctor(v.practitionerId!, branch);
+        if (user.role === 'DOCTOR' && v.practitionerId !== user.id)
+          fail('GP can only call own patients.', 403);
+        if (
+          this.scoped('queue', branch).some(
+            (t) =>
+              t.id !== q.id &&
+              t.roomId === v.roomId &&
+              ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status),
+          )
+        )
+          fail('Room is occupied.', 409);
+        q.roomId = v.roomId;
+        q.practitionerId = v.practitionerId;
+      }
+      if (v.status === 'TRIAGE_WAITING') q.roomId = null;
+      q.status = v.status;
+      q.version++;
+      return this.enrich(q);
+    }
+    if (route === '/queue/display')
+      return {
+        data: this.scoped('queue', branch).map((q) => ({
+          ticketNumber: q.ticketNumber,
+          status: q.status,
+          roomName: this.state.rows.rooms.find((r) => r.id === q.roomId)?.name,
+        })),
+      };
+    if (route === '/queue/estimate')
+      return {
+        sampleCount: 0,
+        practitionerCount: this.state.rows.users.filter(
+          (u) => u.role === 'DOCTOR' && u.active && u.branchIds.includes(branch),
+        ).length,
+        waiting: this.scoped('queue', branch).length,
+        estimatedMinutes: null,
+        basis: 'Demo has no measured consultation history.',
+      };
+    if (
+      (route === '/encounters' && method === 'POST') ||
+      (/^\/encounters\/\d+$/.test(route) && method === 'PUT')
+    ) {
+      if (user.role !== 'DOCTOR') fail('Only GP can save or sign consultations.', 403);
+      const v = schemas.encounter.parse(body),
+        p = this.record('patients', v.patientId, branch);
+      this.checkPrescription(v.prescriptions, p, branch);
+      if (id) {
+        const e = this.record('encounters', id, branch);
+        if (e.practitionerId !== user.id) fail('Only attending GP can edit.', 403);
+        if (e.status === 'SIGNED' || e.version !== v.version)
+          fail('Consultation is signed or changed.', 409);
+        Object.assign(e, v, {
+          version: e.version + 1,
+          signedAt: v.status === 'SIGNED' ? now() : null,
+        });
+        return this.enrich(e);
+      }
+      if (v.queueTicketId) this.record('queue', v.queueTicketId, branch);
+      const e = this.add(
+        'encounters',
+        { ...v, practitionerId: user.id, signedAt: v.status === 'SIGNED' ? now() : null },
+        branch,
+      );
+      if (v.status === 'SIGNED') this.notice(p, 'REFILL', branch);
+      return this.enrich(e);
+    }
+    if (route === '/inventory' && method === 'POST') {
+      const v = schemas.item.parse(body);
+      if (this.scoped('inventory', branch).some((i) => i.sku === v.sku))
+        fail('SKU already exists.', 409);
+      return this.add('inventory', v, branch);
+    }
+    if (route === '/inventory/batches' && method === 'POST') {
+      const v = schemas.batch.parse(body);
+      this.record('inventory', v.itemId, branch);
+      if (v.expiresOn <= today()) fail('Receive only stock expiring after today.');
+      if (
+        this.scoped('batches', branch).some(
+          (b) => b.itemId === v.itemId && b.batchNumber === v.batchNumber,
+        )
+      )
+        fail('Batch already exists.', 409);
+      const batch = this.add('batches', v, branch);
+      return {
+        ...batch,
+        stockQuantity: this.inventory(branch).find((i) => i.id === v.itemId)!.stockQuantity,
+      };
+    }
+    if (route === '/dispensary/encounters')
+      return {
+        data: this.scoped('encounters', branch)
+          .filter(
+            (e) =>
+              e.status === 'SIGNED' &&
+              e.prescriptions.length &&
+              !this.scoped('dispenses', branch).some((d) => d.encounterId === e.id),
+          )
+          .map((e) => {
+            const p = this.record('patients', e.patientId, branch);
+            return {
+              id: e.id,
+              patientId: p.id,
+              patientNumber: p.id,
+              patientName: p.name,
+              nationalId: p.nationalId,
+              allergies: p.allergies,
+              practitionerId: e.practitionerId,
+              practitionerName: this.state.rows.users.find((u) => u.id === e.practitionerId)?.name,
+              createdAt: e.createdAt,
+              prescriptions: e.prescriptions.map((rx: Row) => ({
+                ...rx,
+                itemName: this.record('inventory', rx.itemId, branch).name,
+              })),
+            };
+          }),
+      };
+    if (route === '/dispenses' && method === 'POST') {
+      const v = schemas.dispense.parse(body),
+        prior = this.scoped('dispenses', branch).find((d) => d.idempotencyKey === v.idempotencyKey);
+      if (prior) {
+        if (prior.encounterId !== v.encounterId) fail('Key belongs to another prescription.', 409);
+        return prior;
+      }
+      const e = this.record('encounters', v.encounterId, branch);
+      if (e.status !== 'SIGNED' || !e.prescriptions.length)
+        fail('Sign a prescription before dispensing.');
+      if (this.scoped('dispenses', branch).some((d) => d.encounterId === e.id))
+        fail('Already dispensed.', 409);
+      this.checkPrescription(e.prescriptions, this.record('patients', e.patientId, branch), branch);
+      for (const rx of e.prescriptions) {
+        const batches = this.scoped('batches', branch).filter((b) => b.itemId === rx.itemId),
+          allocations = FefoAllocator.allocate(
+            batches.map((b) => ({ ...b, id: b.id, quantity: b.quantity, expires_on: b.expiresOn })),
+            rx.quantity,
+            today(),
+          );
+        for (const allocation of allocations)
+          this.record('batches', allocation.batchId, branch).quantity -= allocation.quantity;
+      }
+      return this.add('dispenses', { ...v, patientId: e.patientId, actorId: user.id }, branch);
+    }
+    if (route === '/deposits' && method === 'POST') {
+      const v = schemas.deposit.parse(body);
+      this.record('patients', v.patientId, branch);
+      return this.add('deposits', v, branch);
+    }
+    if (route === '/invoices' && method === 'POST') {
+      const v = schemas.invoice.parse(body),
+        hash = JSON.stringify(v),
+        prior = this.scoped('invoices', branch).find((i) => i.idempotencyKey === v.idempotencyKey);
+      if (prior) {
+        if (prior.requestHash !== hash) fail('Payment key has different details.', 409);
+        return this.enrich(prior);
+      }
+      this.record('patients', v.patientId, branch);
+      this.doctor(v.practitionerId, branch);
+      const total = v.lines.reduce(
+        (sum, l) => sum + new Money(l.unitPriceCents).multiply(l.quantity).cents,
+        0,
+      );
+      new Money(total);
+      if (!total || v.payments.reduce((sum, p) => sum + p.amountCents, 0) !== total)
+        fail('Payment total must equal invoice total.');
+      const used = v.payments
+          .filter((p) => p.method === 'DEPOSIT')
+          .reduce((sum, p) => sum + p.amountCents, 0),
+        balance = this.scoped('deposits', branch)
+          .filter((d) => d.patientId === v.patientId)
+          .reduce((sum, d) => sum + d.amountCents, 0);
+      if (used > balance) fail('Insufficient deposit.');
+      const invoice = this.add(
+        'invoices',
+        { ...v, requestHash: hash, totalCents: total, status: 'PAID' },
+        branch,
+      );
+      invoice.invoiceNumber = 'DEMO-INV-' + invoice.id;
+      if (used)
+        this.add(
+          'deposits',
+          { patientId: v.patientId, amountCents: -used, reference: invoice.invoiceNumber },
+          branch,
+        );
+      return this.enrich(invoice);
+    }
+    if (route === '/documents' && method === 'POST') {
+      if (user.role !== 'DOCTOR') fail('Only GP can simulate a document.', 403);
+      const v = schemas.document.parse(body),
+        e = this.record('encounters', v.encounterId, branch);
+      if (e.status !== 'SIGNED' || e.practitionerId !== user.id)
+        fail('Attending GP must sign first.');
+      const d = this.add(
+        'documents',
+        {
+          ...v,
+          patientId: e.patientId,
+          practitionerId: user.id,
+          diagnosisRedacted: v.diagnosisRedacted,
+          documentNumber: 'DEMO-UNSIGNED-' + (this.state.counters.documents + 1),
+          verificationUrl: '/demo-unavailable',
+          payload: { ...v, demo: true },
+        },
+        branch,
+      );
+      return this.enrich(d);
+    }
+    if (/^\/documents\/\d+\/revoke$/.test(route)) {
+      if (user.role !== 'DOCTOR') fail('Only GP can revoke.', 403);
+      const d = this.record('documents', id!, branch);
+      if (d.practitionerId !== user.id) fail('Only attending GP can revoke.', 403);
+      d.revokedAt = now();
+      return d;
+    }
+    if (route === '/admin/role-modules' && method === 'GET')
+      return {
+        roles: roleIds.map((role) => ({
+          role,
+          modules:
+            role === 'ADMIN' ? [...moduleIds] : this.state.grants[role] || defaultRoleModules[role],
+          editable: role !== 'ADMIN',
+        })),
+        moduleDefinitions,
+      };
+    if (route === '/admin/role-modules' && method === 'PUT') {
+      if (
+        !roleIds.includes(body.role) ||
+        body.role === 'ADMIN' ||
+        !Array.isArray(body.modules) ||
+        body.modules.some((m: string) => !moduleIds.includes(m as any))
+      )
+        fail('Choose an editable role and known modules.');
+      this.state.grants[body.role] = moduleIds.filter((m) => body.modules.includes(m));
+      return { role: body.role, modules: this.state.grants[body.role] };
+    }
+    if (route === '/admin/users' && method === 'POST') {
+      if (
+        !roleIds.includes(body.role) ||
+        typeof body.password !== 'string' ||
+        body.password.length < 14
+      )
+        fail('Choose role and password of at least 14 characters.');
+      if (body.role === 'DOCTOR' && !body.licenseNumber) fail('GP registration number required.');
+      if (
+        !this.state.rows.branches.some(
+          (b) => b.id === idSchema.parse(body.branchId) && user.branchIds.includes(b.id),
+        )
+      )
+        fail('Choose an accessible branch.');
+      if (
+        this.state.rows.users.some(
+          (u) => u.email.toLowerCase() === String(body.email).toLowerCase(),
+        )
+      )
+        fail('Email already registered.', 409);
+      const u = this.add(
+        'users',
+        { ...body, branchIds: [body.branchId], active: true },
+        body.branchId,
+      );
+      return this.publicUser(u);
+    }
+    if (/^\/admin\/users\/\d+$/.test(route) && method === 'PUT') {
+      const target =
+        this.state.rows.users.find((u) => u.id === Number(route.split('/').at(-1))) ||
+        fail('User not found.', 404);
+      if (target.id === user.id && !body.active)
+        fail('Cannot deactivate your own demo account.', 409);
+      target.active = Boolean(body.active);
+      return this.publicUser(target);
+    }
+    if (route === '/admin/branches' && method === 'POST') {
+      if (!body.name?.trim()) fail('Branch name required.');
+      const b = this.add('branches', body, 0);
+      b.branchId = b.id;
+      b.branchNumber = b.id;
+      user.branchIds.push(b.id);
+      return b;
+    }
+    if (route === '/admin/rooms' && method === 'POST') {
+      const b = this.state.rows.branches.find((b) => b.id === idSchema.parse(body.branchId));
+      if (!b || !user.branchIds.includes(b.id)) fail('Choose accessible branch.');
+      if (!body.name?.trim()) fail('Room name required.');
+      return this.add('rooms', { name: body.name, active: true }, b!.id);
+    }
+    if (/^\/admin\/rooms\/\d+$/.test(route) && method === 'PUT') {
+      const room = this.record('rooms', idSchema.parse(route.split('/').at(-1)), branch);
+      if (
+        this.scoped('queue', branch).some(
+          (q) => q.roomId === room.id && ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(q.status),
+        )
+      )
+        fail('Room occupied.', 409);
+      if (
+        body.active === false &&
+        this.scoped('appointments', branch).some(
+          (a) => a.roomId === room.id && a.status === 'BOOKED' && a.endsAt > now(),
+        )
+      )
+        fail('Room has upcoming bookings.', 409);
+      if (body.name !== undefined && !body.name.trim()) fail('Room name required.');
+      Object.assign(room, body);
+      return room;
+    }
+    if (route === '/admin/users')
+      return { data: this.state.rows.users.map((u) => this.publicUser(u)) };
+    if (route === '/admin/branches')
+      return { data: this.state.rows.branches.filter((b) => user.branchIds.includes(b.id)) };
+    if (route === '/admin/rooms')
+      return {
+        data: this.scoped('rooms', branch).map((r) => ({
+          ...r,
+          branchName: this.state.rows.branches.find((b) => b.id === branch)?.name,
+        })),
+      };
+    if (route === '/admin/audit') return { data: this.scoped('audit', branch).slice().reverse() };
+    if (/^\/notifications\/\d+\/retry$/.test(route)) {
+      if (user.role !== 'ADMIN') fail('Administrator required.', 403);
+      return this.record('notifications', id!, branch);
+    }
+    if (
+      method === 'GET' &&
+      [
+        '/appointments',
+        '/queue',
+        '/encounters',
+        '/invoices',
+        '/documents',
+        '/notifications',
+      ].includes(route)
+    )
+      return { data: this.scoped(route.slice(1), branch).map((r) => this.enrich(r)) };
+    if (route === '/inventory' && method === 'GET') return { data: this.inventory(branch) };
+    fail('This operation needs the real MySQL application.', 503);
+  }
+  private doctor(id: number, branch: number) {
+    const doctor = this.state.rows.users.find(
+      (u) => u.id === id && u.role === 'DOCTOR' && u.active && u.branchIds.includes(branch),
+    );
+    if (!doctor) fail('Choose an active GP in this branch.');
+    return doctor!;
+  }
+  private checkPrescription(prescriptions: Row[], patient: Row, branch: number) {
+    if (new Set(prescriptions.map((rx) => rx.itemId)).size !== prescriptions.length)
+      fail('Medication cannot appear twice.');
+    const items = prescriptions.map((rx) => this.record('inventory', rx.itemId, branch));
+    if (items.some((i) => i.category !== 'MEDICATION'))
+      fail('Prescriptions require medication items.');
+    ClinicalEncounter.assertAllergySafety(
+      patient.allergies,
+      items as { name: string; ingredient: string }[],
+    );
+  }
+}

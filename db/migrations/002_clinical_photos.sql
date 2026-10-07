@@ -1,0 +1,20 @@
+CREATE TABLE clinical_photos (
+  id char(36) PRIMARY KEY,
+  tenant_id char(36) NOT NULL,
+  branch_id char(36) NOT NULL,
+  encounter_id char(36) NOT NULL,
+  patient_id char(36) NOT NULL,
+  actor_id char(36) NOT NULL,
+  stage varchar(10) NOT NULL CHECK (stage IN ('BEFORE','AFTER')),
+  caption varchar(500) NOT NULL DEFAULT '',
+  mime_type varchar(30) NOT NULL CHECK (mime_type IN ('image/jpeg','image/png')),
+  encrypted_data mediumblob NOT NULL,
+  iv binary(12) NOT NULL,
+  auth_tag binary(16) NOT NULL,
+  consent_recorded boolean NOT NULL CHECK (consent_recorded=1),
+  created_at datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  FOREIGN KEY (tenant_id,branch_id,encounter_id) REFERENCES encounters(tenant_id,branch_id,id),
+  FOREIGN KEY (tenant_id,patient_id) REFERENCES patients(tenant_id,id),
+  FOREIGN KEY (tenant_id,actor_id) REFERENCES users(tenant_id,id),
+  INDEX photos_encounter (tenant_id,branch_id,encounter_id,created_at)
+) ENGINE=InnoDB;

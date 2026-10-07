@@ -1,29 +1,25 @@
+# Free browser-session demo only. Local production runs separately with MySQL.
 version: "1"
 projects:
-- name: Clinic Management System
-  environments:
-  - name: Production
-    services:
-    - type: web
-      name: Clinic Management System
-      runtime: node
-      repo: https://github.com/SooYM/Clinic-Management-System
-      branch: main
-      plan: free
-      region: oregon
-      buildCommand: npm install && npm run build
-      startCommand: npm run start
-      autoDeployTrigger: commit
-      envVars:
-      - key: NODE_VERSION
-        value: 22.14.0
-      - key: NEXT_PUBLIC_CLINIC_DEMO_MODE
-        value: "true"
-      - key: PATIENT_NRIC_ENCRYPTION_KEY
-        generateValue: true
-      - key: PATIENT_NRIC_HASH_KEY
-        generateValue: true
-      - key: DOCUMENT_QR_SIGNING_KEY
-        generateValue: true
-      - key: APP_BASE_URL
-        sync: false
+  - name: Clinic Management System
+    environments:
+      - name: Production
+        services:
+          - type: web
+            name: Clinic Management System
+            runtime: node
+            repo: https://github.com/SooYM/Clinic-Management-System
+            branch: main
+            region: oregon
+            plan: free
+            buildCommand: npm ci --include=dev && npm run build:demo
+            startCommand: npm run start:demo
+            autoDeployTrigger: commit
+            healthCheckPath: /healthz
+            envVars:
+              - key: NODE_VERSION
+                value: 22.14.0
+              - key: NODE_ENV
+                value: production
+              - key: HOST
+                value: 0.0.0.0

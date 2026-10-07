@@ -1,0 +1,1 @@
+ALTER TABLE patients ADD COLUMN city varchar(100) NOT NULL DEFAULT '';
