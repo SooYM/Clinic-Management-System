@@ -22,7 +22,8 @@ export type ModuleKey =
   | "users"
   | "alerts"
   | "permissions"
-  | "portal_settings";
+  | "portal_settings"
+  | "database";
 
 export type RolePermissions = Record<Role, ModuleKey[]>;
 
@@ -69,6 +70,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     "alerts",
     "permissions",
     "portal_settings",
+    "database",
   ],
 };
 

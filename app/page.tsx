@@ -12,6 +12,7 @@ import { GuideModal } from "../components/menu/GuideModal";
 import { RolePermissionsModal } from "../components/menu/RolePermissionsModal";
 import { PortalSettingsModal } from "../components/menu/PortalSettingsModal";
 import { UserManagementModal } from "../components/menu/UserManagementModal";
+import { DatabaseViewerModal } from "../components/menu/DatabaseViewerModal";
 import { AddDrugModal } from "../components/menu/AddDrugModal";
 import { type MenuItem } from "../components/menu/modules";
 import { QrCode } from "../components/QrCode";
@@ -105,6 +106,7 @@ function ClinicDashboardContent() {
   const [editDrugModal, setEditDrugModal] = useState<InventoryItemData | null>(null);
   const [addDrugModalOpen, setAddDrugModalOpen] = useState(false);
   const [userManagementModalOpen, setUserManagementModalOpen] = useState(false);
+  const [databaseViewerOpen, setDatabaseViewerOpen] = useState(false);
   const [inventorySubTab, setInventorySubTab] = useState<"fefo" | "drugs">("drugs");
   const [selectedPaymentRail, setSelectedPaymentRail] = useState<"card" | "cash" | "qr" | "insurance">("card");
   const [cashTendered, setCashTendered] = useState(70);
@@ -612,6 +614,9 @@ function ClinicDashboardContent() {
           break;
         case "users":
           setUserManagementModalOpen(true);
+          break;
+        case "database":
+          setDatabaseViewerOpen(true);
           break;
       }
     }
@@ -3593,6 +3598,11 @@ function ClinicDashboardContent() {
           onResetPassword={store.resetStaffUserPassword}
           onToggleStatus={store.toggleStaffStatus}
         />
+      )}
+
+      {/* ==================== MODAL: DATABASE TABLES (PHPMYADMIN VIEWER) ==================== */}
+      {databaseViewerOpen && (
+        <DatabaseViewerModal onClose={() => setDatabaseViewerOpen(false)} />
       )}
 
       {/* ==================== MODAL: ADD NEW FORMULARY DRUG ==================== */}

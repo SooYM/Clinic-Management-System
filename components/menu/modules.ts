@@ -14,6 +14,7 @@ import {
   MessageSquare,
   ShieldCheck,
   UserCheck,
+  Database,
   type LucideIcon,
 } from "lucide-react";
 
@@ -65,7 +66,7 @@ export interface MenuItem {
   shortcut: string;
   actionType: "route" | "modal";
   routeTarget?: "queue" | "patients" | "consultation" | "documents" | "inventory" | "billing";
-  modalTarget?: "register" | "ticket" | "mc" | "referral" | "lab" | "alerts" | "permissions" | "portal_settings" | "users";
+  modalTarget?: "register" | "ticket" | "mc" | "referral" | "lab" | "alerts" | "permissions" | "portal_settings" | "users" | "database";
   allowedRoles?: RoleType[];
   adminOnly?: boolean;
 }
@@ -226,6 +227,18 @@ export const MENU: MenuItem[] = [
     shortcut: "U",
     actionType: "modal",
     modalTarget: "users",
+    allowedRoles: ["manager"],
+    adminOnly: true,
+  },
+  {
+    key: "database",
+    group: "finance",
+    label: "Database Tables (phpMyAdmin)",
+    description: "Browse PostgreSQL tables, columns & SQL queries in browser",
+    icon: Database,
+    shortcut: "D",
+    actionType: "modal",
+    modalTarget: "database",
     allowedRoles: ["manager"],
     adminOnly: true,
   },

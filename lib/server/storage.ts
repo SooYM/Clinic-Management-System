@@ -280,7 +280,7 @@ const DEFAULT_ROLE_PERMS: Record<string, string[]> = {
   receptionist: ["register", "ticket", "queue", "patients", "billing", "ledger", "alerts"],
   doctor: ["queue", "consultation", "mc", "referral", "lab", "drugs", "inventory", "alerts"],
   nurse: ["queue", "inventory", "drugs", "alerts"],
-  manager: ["register", "ticket", "queue", "patients", "consultation", "mc", "referral", "lab", "inventory", "drugs", "billing", "ledger", "users", "alerts", "permissions", "portal_settings"],
+  manager: ["register", "ticket", "queue", "patients", "consultation", "mc", "referral", "lab", "inventory", "drugs", "billing", "ledger", "users", "alerts", "permissions", "portal_settings", "database"],
 };
 
 const DEFAULT_PORTAL: StoredPortalConfig = {
