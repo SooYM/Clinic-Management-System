@@ -53,7 +53,7 @@ export default function Inventory() {
               <RefreshCw size={16} />
               Refresh stock
             </button>
-            <button onClick={() => setCreate(!create)}>
+            <button data-guide="open-inventory-item" onClick={() => setCreate(!create)}>
               {create ? 'Close new item' : 'Add inventory item'}
             </button>
           </div>

@@ -28,6 +28,7 @@ import {
 } from './components';
 import { type Reference, type User } from './types';
 import { QueueDisplay, VerifyCertificate } from './pages/Public';
+import { GuidedTour, startTour, tourNames } from './GuidedTour';
 const Account = lazy(() => import('./pages/Account'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Queue = lazy(() => import('./pages/Queue'));
@@ -83,8 +84,8 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
           {isDemo && (
             <p className="demo-credentials">
               Demo accounts: admin@example.test, gp@example.test, reception@example.test,
-              nurse@example.test or therapist@example.test. Password: <strong>demo</strong>. Use
-              sample data only.
+              nurse@example.test or therapist@example.test. Password:{' '}
+              <strong>00000000000000</strong>. Use sample data only.
             </p>
           )}
           <MutationForm
@@ -118,6 +119,45 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   const bootstrap = useResource<Bootstrap>('/bootstrap');
   const [activeBranch, setActiveBranch] = useState(user.branchId);
   const [branchRevision, setBranchRevision] = useState(0);
+  const [tour, setTour] = useState<string>();
+  const closeTour = () => {
+    setTour(undefined);
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>('[data-guide="start-current-tour"]')?.focus(),
+    );
+  };
+  useEffect(() => {
+    const launch = (event: Event) => {
+      const next = (event as CustomEvent<string>).detail;
+      if (
+        !tourNames[next] ||
+        !(
+          bootstrap.data?.modules.includes(next) ||
+          next === 'account' ||
+          (next === 'admin' && user.role === 'ADMIN')
+        )
+      )
+        return;
+      setTour(next);
+      setPage(next);
+      setMobileNav(false);
+      location.hash = next;
+    };
+    window.addEventListener('clinic:start-tour', launch);
+    return () => window.removeEventListener('clinic:start-tour', launch);
+  }, [bootstrap.data, user.role]);
+  useEffect(() => {
+    if (
+      tour &&
+      (tour !== page ||
+        !(
+          bootstrap.data?.modules.includes(tour) ||
+          tour === 'account' ||
+          (tour === 'admin' && user.role === 'ADMIN')
+        ))
+    )
+      setTour(undefined);
+  }, [page, tour, bootstrap.data, user.role]);
   useEffect(() => {
     if (bootstrap.data && !location.hash) setPage(bootstrap.data.modules[0] || 'guide');
   }, [bootstrap.data]);
@@ -174,6 +214,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
             value={activeBranch}
             onChange={(e) => {
               api.setBranch(Number(e.target.value));
+              setTour(undefined);
               setActiveBranch(Number(e.target.value));
               setBranchRevision((v) => v + 1);
               bootstrap.refresh();
@@ -250,6 +291,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
           <button
             className="mobile-menu icon-button secondary"
             aria-label="Open navigation"
+            aria-expanded={mobileNav}
             onClick={() => setMobileNav(true)}
           >
             <Menu size={22} />
@@ -265,6 +307,15 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                     : 'Clinic workspace')}
           </span>
           <div>
+            {permittedPage && tourNames[page] && (
+              <button
+                data-guide="start-current-tour"
+                className="secondary guide-launch"
+                onClick={() => startTour(page)}
+              >
+                Show me
+              </button>
+            )}
             <span className="timezone">Malaysia · MYT</span>
             <a href="#patients" className="search-shortcut">
               Find patient <kbd>Ctrl K</kbd>
@@ -315,6 +366,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
           Patient records are confidential. Access and changes are audited.
         </footer>
       </div>
+      {tour && <GuidedTour key={tour} module={tour} role={user.role} onClose={closeTour} />}
     </div>
   );
 }

@@ -45,6 +45,14 @@ Appointment check-in and completion statuses are not advertised as automatic syn
 The API supports booking cancellation; the current booking screen requires separate API handling for that operation.
 See [staff guide](USER_GUIDE.md) for screen-level steps.
 
+## Guided screen walkthrough
+
+Staff open **User guide**, choose an available workflow and start its interactive walkthrough.
+The walkthrough navigates to the permitted module and circles the relevant control.
+**Next** and **Back** move between explanations; **Close** or Escape ends the walkthrough.
+Forms may open for explanation, but saving, signing, dispensing and payments remain explicit staff actions.
+Phone instructions remain inside the viewport while the relevant control scrolls into view.
+
 ## Request and transaction sequence
 
 ```mermaid

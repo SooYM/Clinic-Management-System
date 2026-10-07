@@ -32,6 +32,7 @@ interface State {
   grants: Record<string, string[]>;
 }
 const key = 'clinic-session-demo-v1';
+const defaultDemoPassword = '00000000000000';
 const now = () => new Date().toISOString();
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -79,7 +80,7 @@ function seed(): State {
     ][index],
     role,
     licenseNumber: role === 'DOCTOR' ? 'DEMO-NOT-A-LICENSE' : null,
-    password: 'demo',
+    password: defaultDemoPassword,
     active: true,
     createdAt: timestamp,
   }));
@@ -380,6 +381,17 @@ export class DemoClinic {
       this.state = valid ? parsed : seed();
     } catch {
       this.state = seed();
+    }
+    // Upgrade only unchanged original demo accounts; retain records and user-changed passwords.
+    for (const [index, alias] of ['admin', 'gp', 'reception', 'nurse', 'therapist'].entries()) {
+      const user = this.state.rows.users.find(
+        (row) =>
+          row.id === index + 1 &&
+          row.role === roleIds[index] &&
+          row.email.toLowerCase().replace('@demo.clinic', '@example.test') ===
+            `${alias}@example.test`,
+      );
+      if (user?.password === 'demo') user.password = defaultDemoPassword;
     }
   }
   reset() {

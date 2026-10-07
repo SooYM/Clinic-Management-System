@@ -2,6 +2,20 @@
 
 This guide covers the current clinic workflows. Use **User guide** in the application for help while working. Guide topics use the expandable-help approach reviewed in the Car Loan reference project, adapted to clinic screens and permissions.
 
+## Visual walkthroughs and phone use
+
+Open **User guide → Show me on the screen** and choose an available workflow.
+Or select **Show me** in the current screen's header. The guide circles actual buttons, fields and workflow sections.
+Use **Next**, **Back**, **Close**, or **Escape**. **Focus highlighted control** moves keyboard focus to the relevant field or button.
+Tours follow your role's modules and never save patients, bookings, prescriptions, payments or administrative changes.
+Some steps open an input form for demonstration; review and submit it yourself only after closing the guide.
+An already-open form stays open. Unavailable controls show an explanation rather than blocking progress.
+Changing screen or branch ends the walkthrough. Replay any guide when needed.
+
+On phones, open the menu button to switch modules. Forms stack vertically and tables scroll within their own area.
+The guide scrolls targets into view and places instructions near the bottom of the phone screen.
+You can scroll or interact with controls while a guide is open; it does not lock the workspace.
+
 ## Administrator setup
 
 1. Sign in and select the correct branch.
@@ -62,7 +76,7 @@ Change your password in **Account security**. New passwords require 14–128 cha
 ## Browser demo
 
 The free-hosted demo displays a **Browser demo** banner on every screen. Use sample data only, never real patient records.
-Sign in with `admin@example.test`, `gp@example.test`, `reception@example.test`, `nurse@example.test` or `therapist@example.test`; password is `demo`.
+Sign in with `admin@example.test`, `gp@example.test`, `reception@example.test`, `nurse@example.test` or `therapist@example.test`; password is `00000000000000` (14 zeros).
 These accounts illustrate roles and are not real clinic authentication.
 Changes stay in that tab's browser sessionStorage. Refresh preserves them; closing the session normally discards them.
 Browsers can restore previous tab storage, so select **Reset demo** when you need a fresh sample workspace.

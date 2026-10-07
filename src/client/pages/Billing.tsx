@@ -62,7 +62,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
             <button className="secondary" onClick={() => setDeposit(!deposit)}>
               Record deposit
             </button>
-            <button onClick={() => setCreate(!create)}>
+            <button data-guide="open-checkout" onClick={() => setCreate(!create)}>
               {create ? 'Close checkout' : 'New checkout'}
             </button>
           </div>

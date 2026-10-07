@@ -48,7 +48,7 @@ npm run build:demo
 npm run start:demo
 ```
 
-Demo builds write `dist-demo`; normal builds write `dist`. Demo hosting requires no database or private credentials. The login screen shows the public fictional accounts. The demo server serves static assets and an explicit unavailable page for features requiring the full backend.
+Demo builds write `dist-demo`; normal builds write `dist`. Demo hosting requires no database or private credentials. The login screen shows the public fictional accounts; each default demo password is `00000000000000` (14 zeros). This does not change local MySQL credentials. The demo server serves static assets and an explicit unavailable page for features requiring the full backend.
 
 [render.yaml](render.yaml) reconfigures the existing **Clinic Management System** web service in its existing **Production** environment. It retains the service name, region and main branch, and uses the free demo build/start commands. See [Render upgrade](docs/RENDER_UPGRADE.md) before syncing. Git publication and Render Blueprint synchronization are separate operations; remote deployment remains unverified until its health and browser checks pass.
 

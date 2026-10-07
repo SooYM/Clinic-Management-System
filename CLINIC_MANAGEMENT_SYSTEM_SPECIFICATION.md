@@ -27,6 +27,10 @@ Administrators configure tenant-wide non-administrator role grants for `queue`, 
 The server evaluates grants on every authenticated request. Navigation and direct screen access follow effective grants.
 Account security and the user guide remain available to all staff. Administrator access cannot be removed through the matrix.
 
+The user guide includes optional interactive walkthroughs that circle actual controls and explain their functions.
+Tours respect effective module access and never submit clinical or administrative records.
+Navigation, forms and guide controls support phone screens; walkthrough instructions remain within the viewport.
+
 Module access enables ordinary operations, including billing for a nurse granted that module.
 Only `DOCTOR` can create, edit or sign consultations and issue clinical documents.
 An administrator can review records but cannot acquire GP authority through module grants.

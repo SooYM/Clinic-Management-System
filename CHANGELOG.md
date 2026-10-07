@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Interactive staff walkthroughs highlight real controls, respect module access and explain workflows without submitting records.
+- Phone layout improvements for navigation, guide instructions, forms and tables.
+- Default fictional demo accounts use `00000000000000` (14 zeros); unchanged legacy defaults upgrade without losing session records.
+
 ## 2.0.0 — 2026-10-07
 
 V2 replaces V1 Next.js/Supabase source with React/Vite and an Express modular backend using MySQL 8.4.

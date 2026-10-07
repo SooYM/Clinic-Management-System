@@ -16,7 +16,7 @@ Render matches existing resources by name. Sync the existing Blueprint and revie
 2. Sync the updated root render.yaml. Confirm the existing Node/free web service, new build/start commands, and `/healthz` check. There should be no database or worker creation.
 3. Remove obsolete V1 demo/Next/Prisma/database/signing environment values if unused; this demo requires none. NODE_VERSION=22.14.0, NODE_ENV=production and HOST=0.0.0.0 are specified by the Blueprint. Render supplies PORT.
 4. Deploy the replacement main commit. Verify `/healthz` reports browser-session-demo with database:false, then open the homepage.
-5. Use a listed fictional account and password **demo**. Canonical accounts are admin@example.test, gp@example.test, reception@example.test, nurse@example.test and therapist@example.test. Older demo.clinic aliases are accepted for UI compatibility. These are simulated role choices, not secure backend accounts.
+5. Use a listed fictional account and password **00000000000000** (14 zeros). Canonical accounts are admin@example.test, gp@example.test, reception@example.test, nurse@example.test and therapist@example.test. Older demo.clinic aliases are accepted for UI compatibility. These are simulated role choices, not secure backend accounts.
 
 Free Render services can spin down when idle and have usage limits; first access can wait for startup. Browser data is independent of server restarts because it lives in sessionStorage. Free hosting is suitable for this simulated demo, not a clinical production database. [Render free-service behavior](https://render.com/docs/free)
 

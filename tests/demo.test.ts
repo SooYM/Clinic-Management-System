@@ -24,7 +24,10 @@ const request = async (
   branchId = 1,
 ) => await clinic.request(path, method, body, branchId);
 const login = async (clinic: DemoClinic, role = 'admin') =>
-  request(clinic, '/auth/login', 'POST', { email: role + '@demo.clinic', password: 'demo' });
+  request(clinic, '/auth/login', 'POST', {
+    email: role + '@demo.clinic',
+    password: '00000000000000',
+  });
 const patientPayload = (nationalId = 'DEMO-PASSPORT') => ({
   firstName: 'Demo',
   lastName: 'Patient',
@@ -71,6 +74,67 @@ const rx = (itemId: number, quantity: number) => ({
 });
 
 describe('browser-session demo simulation', () => {
+  it('uses exactly fourteen zeros for every default demo account and rejects the old password', async () => {
+    const clinic = new DemoClinic(new MemoryStorage());
+    for (const role of ['admin', 'gp', 'reception', 'nurse', 'therapist']) {
+      const signedIn = await login(clinic, role);
+      expect(signedIn.user.email).toBe(role + '@example.test');
+      await request(clinic, '/auth/logout', 'POST');
+      await expect(
+        request(clinic, '/auth/login', 'POST', {
+          email: role + '@example.test',
+          password: 'demo',
+        }),
+      ).rejects.toMatchObject({ status: 401 });
+    }
+  });
+  it('upgrades unchanged stored demo defaults while preserving records and changed passwords', async () => {
+    const storage = new MemoryStorage(),
+      clinic = new DemoClinic(storage);
+    await login(clinic);
+    const patient = await request(
+      clinic,
+      '/patients',
+      'POST',
+      patientPayload('PASSWORD-UPGRADE-RECORD'),
+    );
+    const storedKey = [...storage.entries.keys()][0];
+    const legacy = JSON.parse(storage.getItem(storedKey)!);
+    for (const user of legacy.rows.users) user.password = 'demo';
+    legacy.rows.users.find((user: any) => user.email === 'gp@example.test').password =
+      'custom-password-unchanged';
+    storage.setItem(storedKey, JSON.stringify(legacy));
+    const upgraded = new DemoClinic(storage);
+    await login(upgraded);
+    expect(await request(upgraded, '/patients/' + patient.id)).toMatchObject({
+      nationalId: 'PASSWORD-UPGRADE-RECORD',
+    });
+    await request(upgraded, '/auth/logout', 'POST');
+    await expect(
+      request(upgraded, '/auth/login', 'POST', { email: 'admin@example.test', password: 'demo' }),
+    ).rejects.toMatchObject({ status: 401 });
+    await expect(
+      request(upgraded, '/auth/login', 'POST', {
+        email: 'gp@example.test',
+        password: '00000000000000',
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(
+      (
+        await request(upgraded, '/auth/login', 'POST', {
+          email: 'gp@example.test',
+          password: 'custom-password-unchanged',
+        })
+      ).user.role,
+    ).toBe('DOCTOR');
+    const persisted = JSON.parse(storage.getItem(storedKey)!);
+    expect(
+      persisted.rows.users.find((user: any) => user.email === 'admin@example.test').password,
+    ).toBe('00000000000000');
+    expect(
+      persisted.rows.users.find((user: any) => user.email === 'gp@example.test').password,
+    ).toBe('custom-password-unchanged');
+  });
   it('keeps independent browser session stores isolated', async () => {
     const first = new DemoClinic(new MemoryStorage()),
       second = new DemoClinic(new MemoryStorage());

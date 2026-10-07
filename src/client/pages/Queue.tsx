@@ -92,7 +92,9 @@ export default function Queue({
             >
               Open waiting room display
             </a>
-            <button onClick={() => setCheckIn(!checkIn)}>Check in patient</button>
+            <button data-guide="open-check-in" onClick={() => setCheckIn(!checkIn)}>
+              Check in patient
+            </button>
           </div>
         }
       />

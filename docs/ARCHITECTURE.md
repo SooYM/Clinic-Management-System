@@ -37,6 +37,10 @@ flowchart TB
 Classes encapsulate behavior where invariants matter. Simple record projections remain data rather than empty OOP wrappers.
 Shared contracts and reusable forms reduce duplicated logic. Existing services are concrete; a universal repository-interface layer is not claimed.
 
+The browser guide uses reusable control anchors and an optional walkthrough overlay.
+It explains permitted workflows by highlighting live controls without submitting records.
+Responsive navigation, forms and scroll-contained tables share the workspace styles; phone tour instructions fit the viewport.
+
 ## Authorization and projections
 
 Authentication resolves an active user, tenant, authorized branch and CSRF token.

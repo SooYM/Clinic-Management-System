@@ -1,4 +1,5 @@
-import { PageTitle, Panel } from '../components';
+import { PageTitle, Panel, useModules, useRole } from '../components';
+import { startTour, tourNames } from '../GuidedTour';
 const topics = [
   {
     title: 'Start a clinic shift',
@@ -79,12 +80,31 @@ const topics = [
   },
 ];
 export default function Guide() {
+  const modules = useModules();
+  const role = useRole();
+  const available = Object.entries(tourNames).filter(
+    ([id]) => modules.includes(id) || id === 'account' || (id === 'admin' && role === 'ADMIN'),
+  );
   return (
     <>
       <PageTitle
         title="User guide"
         description="Practical steps for patient registration, clinical care, dispensary, and checkout."
       />
+      <Panel title="Show me on the screen">
+        <p className="form-help">
+          Choose a walkthrough to circle the actual controls. Use Next, Back or Close; nothing is
+          saved by the guide.
+        </p>
+        <div className="visual-guide-list">
+          {available.map(([id, label]) => (
+            <button className="secondary" key={id} onClick={() => startTour(id)}>
+              {label}
+              <span>Start visual guide</span>
+            </button>
+          ))}
+        </div>
+      </Panel>
       <Panel title="Using your clinic workspace">
         <p className="form-help">
           Choose a topic below. Staff permissions may limit the actions available to your account.

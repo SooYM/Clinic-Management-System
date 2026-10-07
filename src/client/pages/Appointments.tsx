@@ -30,7 +30,7 @@ export default function Appointments({
         title="Appointments"
         description="Plan practitioner time and reserve the right consultation room."
         action={
-          <button onClick={() => setCreate(!create)}>
+          <button data-guide="open-appointment" onClick={() => setCreate(!create)}>
             {create ? 'Close booking' : 'Book appointment'}
           </button>
         }

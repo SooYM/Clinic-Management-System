@@ -28,7 +28,7 @@ The [system specification](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md) defines
 | Account security                         | Security/administration, shared password policy                                           | 14–128 characters; current password required; sessions invalidated                        |
 | Audit                                    | `audit_logs`, administration audit read                                                   | Not a database-level tamper-proof archive                                                 |
 | Reusable modular/OOP design              | Domain objects, shared contracts, services, client forms                                  | Modular monolith; not a claim that every SOLID pattern or repository interface exists     |
-| In-app guide                             | `src/client/pages/Guide.tsx`, staff guide                                                 | Current workflows and access troubleshooting                                              |
+| In-app guide and phone access            | `src/client/pages/Guide.tsx`, staff guide, responsive workspace                            | Interactive control highlights, permission-aware tours and current workflow instructions; no automatic record submission |
 | Packages/commissions/photos              | Module retirement guard                                                                   | Removed from active application; historical tables retained                               |
 | Free-hosted browser demo                 | Demo-only browser transport and tab-scoped sessionStorage                                 | Sample data only; no MySQL, real authentication, provider delivery or signed PDFs         |
 

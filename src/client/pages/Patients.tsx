@@ -145,6 +145,7 @@ export default function Patients() {
         action={
           canEdit && (
             <button
+              data-guide="open-registration"
               onClick={() => {
                 setRegister(!register);
                 setSelected(undefined);

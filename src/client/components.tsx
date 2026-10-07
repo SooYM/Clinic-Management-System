@@ -12,6 +12,11 @@ import { api } from './api';
 import { humanize, type Patient, type Reference } from './types';
 export const RoleContext = createContext('');
 export const ModuleContext = createContext<string[]>([]);
+const guideKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 export function useModules() {
   return useContext(ModuleContext);
 }
@@ -92,7 +97,7 @@ export function Panel({
   action?: ReactNode;
 }) {
   return (
-    <section className="panel">
+    <section className="panel" data-guide={`panel-${guideKey(title)}`}>
       <div className="panel-heading">
         <h2>{title}</h2>
         {action}
@@ -153,7 +158,7 @@ export function Field({
   hint?: string;
 }) {
   return (
-    <label className="field">
+    <label className="field" data-guide={`field-${guideKey(label)}`}>
       <span>{label}</span>
       {children}
       {hint && <small>{hint}</small>}
@@ -283,7 +288,7 @@ export function MutationForm({
     }
   }
   return (
-    <form onSubmit={submit} className="form">
+    <form onSubmit={submit} className="form" data-guide={`form-${guideKey(label)}`}>
       {children}
       {error && <ErrorNotice>{error}</ErrorNotice>}
       {success && (
