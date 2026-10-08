@@ -138,3 +138,8 @@ ReceiptView is a shared safe DTO built by receipt-view.ts; receipt-service.ts pe
 ## Patient and consultation workflow boundaries
 
 Shared PatientSelect/SearchablePatientSelect sort copied inputs by numeric ID. ListControls applies explicit default sort without changing action sources or aggregates. PatientForm keeps country controls in a stable grid cell; PhoneInput composes its visible prefix through shared phone helpers. Clinical maintains separate creation and selected-record state, groups loaded matches by patient and loads scoped paginated patient history. WorkspaceSections exposes native disabled buttons for unavailable record tools. GuidedTour explains tabs without bypassing locks or writing records. Appointment removal uses a version-checked transaction and deleted_at; active queries exclude removed bookings. Clinic settings update the existing tenant name under a row lock and optimistic expectedName check; invoice receipt snapshots preserve recorded identity.
+
+
+## Shared confirmation and task navigation
+
+ConfirmationProvider supplies useConfirm to direct action handlers and MutationForm. Native dialog.showModal supplies modal focus containment and inert background; Cancel has initial focus, Escape cancels, and close restores prior focus. Requests resolve only after explicit consent; a pending prompt cannot be replaced. FormData is captured before consent and cancelled forms remain mounted. Sign-in bypasses consent. Clinical patient search uses scoped reference endpoints and existing paginated history without loading all encounters. No schema or API contract change is introduced.

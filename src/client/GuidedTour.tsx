@@ -51,8 +51,8 @@ const sectionGuides: Record<string, [string, string, string][]> = {
   clinical: [
     [
       'consultations',
-      'Consultations by patient',
-      'Patients appear once in ascending patient ID order. Select a patient to review their consultation history, then use Open consultation to select a specific encounter.',
+      'Patient history',
+      'Choose a patient first, then review only their consultation history. Use Open consultation to select a specific encounter.',
     ],
     [
       'create',
@@ -175,31 +175,31 @@ const tours: Record<string, Step[]> = {
       text: 'Find existing patients by name, IC/passport or phone. This helps prevent duplicate records.',
     },
     {
-      target: anchor('open-registration'),
+      target: anchor('section-registration'),
       title: 'Register a first visit',
       text: 'This button opens the patient form. The next steps open it for you, without saving a record.',
     },
     {
       target: field('first-name'),
-      open: 'open-registration',
+      open: 'section-registration',
       title: 'Record the legal name',
       text: 'Use the identity document. Last name can stay blank for a single legal name.',
     },
     {
       target: field('nationality'),
-      open: 'open-registration',
+      open: 'section-registration',
       title: 'Choose identity type',
       text: 'Malaysian IC formats 12 digits and derives birth date and gender. Passport details are entered manually; check the birth century.',
     },
     {
       target: field('postcode'),
-      open: 'open-registration',
+      open: 'section-registration',
       title: 'Review the address',
       text: 'Malaysian postcode lookup assists city and state. Choose a locality when several match; manual corrections remain available.',
     },
     {
       target: field('allergies'),
-      open: 'open-registration',
+      open: 'section-registration',
       title: 'Capture safety details',
       text: 'Record allergies and chronic conditions, then review notification consent. Close the tour and review all details before saving.',
     },
@@ -236,13 +236,13 @@ const tours: Record<string, Step[]> = {
   ],
   queue: [
     {
-      target: anchor('open-check-in'),
+      target: anchor('section-check-in'),
       title: 'Check in an arrival',
       text: 'Use this button for a registered patient. This guide opens the form but never adds a queue ticket.',
     },
     {
       target: `${panel('check-in')} ${field('patient')}`,
-      open: 'open-check-in',
+      open: 'section-check-in',
       title: 'Choose the correct patient',
       text: 'Confirm the patient and priority before adding a ticket. One active visit per patient is allowed.',
     },
@@ -319,25 +319,25 @@ const tours: Record<string, Step[]> = {
   ],
   billing: [
     {
-      target: anchor('open-checkout'),
+      target: anchor('section-checkout'),
       title: 'Open patient checkout',
       text: 'Create itemized charges and payments together. The guide opens a form but never creates an invoice.',
     },
     {
       target: `${panel('patient-checkout')} ${field('patient')}`,
-      open: 'open-checkout',
+      open: 'section-checkout',
       title: 'Confirm patient and practitioner',
       text: 'Choose the correct patient and GP before entering invoice lines.',
     },
     {
       target: '.invoice-line',
-      open: 'open-checkout',
+      open: 'section-checkout',
       title: 'Enter itemized charges',
       text: 'Record description, quantity, price and category. Add more lines only when needed.',
     },
     {
       target: '.payment-line',
-      open: 'open-checkout',
+      open: 'section-checkout',
       title: 'Split the payment',
       text: 'Cash, card, QR and deposit amounts must exactly match the total. Deposit spending cannot exceed the recorded balance.',
     },
@@ -435,9 +435,9 @@ export function GuidedTour({
     ...(module === 'clinical'
       ? [
           {
-            target: panel('patients-with-consultations'),
+            target: panel('choose-patient'),
             title: 'Select patient, then consultation',
-            text: 'Open a patient group to see their dated consultation history. Use Open consultation to unlock the record tabs. New consultation creates a separate record; the guide never saves or signs it.',
+            text: 'Search and select a patient first. Their history appears below. Open consultation unlocks record tools; New consultation creates a separate record for this patient.',
             section: 'consultations',
           },
         ]

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import type { CatalogEntry } from '../AdminCatalogs';
 import PrescriptionLog from '../PrescriptionLog';
@@ -20,6 +20,8 @@ import {
 } from '../components';
 import { type InventoryItem, dateTime, humanize } from '../types';
 import { useListControls } from '../ListControls';
+import { useConfirm } from '../Confirmation';
+import './Inventory.css';
 function StockBatches({ item }: { item: InventoryItem }) {
   const list = useListControls(item.batches || [], {
     defaultSort: 'id',
@@ -109,8 +111,10 @@ function PendingMedicines({
 }
 export default function Inventory() {
   const role = useRole();
+  const confirm = useConfirm();
   const [showRemoved, setShowRemoved] = useState(false);
   const [catalogError, setCatalogError] = useState('');
+  const [detailsItemId, setDetailsItemId] = useState<number>();
   const [section, setSection] = useState('stock');
   const editorRef = useRef<HTMLDivElement>(null);
   const units = useResource<CatalogEntry[]>('/references/catalogs?kind=INVENTORY_UNIT');
@@ -393,10 +397,8 @@ export default function Inventory() {
           </div>
           <Panel title="Stock catalogue">
             <p className="form-help">
-              Removal hides future choices; existing records stay preserved. Show removed items to
-              restore them. Available excludes signed-prescription reservations and ineligible
-              expired stock. Signing reserves stock; dispensing deducts physical quantities once.
-              Unexpired stock includes non-expiring supplies.
+              Available stock excludes expired batches and prescription reservations. Open item
+              details for batch quantities, reservations and catalogue management.
             </p>
             <div className="form-grid">
               <Field label="Search inventory">
@@ -425,85 +427,161 @@ export default function Inventory() {
               Show removed inventory items
             </label>
             {catalogError && <ErrorNotice>{catalogError}</ErrorNotice>}
-            {catalogList.controls}
+            <details className="inventory-list-options">
+              <summary>Filter and sort loaded stock</summary>
+              {catalogList.controls}
+            </details>
             <ResourceState {...resource}>
               {catalogList.items.length ? (
-                <div className="table-wrap">
+                <div className="table-wrap inventory-catalogue">
                   <table>
                     <thead>
                       <tr>
                         <th>Item</th>
-                        <th>Category</th>
                         <th>Available</th>
-                        <th>Unexpired stock</th>
-                        <th>Reserved</th>
                         <th>Reorder level</th>
                         <th>Status</th>
-                        {role === 'ADMIN' && <th>Action</th>}
+                        <th>Details</th>
                       </tr>
                     </thead>
                     <tbody>
                       {catalogList.items.map((item) => (
-                        <tr key={item.id}>
-                          <td>
-                            <strong>{item.name}</strong>
-                            <small>
-                              Item ID #{item.id} · {item.sku} · {item.unit}
-                            </small>
-                            {item.batches?.length ? (
-                              <StockBatches item={item} />
-                            ) : (
-                              <small>No batches received</small>
-                            )}
-                          </td>
-                          <td>{humanize(item.category || 'MEDICATION')}</td>
-                          <td>{item.stockQuantity ?? item.quantity ?? 0}</td>
-                          <td>{item.onHandQuantity ?? '—'}</td>
-                          <td>{item.reservedQuantity ?? '—'}</td>
-                          <td>{item.reorderLevel}</td>
-                          <td>
-                            <Status value={item.active === false ? 'ARCHIVED' : 'ACTIVE'} />
-                          </td>
-                          {role === 'ADMIN' && (
+                        <Fragment key={item.id}>
+                          <tr>
+                            <td>
+                              <strong>{item.name}</strong>
+                              <small>
+                                Item ID #{item.id} · {humanize(item.category || 'MEDICATION')}
+                              </small>
+                            </td>
+                            <td>
+                              <strong>{item.stockQuantity ?? item.quantity ?? 0}</strong>
+                              <small>{item.unit}</small>
+                              {item.active !== false &&
+                                (item.stockQuantity ?? item.quantity ?? 0) <= item.reorderLevel && (
+                                  <small>Reorder needed</small>
+                                )}
+                            </td>
+                            <td>{item.reorderLevel}</td>
+                            <td>
+                              <Status value={item.active === false ? 'ARCHIVED' : 'ACTIVE'} />
+                            </td>
                             <td>
                               <button
+                                type="button"
                                 className="secondary"
-                                onClick={() => {
-                                  setSection('stock');
-                                  setEditingItem(item);
-                                  setCreate(false);
-                                }}
+                                aria-expanded={detailsItemId === item.id}
+                                aria-controls={
+                                  detailsItemId === item.id
+                                    ? `inventory-details-${item.id}`
+                                    : undefined
+                                }
+                                onClick={() =>
+                                  setDetailsItemId(detailsItemId === item.id ? undefined : item.id)
+                                }
                               >
-                                Edit item
-                              </button>
-                              <button
-                                className="secondary"
-                                onClick={async () => {
-                                  try {
-                                    setCatalogError('');
-                                    await api.put('/admin/inventory/' + item.id, {
-                                      name: item.name,
-                                      sku: item.sku,
-                                      ingredient: item.ingredient || '',
-                                      category: item.category || 'MEDICATION',
-                                      unit: item.unit,
-                                      priceCents: item.priceCents || 0,
-                                      reorderLevel: item.reorderLevel,
-                                      active: item.active === false,
-                                      version: item.version,
-                                    });
-                                    if (editingItem?.id === item.id) setEditingItem(undefined);
-                                    refresh();
-                                  } catch (failure) {
-                                    setCatalogError((failure as Error).message);
-                                  }
-                                }}
-                              >
-                                {item.active === false ? 'Restore' : 'Remove'}
+                                {detailsItemId === item.id ? 'Hide details' : 'View details'}
                               </button>
                             </td>
+                          </tr>
+                          {detailsItemId === item.id && (
+                            <tr className="inventory-details-row">
+                              <td colSpan={5}>
+                                <section
+                                  id={`inventory-details-${item.id}`}
+                                  aria-label={`${item.name} details`}
+                                >
+                                  <h3>{item.name} details</h3>
+                                  <dl className="inventory-item-facts">
+                                    <div>
+                                      <dt>SKU</dt>
+                                      <dd>{item.sku}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Active ingredient</dt>
+                                      <dd>
+                                        {item.ingredient ||
+                                          (item.category === 'MEDICATION'
+                                            ? 'Not recorded'
+                                            : 'Not applicable')}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt>Unexpired stock</dt>
+                                      <dd>
+                                        {item.onHandQuantity ?? '—'} {item.unit}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt>Reserved</dt>
+                                      <dd>
+                                        {item.reservedQuantity ?? '—'} {item.unit}
+                                      </dd>
+                                    </div>
+                                  </dl>
+                                  {item.batches?.length ? (
+                                    <StockBatches item={item} />
+                                  ) : (
+                                    <p className="form-help">No batches received.</p>
+                                  )}
+                                  {role === 'ADMIN' && (
+                                    <div className="actions inventory-item-actions">
+                                      <button
+                                        className="secondary"
+                                        onClick={() => {
+                                          setSection('stock');
+                                          setEditingItem(item);
+                                          setCreate(false);
+                                        }}
+                                      >
+                                        Edit item
+                                      </button>
+                                      <button
+                                        className="secondary"
+                                        onClick={async () => {
+                                          const restore = item.active === false;
+                                          if (
+                                            !(await confirm({
+                                              title: `${restore ? 'Restore' : 'Remove'} ${item.name}?`,
+                                              message: restore
+                                                ? 'This item will be available for new catalogue choices again.'
+                                                : 'This item will be hidden from new catalogue choices. Recorded stock and prescriptions remain preserved.',
+                                              confirmLabel: restore
+                                                ? 'Restore item'
+                                                : 'Remove item',
+                                            }))
+                                          )
+                                            return;
+                                          try {
+                                            setCatalogError('');
+                                            await api.put('/admin/inventory/' + item.id, {
+                                              name: item.name,
+                                              sku: item.sku,
+                                              ingredient: item.ingredient || '',
+                                              category: item.category || 'MEDICATION',
+                                              unit: item.unit,
+                                              priceCents: item.priceCents || 0,
+                                              reorderLevel: item.reorderLevel,
+                                              active: item.active === false,
+                                              version: item.version,
+                                            });
+                                            if (editingItem?.id === item.id)
+                                              setEditingItem(undefined);
+                                            refresh();
+                                          } catch (failure) {
+                                            setCatalogError((failure as Error).message);
+                                          }
+                                        }}
+                                      >
+                                        {item.active === false ? 'Restore' : 'Remove'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </section>
+                              </td>
+                            </tr>
                           )}
-                        </tr>
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>

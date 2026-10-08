@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Simplify task entry tabs; make consultations patient-first; collapse catalogue detail controls; enable default ID direction.
+- Add shared modal consent for persistent changes, remove sidebar guide, and request practitioner registration only for doctors.
+
 - Patient rows open full profiles; patient selectors and inventory default to ascending IDs. Country selection has a stable layout and phone inputs show selected prefixes.
 - Today/future booking dates, one booking entry, confirmed appointment removal with retained history (migration 017), and editable clinic names.
 - Clinical lists group by patient; separate creation and record review, with locked record tools until selection.

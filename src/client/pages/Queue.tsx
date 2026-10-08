@@ -17,6 +17,7 @@ import {
 } from '../components';
 import { type Patient, type Reference, type Ticket, queueStates } from '../types';
 import { useListControls } from '../ListControls';
+import { useConfirm } from '../Confirmation';
 export default function Queue({
   rooms,
   practitioners,
@@ -24,6 +25,7 @@ export default function Queue({
   rooms: Reference[];
   practitioners: Reference[];
 }) {
+  const confirm = useConfirm();
   const resource = useResource<Ticket[]>('/queue');
   const estimate = useResource<{
     estimatedMinutes: number | null;
@@ -78,6 +80,14 @@ export default function Queue({
     const next =
       target || queueStates[queueStates.indexOf(ticket.status as (typeof queueStates)[number]) + 1];
     if (!next) return;
+    if (
+      !(await confirm({
+        title: 'Update patient visit?',
+        message: `Move ${ticket.patientName || 'patient'} (${ticket.ticketNumber}) from ${ticket.status.replaceAll('_', ' ').toLowerCase()} to ${next.replaceAll('_', ' ').toLowerCase()}? This updates the live queue.`,
+        confirmLabel: 'Update visit',
+      }))
+    )
+      return;
     setError('');
     setBusy(ticket.id);
     try {
@@ -114,9 +124,6 @@ export default function Queue({
             >
               Open waiting room display
             </a>
-            <button data-guide="open-check-in" onClick={() => setCheckIn(!checkIn)}>
-              Check in patient
-            </button>
           </div>
         }
       />

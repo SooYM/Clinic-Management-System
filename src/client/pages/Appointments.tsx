@@ -18,6 +18,7 @@ import { type Patient, type Appointment, type Reference, dateTime } from '../typ
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import { useListControls } from '../ListControls';
 import { malaysiaDate } from '../../shared/clinic-dates';
+import { useConfirm } from '../Confirmation';
 export default function Appointments({
   practitioners,
   rooms,
@@ -29,7 +30,7 @@ export default function Appointments({
   const patients = useResource<Patient[]>('/references/patients');
   const [section, setSection] = useState('visits');
   const [bookingRevision, setBookingRevision] = useState(0);
-  const [deleting, setDeleting] = useState<Appointment>();
+  const confirm = useConfirm();
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [deleteSuccess, setDeleteSuccess] = useState(false);
@@ -78,53 +79,6 @@ export default function Appointments({
               </p>
             )}
             {deleteError && <ErrorNotice>{deleteError}</ErrorNotice>}
-            {deleting && (
-              <div
-                className="notice appointment-delete-confirm"
-                role="group"
-                aria-label="Confirm appointment deletion"
-              >
-                <p>
-                  Delete appointment #{deleting.id} for{' '}
-                  {deleting.patientName ||
-                    patients.data?.find((patient) => patient.id === deleting.patientId)?.name ||
-                    'this patient'}{' '}
-                  on {dateTime(deleting.startsAt)}? Linked clinical visits cannot be deleted.
-                </p>
-                <div className="actions">
-                  <button
-                    type="button"
-                    disabled={deletingBusy}
-                    onClick={async () => {
-                      setDeletingBusy(true);
-                      setDeleteError('');
-                      try {
-                        await api.request(`/appointments/${deleting.id}`, 'DELETE', {
-                          version: deleting.version,
-                        });
-                        setDeleting(undefined);
-                        setDeleteSuccess(true);
-                        resource.refresh();
-                      } catch (error) {
-                        setDeleteError((error as Error).message);
-                      } finally {
-                        setDeletingBusy(false);
-                      }
-                    }}
-                  >
-                    {deletingBusy ? 'Deleting…' : 'Confirm delete'}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={deletingBusy}
-                    onClick={() => setDeleting(undefined)}
-                  >
-                    Keep appointment
-                  </button>
-                </div>
-              </div>
-            )}
             {visits.controls}
             <ResourceState {...resource}>
               {resource.data?.length ? (
@@ -162,10 +116,37 @@ export default function Appointments({
                               <button
                                 type="button"
                                 className="secondary"
-                                onClick={() => {
-                                  setDeleting(a);
+                                disabled={deletingBusy}
+                                onClick={async () => {
+                                  if (
+                                    !(await confirm({
+                                      title: 'Delete appointment?',
+                                      message:
+                                        'Remove appointment #' +
+                                        a.id +
+                                        ' for ' +
+                                        (a.patientName || 'this patient') +
+                                        ' on ' +
+                                        dateTime(a.startsAt) +
+                                        '? Audit history is retained.',
+                                      confirmLabel: 'Delete appointment',
+                                    }))
+                                  )
+                                    return;
+                                  setDeletingBusy(true);
                                   setDeleteError('');
                                   setDeleteSuccess(false);
+                                  try {
+                                    await api.request('/appointments/' + a.id, 'DELETE', {
+                                      version: a.version,
+                                    });
+                                    setDeleteSuccess(true);
+                                    resource.refresh();
+                                  } catch (error) {
+                                    setDeleteError((error as Error).message);
+                                  } finally {
+                                    setDeletingBusy(false);
+                                  }
                                 }}
                               >
                                 Delete appointment

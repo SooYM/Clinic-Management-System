@@ -50,3 +50,8 @@ The browser demo includes settings lifecycle parity and in-page official-receipt
 ## Current demo workflow update
 
 The demo includes profile row navigation, fixed nationality controls, prefixed phone entry, grouped clinical history, separate creation, booking removal, clinic name settings and contextual tab guides. Reports & delivery is removed from navigation. Session data remains fictional and temporary. Git publication does not prove Blueprint sync, health or hosted browser success; verify those separately after Render deploys.
+
+
+## HCI demo revision
+
+Rebuild demo assets to include single-entry task tabs, patient-first consultation selection, catalogue disclosures, default-ID direction selection and popup consent. Header User guide remains available. No Blueprint environment or persistent migration change is needed for this revision. Confirm actual Render health and browser assets separately after Git publication.

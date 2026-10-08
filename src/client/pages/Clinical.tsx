@@ -8,9 +8,6 @@ import {
   MutationForm,
   PageTitle,
   Panel,
-  SearchablePatientSelect,
-  ResourceState,
-  Status,
   formText,
   useResource,
   useRole,
@@ -296,10 +293,10 @@ function BloodPressureField({ initial }: { initial?: string | number }) {
 export default function Clinical({ practitionerId }: { practitionerId: number }) {
   const role = useRole();
   const [section, setSection] = useState('consultations');
-  const [encounterSearch, setEncounterSearch] = useState('');
-  const encounterTerm = useDebouncedValue(encounterSearch.trim());
-  const encounters = useResource<Encounter[]>(
-    `/encounters?search=${encodeURIComponent(encounterTerm)}`,
+  const [patientSearch, setPatientSearch] = useState('');
+  const patientTerm = useDebouncedValue(patientSearch.trim());
+  const patients = useResource<Patient[]>(
+    `/references/patients?search=${encodeURIComponent(patientTerm)}`,
   );
   const items = useResource<InventoryItem[]>('/references/medications?includeInactive=1');
   const labPanels = useResource<CatalogEntry[]>('/references/catalogs?kind=LAB_PANEL');
@@ -308,43 +305,31 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     '/references/catalogs?kind=REFERRAL_DESTINATION',
   );
   const [selected, setSelected] = useState<Encounter>();
-  const [selectedPatientId, setSelectedPatientId] = useState<number>();
+  const [chosenPatient, setChosenPatient] = useState<Patient>();
+  const selectedPatientId = chosenPatient?.id;
+  const activePatientId = useRef(selectedPatientId);
+  activePatientId.current = selectedPatientId;
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [documentKind, setDocumentKind] = useState('MC');
   const [doc, setDoc] = useState<Document>();
   const [error, setError] = useState('');
   const [prescriptionSearch, setPrescriptionSearch] = useState('');
   const patientResource = useResource<Patient>(
-    selected ? `/clinical/patients/${selected.patientId}` : '',
+    selectedPatientId ? `/clinical/patients/${selectedPatientId}` : '',
   );
-  const patient =
-    patientResource.data?.id === selected?.patientId ? patientResource.data : undefined;
-  const encounterList = useListControls(encounters.data || [], {
-    label: 'Loaded consultations',
-    defaultSort: 'patient-id',
-    search: (row) => `${row.id} ${row.patientName} ${row.assessment}`,
-    filters: [
-      { key: 'status', label: 'Consultation status', value: (row) => row.status },
-      { key: 'specialty', label: 'Specialty', value: (row) => row.specialty },
-    ],
-    sorts: [
-      { key: 'patient-id', label: 'Patient ID', value: (row) => row.patientId },
-      { key: 'date', label: 'Consultation date', value: (row) => row.createdAt },
-      { key: 'patient', label: 'Patient name', value: (row) => row.patientName },
-      { key: 'id', label: 'Encounter ID', value: (row) => row.id },
-    ],
-  });
-  const matchingEncounters = encounterList.items;
-  const patientGroups = Array.from(
-    new Map(
-      matchingEncounters.map((row) => [
-        row.patientId,
-        {
-          id: row.patientId,
-          name: row.patientName || 'Patient',
-        },
-      ]),
-    ).values(),
-  );
+  const patient = patientResource.data?.id === selectedPatientId ? patientResource.data : undefined;
+  const patientChoices = [
+    ...(chosenPatient && !(patients.data || []).some((row) => row.id === chosenPatient.id)
+      ? [chosenPatient, ...(patients.data || [])]
+      : patients.data || []),
+  ].sort((a, b) => a.id - b.id);
+  function choosePatient(next?: Patient) {
+    setChosenPatient(next);
+    setSelected(undefined);
+    setDoc(undefined);
+    setPrescriptionSearch('');
+    setSection('consultations');
+  }
   const searchedPrescriptions = (selected?.prescriptions || []).filter((rx) =>
     `${rx.itemName || items.data?.find((item) => item.id === rx.itemId)?.name || rx.itemId} ${rx.dosage}`
       .toLowerCase()
@@ -372,7 +357,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
   const consultationForm = (
     <Panel title={selected ? 'Consultation note' : 'New consultation'}>
       <MutationForm
-        key={selected ? `${selected.id}:${selected.version}` : 'new'}
+        key={selected ? `${selected.id}:${selected.version}` : `new:${selectedPatientId}`}
         label={selected ? 'Save consultation' : 'Create consultation'}
         disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
         disabledReason={
@@ -380,13 +365,13 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
             ? 'Only a GP account can create, edit, or sign clinical notes. You can review recorded consultations.'
             : undefined
         }
-        onSuccess={encounters.refresh}
+        onSuccess={() => setHistoryRevision((value) => value + 1)}
         onSubmit={async (f) => {
           if (selected?.status === 'SIGNED') throw new Error('Signed encounters cannot be edited.');
           const itemId = Number(formText(f, 'itemId'));
           parseBloodPressure(formText(f, 'bloodPressure'));
           const body = {
-            patientId: selected?.patientId || Number(formText(f, 'patientId')),
+            patientId: selected?.patientId || selectedPatientId,
             specialty: selected?.specialty || formText(f, 'specialty'),
             queueTicketId: selected?.queueTicketId || undefined,
             subjective: formText(f, 'subjective'),
@@ -422,12 +407,16 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
           const saved = selected
             ? await api.put<Encounter>(`/encounters/${selected.id}`, body)
             : await api.post<Encounter>('/encounters', body);
+          if (activePatientId.current !== saved.patientId) return;
           setSelected(saved);
-          setSelectedPatientId(saved.patientId);
           setSection('notes');
         }}
       >
-        {!selected && <SearchablePatientSelect />}
+        {!selected && (
+          <p className="form-help">
+            New consultation for {chosenPatient?.name} · Patient ID #{selectedPatientId}
+          </p>
+        )}
         <div className="form-grid">
           <Field label="Consultation template">
             <select name="specialty" defaultValue={selected?.specialty || 'GP'}>
@@ -536,12 +525,54 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         title="Clinical workspace"
         description="Record the consultation, prescribe safely, and issue clinical documents."
       />
-      {selected && (
+      <Panel title="Choose patient">
+        <div className="form-grid">
+          <Field
+            label="Search patient"
+            hint="Search name, IC, passport or phone. Then select a patient."
+          >
+            <input
+              type="search"
+              value={patientSearch}
+              maxLength={200}
+              onChange={(event) => setPatientSearch(event.target.value)}
+              placeholder="Name, IC, passport or phone"
+            />
+          </Field>
+          <Field label="Patient">
+            <select
+              value={selectedPatientId || ''}
+              onChange={(event) =>
+                choosePatient(patientChoices.find((row) => row.id === Number(event.target.value)))
+              }
+            >
+              <option value="">
+                {patients.loading ? 'Searching patients…' : 'Select patient'}
+              </option>
+              {patientChoices.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name} · Patient ID #{row.id} · {row.nationalId}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        {patients.error && <ErrorNotice>{patients.error}</ErrorNotice>}
+        {!patients.loading && !patients.error && !patientChoices.length && (
+          <p className="form-help">
+            No matching patient. Change the search or register the patient first.
+          </p>
+        )}
+        <p className="form-help">
+          Select a patient to view their history or start a new consultation.
+        </p>
+      </Panel>
+      {chosenPatient && (
         <div className="patient-banner">
           <div>
-            <h2>{patient?.name || selected.patientName}</h2>
+            <h2>{patient?.name || chosenPatient.name}</h2>
             <p>
-              Patient ID #{selected.patientId} · {patient?.nationalId} ·{' '}
+              Patient ID #{selectedPatientId} · {patient?.nationalId || chosenPatient.nationalId} ·{' '}
               {patient?.bloodGroup || 'Blood group unknown'}
             </p>
           </div>
@@ -568,76 +599,15 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
       >
         <WorkspaceSection
           id="consultations"
-          label="Consultations"
-          description="Find a saved encounter or start a new consultation."
+          label="Patient history"
+          description="Review consultations for the selected patient. Open a record to use its tools."
         >
-          <Panel
-            title="Patients with consultations"
-            action={
-              role === 'DOCTOR' && (
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    setSelected(undefined);
-                    setSection('create');
-                    setDoc(undefined);
-                  }}
-                >
-                  New consultation
-                </button>
-              )
-            }
-          >
-            <Field
-              label="Search consultations"
-              hint="Search branch consultations by patient, assessment or encounter ID."
-            >
-              <input
-                type="search"
-                value={encounterSearch}
-                onChange={(event) => setEncounterSearch(event.target.value)}
-                placeholder="Patient, assessment or encounter ID"
-              />
-            </Field>
-            {encounterList.controls}
-            <p className="form-help">
-              Each patient appears once among matching loaded consultations. Open their history to
-              load older records.
-            </p>
-            <ResourceState {...encounters}>
-              {patientGroups.length ? (
-                patientGroups.map((group) => (
-                  <button
-                    className={`encounter-row ${selectedPatientId === group.id ? 'selected' : ''}`}
-                    key={group.id}
-                    onClick={() => {
-                      setSelectedPatientId(group.id);
-                      setSelected(undefined);
-                      setDoc(undefined);
-                      setPrescriptionSearch('');
-                    }}
-                  >
-                    <strong>{group.name}</strong>
-                    <span>Open patient consultation history</span>
-                    <small>Patient ID #{group.id}</small>
-                  </button>
-                ))
-              ) : (
-                <Empty
-                  title={
-                    encounters.data?.length || encounterTerm
-                      ? 'No matching consultations'
-                      : 'No consultations recorded'
-                  }
-                  description={
-                    encounterTerm
-                      ? 'Change or clear the search to see recent consultations.'
-                      : "Start a consultation to create the patient's first SOAP note."
-                  }
-                />
-              )}
-            </ResourceState>
-          </Panel>
+          {!selectedPatientId && (
+            <Empty
+              title="Choose a patient first"
+              description="Their consultation history will appear here. Record tools stay locked until you open a consultation."
+            />
+          )}
           {selectedPatientId && (
             <Panel title="Patient consultation history">
               <p className="form-help">
@@ -645,7 +615,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 prescription, Documents and Medication logs.
               </p>
               <ConsultationHistory
-                key={selectedPatientId}
+                key={`${selectedPatientId}:${historyRevision}`}
                 patientId={selectedPatientId}
                 onOpen={(encounter) => {
                   setSelected(encounter);
@@ -660,10 +630,10 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         <WorkspaceSection
           id="create"
           label="New consultation"
-          disabled={role !== 'DOCTOR'}
-          description="Choose a patient and create a separate consultation. Save before opening its record tools."
+          disabled={role !== 'DOCTOR' || !selectedPatientId}
+          description="Create a separate consultation for the selected patient. Save before opening its record tools."
         >
-          {!selected && consultationForm}
+          {!selected && selectedPatientId && consultationForm}
         </WorkspaceSection>
         <WorkspaceSection
           id="notes"
@@ -914,7 +884,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
             <Panel title="Medication logs">
               <Empty
                 title="Select a consultation"
-                description="Choose a saved encounter in Consultations to review its patient doses and prescription activity."
+                description="Open a saved encounter in Patient history to review its doses and prescription activity."
               />
             </Panel>
           )}

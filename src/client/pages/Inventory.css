@@ -1,0 +1,37 @@
+.inventory-list-options {
+  margin-block: 1rem;
+}
+.inventory-list-options > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.inventory-list-options[open] > summary {
+  margin-bottom: 1rem;
+}
+.inventory-details-row > td {
+  padding: 1.25rem;
+}
+.inventory-details-row h3 {
+  margin-top: 0;
+}
+.inventory-item-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin-block: 1rem;
+}
+.inventory-item-facts dt {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.inventory-item-facts dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+.inventory-item-actions {
+  margin-top: 1rem;
+}
+.inventory-catalogue td:nth-child(2),
+.inventory-catalogue td:nth-child(3) {
+  font-variant-numeric: tabular-nums;
+}

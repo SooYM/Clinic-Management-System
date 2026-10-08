@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { AlertCircle, ArrowRight, RefreshCw } from 'lucide-react';
 import { api } from './api';
+import { useConfirm } from './Confirmation';
 import { humanize, type Patient, type Reference } from './types';
 export const RoleContext = createContext('');
 export const ModuleContext = createContext<string[]>([]);
@@ -284,14 +285,29 @@ export function MutationForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const confirm = useConfirm();
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (busy || disabled) return;
+    const values = new FormData(form);
     setBusy(true);
     setError('');
     setSuccess(false);
     try {
-      await onSubmit(new FormData(form));
+      if (
+        label !== 'Sign in' &&
+        !(await confirm({
+          title: `${label}?`,
+          message:
+            values.get('status') === 'SIGNED'
+              ? 'Signing makes this consultation permanent and reserves prescribed stock. Confirm only after reviewing the patient, note and medicines.'
+              : 'Review the entered details. Confirm to apply this change; Cancel keeps your form unchanged.',
+          confirmLabel: label,
+        }))
+      )
+        return;
+      await onSubmit(values);
       setSuccess(true);
       onSuccess?.();
     } catch (e) {

@@ -6,7 +6,6 @@ import {
   ClipboardList,
   Pill,
   CreditCard,
-  BookOpen,
   LogOut,
   Menu,
   X,
@@ -28,6 +27,7 @@ import {
 import { type Reference, type User } from './types';
 import { QueueDisplay, VerifyCertificate } from './pages/Public';
 import { GuidedTour, startTour, tourNames } from './GuidedTour';
+import { ConfirmationProvider, useConfirm } from './Confirmation';
 const Account = lazy(() => import('./pages/Account'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Queue = lazy(() => import('./pages/Queue'));
@@ -249,21 +249,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
             <LogOut size={19} />
             Account security
           </a>
-          <a
-            href="#guide"
-            className={page === 'guide' ? 'active' : ''}
-            aria-current={page === 'guide' ? 'page' : undefined}
-            onClick={(event) => {
-              if (permittedPage && tourNames[page]) {
-                event.preventDefault();
-                setMobileNav(false);
-                startTour(page);
-              }
-            }}
-          >
-            <BookOpen size={19} />
-            User guide
-          </a>
         </nav>
         <div className="sidebar-bottom">
           <div className="avatar">{(user.name || user.email || 'S').slice(0, 1).toUpperCase()}</div>
@@ -416,14 +401,27 @@ function ClinicApp() {
     </>
   );
 }
-export default function App() {
+function Application() {
+  const confirm = useConfirm();
   return isDemo ? (
     <div className="demo-app">
       <div className="demo-banner" role="note">
         <span>
           <strong>Browser demo</strong> — sample data only, resets when tab closes.
         </span>
-        <button className="secondary" onClick={() => void api.resetDemo()}>
+        <button
+          className="secondary"
+          onClick={async () => {
+            if (
+              await confirm({
+                title: 'Reset demo?',
+                message: 'Discard changes in this demo session and reload the sample data.',
+                confirmLabel: 'Reset demo',
+              })
+            )
+              await api.resetDemo();
+          }}
+        >
           Reset demo
         </button>
       </div>
@@ -431,5 +429,12 @@ export default function App() {
     </div>
   ) : (
     <ClinicApp />
+  );
+}
+export default function App() {
+  return (
+    <ConfirmationProvider>
+      <Application />
+    </ConfirmationProvider>
   );
 }

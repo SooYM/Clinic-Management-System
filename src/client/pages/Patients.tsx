@@ -184,25 +184,18 @@ export default function Patients() {
       <PageTitle
         title="Patients"
         description="Find a patient, review their profile, or register a first visit."
-        action={
-          canEdit && (
-            <button
-              data-guide="open-registration"
-              onClick={() => {
-                if (section === 'registration' && !editing) setSection('directory');
-                else {
-                  setSection('registration');
-                  setSelected(undefined);
-                  setEditing(false);
-                }
-              }}
-            >
-              {section === 'registration' && !editing ? 'Close registration' : 'Register patient'}
-            </button>
-          )
-        }
       />
-      <WorkspaceSections label="Patient sections" value={section} onChange={setSection}>
+      <WorkspaceSections
+        label="Patient sections"
+        value={section}
+        onChange={(next) => {
+          if (next === 'registration' && section !== 'registration') {
+            setEditing(false);
+            setSelected(undefined);
+          }
+          setSection(next);
+        }}
+      >
         <WorkspaceSection
           id="directory"
           label="Patient directory"

@@ -5,7 +5,7 @@ This guide covers the current clinic workflows. Use **User guide** in the applic
 ## Visual walkthroughs and phone use
 
 Open **User guide → Show me on the screen** and choose an available workflow.
-Select **User guide** in the current screen's header or sidebar to label its tabs and explain their functions. The guide circles actual buttons, fields and workflow sections. The dedicated guide page also retains workflow topics.
+Select **User guide** in the current screen's header to label its tabs and explain their functions. The guide circles actual buttons, fields and workflow sections. The dedicated guide page also retains workflow topics.
 Use **Next**, **Back**, **Close**, or **Escape**. **Focus highlighted control** moves keyboard focus to the relevant field or button.
 Tours follow your role's modules and never save patients, bookings, prescriptions, payments or administrative changes.
 Some steps open an input form for demonstration; review and submit it yourself only after closing the guide.
@@ -29,7 +29,7 @@ Module access controls which workflows staff can open and use. Signing prescript
 
 ## Register a patient
 
-Open **Patients → Register patient**. Enter first name and optional last name as recorded on the patient's identity document.
+Open **Patients → Patient registration**. Enter first name and optional last name as recorded on the patient's identity document.
 Choose **Phone country code** from the dropdown, then enter the phone number. Malaysia (+60) is the default; its domestic leading zero is removed when composing an edited international number. Pasting a full international number detects listed prefixes without duplicating them. Choose **Other country — enter full number** for unlisted countries and include `+` and the calling code. Phone remains optional; existing numbers stay unchanged until edited. Spaces, hyphens and extensions are retained within the existing 50-character limit.
 The selected calling code appears inside the number field. It is included automatically when saving. Country of nationality occupies a fixed position; Malaysia is shown as a fixed country for Malaysian patients.
 
@@ -60,7 +60,7 @@ Use **Clinic overview** to check patients into the queue. Assign the GP and room
 
 Open **Clinical workspace → New consultation**, choose the patient and record subjective history, objective findings, assessment and plan. Creating the consultation opens its Notes & prescription section. Review allergies before prescribing.
 
-The Consultations section groups matching loaded records by patient. Click a patient to load their consultation history, then Open consultation to select a record. Notes & prescription, Documents and Medication logs stay greyed out until a consultation is selected. New consultation clears record selection and opens a separate creation form.
+Choose the patient first, then use Patient history and Open consultation to select a record. Notes & prescription, Documents and Medication logs stay greyed out until a consultation is selected. New consultation clears record selection and opens a separate creation form.
 
 SOAP fields use separate rows. Search the patient selector or consultation list to locate the correct record.
 Enter blood pressure as `SYS/DIA`, such as `120/80`, using positive whole numbers with systolic greater than diastolic.
@@ -159,3 +159,8 @@ Switch away from a branch before removing it. Branches assigned as home branch t
 **Stock unit** means how one stock quantity is counted: tablet, capsule, bottle, vial, pair or piece. Configure choices in **Administration → Catalog choices → Inventory units**, then select one while adding an item. Received quantities and prescribed quantities use that unit; changing a used unit would reinterpret existing stock and is blocked.
 
 In Billing → Invoice history, select **Preview receipt**. The official-receipt layout shows actual clinic/patient details, itemized fees, totals, tender methods, cashier and issue time. The MySQL app provides separate printable PDF and Download PDF actions. Demo previews are sample receipts, with no real payment or PDF verification. New receipt identities stay fixed after later name edits; old invoices use existing current records.
+
+
+## Current task navigation and confirmation
+
+Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout or Patient deposits. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Before saving, review the popup and choose the named action to consent. Cancel or Escape returns to the unchanged form. Unsaved line edits, navigation, previews, filters and search remain immediate. No consultation history is shown until you select a patient. Only GPs can create consultations.

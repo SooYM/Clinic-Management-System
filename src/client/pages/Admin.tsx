@@ -19,6 +19,7 @@ import AdminCatalogs from '../AdminCatalogs';
 import RoleModules from './RoleModules';
 import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
 import { useListControls } from '../ListControls';
+import { useConfirm } from '../Confirmation';
 interface Staff extends User {
   active: boolean;
 }
@@ -42,6 +43,7 @@ export default function Admin({
   branches: Reference[];
   onBranchCreated: () => void;
 }) {
+  const confirm = useConfirm();
   const users = useResource<Staff[]>('/admin/users');
   const branchRecords = useResource<AdminBranch[]>('/admin/branches');
   const [editingBranch, setEditingBranch] = useState<AdminBranch>();
@@ -195,7 +197,8 @@ export default function Admin({
                   password: formText(f, 'password'),
                   role: formText(f, 'role'),
                   branchId: Number(formText(f, 'branchId')),
-                  licenseNumber: formText(f, 'licenseNumber') || null,
+                  licenseNumber:
+                    formText(f, 'role') === 'DOCTOR' ? formText(f, 'licenseNumber') || null : null,
                 })
               }
             >
@@ -233,12 +236,11 @@ export default function Admin({
                   </select>
                 </Field>
                 <SelectReference items={branches} name="branchId" label="Branch" />
-                <Field
-                  label="Practitioner registration number"
-                  hint={staffRole === 'DOCTOR' ? 'Required for GP accounts.' : undefined}
-                >
-                  <input name="licenseNumber" required={staffRole === 'DOCTOR'} />
-                </Field>
+                {staffRole === 'DOCTOR' && (
+                  <Field label="Practitioner registration number" hint="Required for GP accounts.">
+                    <input name="licenseNumber" required />
+                  </Field>
+                )}
               </div>
             </MutationForm>
           </Panel>
@@ -314,6 +316,18 @@ export default function Admin({
                               <button
                                 className="secondary"
                                 onClick={async () => {
+                                  if (
+                                    !(await confirm({
+                                      title: u.active
+                                        ? 'Remove staff access?'
+                                        : 'Restore staff access?',
+                                      message: u.active
+                                        ? `Disable sign-in for ${u.name}? Their existing records remain preserved.`
+                                        : `Allow ${u.name} to sign in again with their existing role?`,
+                                      confirmLabel: u.active ? 'Remove access' : 'Restore access',
+                                    }))
+                                  )
+                                    return;
                                   try {
                                     setStaffError('');
                                     await api.put(`/admin/users/${u.id}`, { active: !u.active });
@@ -400,6 +414,16 @@ export default function Admin({
                     <button
                       className="secondary"
                       onClick={async () => {
+                        if (
+                          !(await confirm({
+                            title: branch.active ? 'Remove branch?' : 'Restore branch?',
+                            message: branch.active
+                              ? `Archive ${branch.name} and hide it from future choices? Its records remain preserved.`
+                              : `Make ${branch.name} available for future use again?`,
+                            confirmLabel: branch.active ? 'Remove branch' : 'Restore branch',
+                          }))
+                        )
+                          return;
                         try {
                           setBranchError('');
                           await api.put('/admin/branches/' + branch.id, {
@@ -517,6 +541,18 @@ export default function Admin({
                     <button
                       className="secondary"
                       onClick={async () => {
+                        if (
+                          !(await confirm({
+                            title: r.active
+                              ? 'Remove consultation room?'
+                              : 'Restore consultation room?',
+                            message: r.active
+                              ? `Remove ${r.name} from future choices? Rooms with history are archived and unused rooms are deleted.`
+                              : `Make ${r.name} available for future consultations again?`,
+                            confirmLabel: r.active ? 'Remove room' : 'Restore room',
+                          }))
+                        )
+                          return;
                         try {
                           setRoomError('');
                           if (r.active) await api.request(`/admin/rooms/${r.id}`, 'DELETE');

@@ -131,3 +131,15 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | Inventory ingredient/ID | Medication required; supplies/retail optional; ID defaults; historical archive allowed | Actual MySQL/demo tests and browser |
 | Clinic name | Admin-only optimistic update; new receipt identity; old snapshots preserved | Actual MySQL/demo tests |
 | Guide/navigation | Reports UI absent; real tabs/functions circled; disabled tools stay locked | Desktop/320px browser |
+
+
+## HCI acceptance cases
+
+| Case | Expected | Verification |
+| --- | --- | --- |
+| Entry controls | One task tab; contextual submit remains | Admin browser |
+| Patient-first consultation | No records before selection; selected history; switching clears tools | Admin/GP browser |
+| Stock catalogue | Secondary metadata collapsed; Default ID direction editable | Browser/list-controls tests |
+| GP registration | Required only for DOCTOR; other payloads null | Browser/source contract |
+| Popup consent | Cancel/Escape no write, drafts retained; Confirm commits; focus stays modal | Desktop/320px browser |
+| Help | Header launcher present; sidebar guide absent | Browser |

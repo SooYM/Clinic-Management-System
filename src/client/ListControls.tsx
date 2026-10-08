@@ -6,11 +6,12 @@ export function useListControls<T>(rows: readonly T[], config: ListConfig<T>) {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState(config.defaultSort || '');
   const [descending, setDescending] = useState(false);
+  const effectiveSort = sort || config.defaultSort || '';
   const items = applyListControls(rows, config, {
     search,
     filters,
-    sort: sort || config.defaultSort || '',
-    descending: !!sort && descending,
+    sort: effectiveSort,
+    descending: !!effectiveSort && descending,
   });
   const label = config.label || 'List';
   return {
@@ -74,7 +75,7 @@ export function useListControls<T>(rows: readonly T[], config: ListConfig<T>) {
           <select
             aria-label={`${label} direction`}
             value={descending ? 'desc' : 'asc'}
-            disabled={!sort}
+            disabled={!effectiveSort}
             onChange={(e) => setDescending(e.target.value === 'desc')}
           >
             <option value="asc">Ascending</option>

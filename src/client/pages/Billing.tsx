@@ -71,19 +71,6 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
       <PageTitle
         title="Billing & payments"
         description="Clear itemised charges, split payments, and traceable receipts."
-        action={
-          <div className="actions">
-            <button className="secondary" onClick={() => setSection('deposits')}>
-              Record deposit
-            </button>
-            <button
-              data-guide="open-checkout"
-              onClick={() => setSection(section === 'checkout' ? 'invoices' : 'checkout')}
-            >
-              {section === 'checkout' ? 'Close checkout' : 'New checkout'}
-            </button>
-          </div>
-        }
       />
       <WorkspaceSections label="Billing sections" value={section} onChange={setSection}>
         <WorkspaceSection
