@@ -30,6 +30,10 @@ Module access controls which workflows staff can open and use. Signing prescript
 
 Open **Patients → Register patient**. Enter first name and optional last name as recorded on the patient's identity document.
 Choose **Phone country code** from the dropdown, then enter the phone number. Malaysia (+60) is the default; its domestic leading zero is removed when composing an edited international number. Pasting a full international number detects listed prefixes without duplicating them. Choose **Other country — enter full number** for unlisted countries and include `+` and the calling code. Phone remains optional; existing numbers stay unchanged until edited. Spaces, hyphens and extensions are retained within the existing 50-character limit.
+
+For **Non-Malaysian**, choose **Country of nationality** as shown on the passport. This is independent of address and phone calling code. Existing foreign patients without recorded country need a selection when their demographics are edited.
+
+Record lists include **Search loaded records**, relevant filters, **Sort by**, **Direction** and **Clear filters**. Original order preserves the usual workflow sequence. Counts show matches out of loaded records; existing server searches/Load older actions retrieve more records where available. Filters affect the displayed list, not stock, billing totals or saved records.
 For a single legal name, leave last name blank.
 
 For **Malaysian** patients, enter 12 IC digits. The form adds hyphens as `YYMMDD-SS-NNNN`, derives birth date and assigns male for an odd final digit or female for an even final digit. Review the derived details before saving. The two-digit year does not identify its century; use the birth-date correction provided by the form when needed. The system checks number/date format; it does not verify the IC with a government registry.

@@ -19,6 +19,38 @@ import {
   useRole,
 } from '../components';
 import { type InventoryItem, dateTime, humanize } from '../types';
+import { useListControls } from '../ListControls';
+function StockBatches({ item }: { item: InventoryItem }) {
+  const list = useListControls(item.batches || [], {
+    label: `${item.name} batches`,
+    search: (row) => `${row.id} ${row.batchNumber}`,
+    filters: [
+      {
+        key: 'expiry',
+        label: 'Expiry type',
+        value: (row) => (row.expiresOn ? 'DATED' : 'NO_EXPIRY'),
+      },
+    ],
+    sorts: [
+      { key: 'expiry', label: 'Expiry date', value: (row) => row.expiresOn || '9999' },
+      { key: 'batch', label: 'Batch number', value: (row) => row.batchNumber },
+      { key: 'quantity', label: 'Quantity', value: (row) => row.quantity },
+    ],
+  });
+  return (
+    <details>
+      <summary>View batches</summary>
+      {list.controls}
+      {list.items.map((batch) => (
+        <p className="form-help" key={batch.id}>
+          {batch.batchNumber} · {batch.quantity} units ·{' '}
+          {batch.expiresOn ? `expiry ${batch.expiresOn.slice(0, 10)}` : 'No expiry'}
+        </p>
+      ))}
+      {!list.items.length && <p className="form-help">No matching batches.</p>}
+    </details>
+  );
+}
 interface PendingPrescription {
   id: number;
   patientId: number;
@@ -36,6 +68,40 @@ interface PendingPrescription {
     frequencyPerDay: number;
     mealTiming: string;
   }[];
+}
+function PendingMedicines({
+  prescriptions,
+}: {
+  prescriptions: PendingPrescription['prescriptions'];
+}) {
+  const list = useListControls(prescriptions, {
+    label: 'Selected prescription medicines',
+    search: (row) => `${row.itemName} ${row.dosage}`,
+    filters: [{ key: 'meal', label: 'Meal timing', value: (row) => row.mealTiming || 'ANY_TIME' }],
+    sorts: [
+      { key: 'name', label: 'Medicine name', value: (row) => row.itemName },
+      { key: 'quantity', label: 'Quantity', value: (row) => row.quantity },
+      { key: 'frequency', label: 'Times per day', value: (row) => row.frequencyPerDay || 1 },
+    ],
+  });
+  return (
+    <>
+      {list.controls}
+      <p className="form-help">
+        Filters change this view only. Dispensing uses the entire selected prescription.
+      </p>
+      {list.items.map((rx, index) => (
+        <div className="list-row" key={`${rx.itemId}:${index}`}>
+          <strong>{rx.itemName}</strong>
+          <p>
+            {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
+            {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.durationDays} days
+          </p>
+          <p className="form-help">{rx.dosage}</p>
+        </div>
+      ))}
+    </>
+  );
 }
 export default function Inventory() {
   const role = useRole();
@@ -76,6 +142,58 @@ export default function Inventory() {
   const matchingPrescriptions = pending.data || [];
   const matchingItems = resource.data || [];
   const catalogItems = matchingItems.filter((item) => showRemoved || item.active !== false);
+  const catalogList = useListControls(catalogItems, {
+    label: 'Loaded stock catalogue',
+    search: (row) => `${row.id} ${row.name} ${row.sku} ${row.ingredient || ''}`,
+    filters: [
+      {
+        key: 'stock',
+        label: 'Stock level',
+        value: (row) =>
+          (row.stockQuantity ?? row.quantity ?? 0) <= row.reorderLevel ? 'REORDER' : 'AVAILABLE',
+      },
+      {
+        key: 'active',
+        label: 'Item status',
+        value: (row) => (row.active === false ? 'ARCHIVED' : 'ACTIVE'),
+      },
+    ],
+    sorts: [
+      { key: 'name', label: 'Item name', value: (row) => row.name },
+      {
+        key: 'available',
+        label: 'Available quantity',
+        value: (row) => row.stockQuantity ?? row.quantity ?? 0,
+      },
+      { key: 'id', label: 'Item ID', value: (row) => row.id },
+    ],
+  });
+  const pendingList = useListControls(matchingPrescriptions, {
+    label: 'Loaded pending prescriptions',
+    search: (row) =>
+      `${row.id} ${row.patientName} ${row.practitionerName} ${row.prescriptions.map((rx) => rx.itemName).join(' ')}`,
+    filters: [{ key: 'gp', label: 'Prescribing GP', value: (row) => row.practitionerName }],
+    sorts: [
+      { key: 'date', label: 'Prescription date', value: (row) => row.createdAt },
+      { key: 'patient', label: 'Patient name', value: (row) => row.patientName },
+      { key: 'id', label: 'Encounter ID', value: (row) => row.id },
+    ],
+  });
+  const historyList = useListControls(history.data || [], {
+    label: 'Loaded prescription history',
+    search: (row) => `${row.id} ${row.patientId} ${row.patientName}`,
+    filters: [
+      {
+        key: 'dispensed',
+        label: 'Dispensing status',
+        value: (row) => (row.dispensed ? 'DISPENSED' : 'PENDING'),
+      },
+    ],
+    sorts: [
+      { key: 'id', label: 'Encounter ID', value: (row) => row.id },
+      { key: 'patient', label: 'Patient name', value: (row) => row.patientName },
+    ],
+  });
   const receivingItem = resource.data?.find((item) => item.id === Number(receivingItemId));
   const optionalExpiry =
     receivingItem?.category === 'CONSUMABLE' || receivingItem?.category === 'RETAIL';
@@ -286,8 +404,9 @@ export default function Inventory() {
               Show removed inventory items
             </label>
             {catalogError && <ErrorNotice>{catalogError}</ErrorNotice>}
+            {catalogList.controls}
             <ResourceState {...resource}>
-              {catalogItems.length ? (
+              {catalogList.items.length ? (
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -303,7 +422,7 @@ export default function Inventory() {
                       </tr>
                     </thead>
                     <tbody>
-                      {catalogItems.map((item) => (
+                      {catalogList.items.map((item) => (
                         <tr key={item.id}>
                           <td>
                             <strong>{item.name}</strong>
@@ -311,17 +430,7 @@ export default function Inventory() {
                               Item ID #{item.id} · {item.sku} · {item.unit}
                             </small>
                             {item.batches?.length ? (
-                              <details>
-                                <summary>View batches</summary>
-                                {item.batches.map((batch) => (
-                                  <p className="form-help" key={batch.id}>
-                                    {batch.batchNumber} · {batch.quantity} units ·{' '}
-                                    {batch.expiresOn
-                                      ? `expiry ${batch.expiresOn.slice(0, 10)}`
-                                      : 'No expiry'}
-                                  </p>
-                                ))}
-                              </details>
+                              <StockBatches item={item} />
                             ) : (
                               <small>No batches received</small>
                             )}
@@ -381,11 +490,13 @@ export default function Inventory() {
               ) : (
                 <Empty
                   title={
-                    inventoryTerm || category ? 'No matching inventory items' : 'No inventory items'
+                    catalogItems.length || inventoryTerm || category
+                      ? 'No matching inventory items'
+                      : 'No inventory items'
                   }
                   description={
-                    inventoryTerm || category
-                      ? 'Try another search or choose All categories.'
+                    catalogItems.length || inventoryTerm || category
+                      ? 'Clear filters, try another search or choose All categories.'
                       : 'Add medicines, consumables or retail products, then receive batches. Available quantities update after receiving, reservation or dispensing.'
                   }
                 />
@@ -532,6 +643,30 @@ export default function Inventory() {
               />
             </Field>
             <ResourceState {...pending}>
+              {pendingList.controls}
+              {pendingList.items.map((row) => (
+                <div className="list-row" key={row.id}>
+                  <strong>{row.patientName}</strong>
+                  <p className="form-help">
+                    Encounter #{row.id} · {row.practitionerName} · {dateTime(row.createdAt)}
+                  </p>
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      setEncounterId(String(row.id));
+                      setDispenseKey(crypto.randomUUID());
+                    }}
+                  >
+                    Review prescription
+                  </button>
+                </div>
+              ))}
+              {!!pending.data?.length && !pendingList.items.length && (
+                <p className="form-help">
+                  No pending prescriptions match these filters. Clear filters to review all loaded
+                  records.
+                </p>
+              )}
               {pending.data?.length ? (
                 <MutationForm
                   label="Dispense eligible batches"
@@ -583,16 +718,7 @@ export default function Inventory() {
                       <p className="allergies">
                         Allergies: {selected.allergies?.join(', ') || 'None recorded'}
                       </p>
-                      {selected.prescriptions.map((rx, index) => (
-                        <div className="list-row" key={`${rx.itemId}:${index}`}>
-                          <strong>{rx.itemName}</strong>
-                          <p>
-                            {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
-                            {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.durationDays} days
-                          </p>
-                          <p className="form-help">{rx.dosage}</p>
-                        </div>
-                      ))}
+                      <PendingMedicines key={selected.id} prescriptions={selected.prescriptions} />
                     </div>
                   )}
                   <div className="notice info">
@@ -637,6 +763,22 @@ export default function Inventory() {
               />
             </Field>
             <ResourceState {...history}>
+              {historyList.controls}
+              {historyList.items.map((row) => (
+                <div className="list-row" key={row.id}>
+                  <strong>{row.patientName}</strong>
+                  <p className="form-help">
+                    Patient #{row.patientId} · Encounter #{row.id} ·{' '}
+                    {row.dispensed ? 'Dispensed' : 'Pending'}
+                  </p>
+                  <button className="secondary" onClick={() => setLogEncounterId(String(row.id))}>
+                    View activity
+                  </button>
+                </div>
+              ))}
+              {!!history.data?.length && !historyList.items.length && (
+                <p className="form-help">No prescription history matches these filters.</p>
+              )}
               {history.data?.length ? (
                 <Field label="Prescription activity record">
                   <select

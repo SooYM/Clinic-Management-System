@@ -30,6 +30,7 @@ export interface Patient {
   firstName: string;
   lastName: string;
   nationality: 'MALAYSIAN' | 'NON_MALAYSIAN';
+  countryCode?: string | null;
   addressLine1: string;
   addressLine2: string;
   postcode: string;

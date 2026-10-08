@@ -1,5 +1,6 @@
 import { Empty, PageTitle, Panel, ResourceState, Status, useResource } from '../components';
 import { dateTime } from '../types';
+import { useListControls } from '../ListControls';
 interface Notification {
   id: number;
   patientName?: string;
@@ -11,6 +12,19 @@ interface Notification {
 }
 export default function Reports() {
   const resource = useResource<Notification[]>('/notifications');
+  const list = useListControls(resource.data || [], {
+    label: 'Loaded notification delivery',
+    search: (row) => `${row.id} ${row.patientName || ''} ${row.template} ${row.lastError || ''}`,
+    filters: [
+      { key: 'status', label: 'Delivery status', value: (row) => row.status },
+      { key: 'channel', label: 'Channel', value: (row) => row.channel },
+    ],
+    sorts: [
+      { key: 'date', label: 'Created date', value: (row) => row.createdAt },
+      { key: 'patient', label: 'Patient name', value: (row) => row.patientName || '' },
+      { key: 'id', label: 'Notification ID', value: (row) => row.id },
+    ],
+  });
   return (
     <>
       <PageTitle
@@ -18,8 +32,9 @@ export default function Reports() {
         description="Review patient notification delivery for appointments, queue calls, and medication refills."
       />
       <Panel title="Patient notification delivery">
+        {list.controls}
         <ResourceState {...resource}>
-          {resource.data?.length ? (
+          {list.items.length ? (
             <div className="table-wrap">
               <table>
                 <thead>
@@ -32,7 +47,7 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {resource.data.map((n) => (
+                  {list.items.map((n) => (
                     <tr key={n.id}>
                       <td>{n.patientName || 'Patient notification'}</td>
                       <td>{n.channel}</td>
@@ -51,7 +66,9 @@ export default function Reports() {
             </div>
           ) : (
             <Empty
-              title="No notifications queued"
+              title={
+                resource.data?.length ? 'No matching notifications' : 'No notifications queued'
+              }
               description="Consent-based appointment confirmations, queue alerts, and refill reminders appear here when created."
             />
           )}

@@ -12,6 +12,7 @@ import {
 } from './components';
 import { dateTime, humanize } from './types';
 import type { MedicationDoseLog as DoseLog } from '../shared/medication-doses';
+import { useListControls } from './ListControls';
 
 function malaysiaTimeInput() {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -39,6 +40,20 @@ export default function MedicationDoseLog({
   const resource = useResource<DoseLog>(`/encounters/${encounterId}/medication-doses`);
   const [outcome, setOutcome] = useState('TAKEN');
   const [formKey, setFormKey] = useState(crypto.randomUUID());
+  const list = useListControls(resource.data?.entries || [], {
+    label: 'Medication doses',
+    search: (row) => `${row.medicineName} ${row.actorName} ${row.notes || ''}`,
+    filters: [
+      { key: 'outcome', label: 'Outcome', value: (row) => row.outcome },
+      { key: 'source', label: 'Source', value: (row) => row.source },
+      { key: 'medicine', label: 'Medicine', value: (row) => row.medicineName },
+    ],
+    sorts: [
+      { key: 'time', label: 'Dose time', value: (row) => row.occurredAt },
+      { key: 'medicine', label: 'Medicine name', value: (row) => row.medicineName },
+      { key: 'amount', label: 'Amount', value: (row) => row.amount },
+    ],
+  });
   return (
     <Panel title="Patient medication-taking log">
       <p className="form-help">
@@ -128,7 +143,8 @@ export default function MedicationDoseLog({
         </p>
       )}
       <ResourceState {...resource}>
-        {resource.data?.entries.length ? (
+        {list.controls}
+        {list.items.length ? (
           <div className="table-wrap">
             <table>
               <thead>
@@ -139,7 +155,7 @@ export default function MedicationDoseLog({
                 </tr>
               </thead>
               <tbody>
-                {resource.data.entries.map((dose) => (
+                {list.items.map((dose) => (
                   <tr key={dose.id}>
                     <td>
                       <strong>{dose.medicineName}</strong>
@@ -164,8 +180,14 @@ export default function MedicationDoseLog({
           </div>
         ) : (
           <Empty
-            title="No patient doses recorded"
-            description="No reports or observations have been recorded for this consultation. Absence of a record does not mean a dose was missed."
+            title={
+              resource.data?.entries.length ? 'No matching doses' : 'No patient doses recorded'
+            }
+            description={
+              resource.data?.entries.length
+                ? 'Clear filters to see all loaded dose records.'
+                : 'No reports or observations have been recorded for this consultation. Absence of a record does not mean a dose was missed.'
+            }
           />
         )}
       </ResourceState>

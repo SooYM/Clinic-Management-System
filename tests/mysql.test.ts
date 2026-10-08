@@ -244,6 +244,40 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       notificationConsent: false,
       ...extra,
     });
+  it('persists and edits nationality country without inventing legacy nationality or losing branch scope', async () => {
+    const saved = await patient({ nationality: 'NON_MALAYSIAN', countryCode: 'SG' });
+    expect(saved.countryCode).toBe('SG');
+    const updated = await service.savePatient(ctx, { ...saved, countryCode: 'GB' }, saved.id);
+    expect(updated.countryCode).toBe('GB');
+    const { countryCode: omitted, ...legacyPayload } = updated;
+    const retained = await service.savePatient(ctx, legacyPayload, saved.id);
+    expect(retained.countryCode).toBe('GB');
+    expect((await service.getPatient(ctx, saved.id)).countryCode).toBe('GB');
+    await expect(
+      service.savePatient(otherCtx, { ...retained, countryCode: 'SG' }, saved.id),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await patient({ nationality: 'NON_MALAYSIAN' })).countryCode).toBeNull();
+    const malaysian = await patient({
+      nationality: 'MALAYSIAN',
+      nationalId: '880101145567',
+      dateOfBirth: '1988-01-01',
+      sex: 'MALE',
+    });
+    expect(malaysian.countryCode).toBe('MY');
+    for (const countryCode of ['XX', 'sg', 'MY'])
+      expect(
+        (
+          await http('/patients', 'POST', {
+            firstName: 'Fictional',
+            nationality: 'NON_MALAYSIAN',
+            nationalId: randomUUID(),
+            dateOfBirth: '1990-01-01',
+            sex: 'OTHER',
+            countryCode,
+          })
+        ).status,
+      ).toBe(400);
+  });
   const item = (extra: any = {}) =>
     service.addItem(
       { ...ctx, actor: { ...ctx.actor, id: administrator, role: 'ADMIN' } },

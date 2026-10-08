@@ -24,6 +24,7 @@ import PrescriptionLog from '../PrescriptionLog';
 import MedicationDoseLog from '../MedicationDoseLog';
 import { defaultMcStartDate } from '../../shared/clinic-dates';
 import { parseBloodPressure } from '../../shared/blood-pressure';
+import { useListControls } from '../ListControls';
 interface Encounter {
   id: number;
   patientId: number;
@@ -191,12 +192,44 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
   );
   const patient =
     patientResource.data?.id === selected?.patientId ? patientResource.data : undefined;
-  const matchingEncounters = encounters.data || [];
-  const matchingRecordedPrescriptions = (selected?.prescriptions || []).filter((rx) =>
+  const encounterList = useListControls(encounters.data || [], {
+    label: 'Loaded consultations',
+    search: (row) => `${row.id} ${row.patientName} ${row.assessment}`,
+    filters: [
+      { key: 'status', label: 'Consultation status', value: (row) => row.status },
+      { key: 'specialty', label: 'Specialty', value: (row) => row.specialty },
+    ],
+    sorts: [
+      { key: 'date', label: 'Consultation date', value: (row) => row.createdAt },
+      { key: 'patient', label: 'Patient name', value: (row) => row.patientName },
+      { key: 'id', label: 'Encounter ID', value: (row) => row.id },
+    ],
+  });
+  const matchingEncounters = encounterList.items;
+  const searchedPrescriptions = (selected?.prescriptions || []).filter((rx) =>
     `${rx.itemName || items.data?.find((item) => item.id === rx.itemId)?.name || rx.itemId} ${rx.dosage}`
       .toLowerCase()
       .includes(prescriptionSearch.trim().toLowerCase()),
   );
+  const prescriptionList = useListControls(searchedPrescriptions, {
+    label: 'Recorded medicines',
+    search: (rx) =>
+      `${rx.itemName || items.data?.find((item) => item.id === rx.itemId)?.name || rx.itemId} ${rx.dosage}`,
+    filters: [{ key: 'meal', label: 'Meal timing', value: (rx) => rx.mealTiming || 'ANY_TIME' }],
+    sorts: [
+      {
+        key: 'medicine',
+        label: 'Medicine name',
+        value: (rx) =>
+          rx.itemName ||
+          items.data?.find((item) => item.id === rx.itemId)?.name ||
+          String(rx.itemId),
+      },
+      { key: 'quantity', label: 'Quantity', value: (rx) => rx.quantity },
+      { key: 'frequency', label: 'Times per day', value: (rx) => rx.frequencyPerDay || 1 },
+    ],
+  });
+  const matchingRecordedPrescriptions = prescriptionList.items;
   return (
     <>
       <PageTitle
@@ -256,6 +289,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 placeholder="Patient, assessment or encounter ID"
               />
             </Field>
+            {encounterList.controls}
             <ResourceState {...encounters}>
               {matchingEncounters.length ? (
                 matchingEncounters.map((e) => (
@@ -278,7 +312,11 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 ))
               ) : (
                 <Empty
-                  title={encounterTerm ? 'No matching consultations' : 'No consultations recorded'}
+                  title={
+                    encounters.data?.length || encounterTerm
+                      ? 'No matching consultations'
+                      : 'No consultations recorded'
+                  }
                   description={
                     encounterTerm
                       ? 'Change or clear the search to see recent consultations.'
@@ -392,6 +430,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               </Field>
               <fieldset>
                 <legend>Add prescription</legend>
+                {!!selected?.prescriptions?.length && prescriptionList.controls}
                 {!!selected?.prescriptions?.length && (
                   <Field label="Search recorded prescriptions">
                     <input

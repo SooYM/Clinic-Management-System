@@ -2,9 +2,11 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `015_branch_settings.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `016_patient_country.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
+
+Migration 016 adds nullable `patients.country_code` for ISO country of nationality. Only explicitly Malaysian historical records receive MY. Unknown foreign countries remain NULL; recognized-country validation is centralized in the application. No extra entity or ID is introduced.
 
 There are 26 entity tables with `BIGINT UNSIGNED AUTO_INCREMENT` primary keys.
 Entity foreign keys are matching unsigned BIGINT values, including audit actor/entity references and generated queue references.

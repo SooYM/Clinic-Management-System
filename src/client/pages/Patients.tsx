@@ -19,6 +19,8 @@ import {
 import { type Patient, dateTime } from '../types';
 import PatientForm from './PatientForm';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
+import { useListControls } from '../ListControls';
+import { countryName } from '../../shared/countries';
 interface Encounter {
   id: number;
   createdAt: string;
@@ -43,6 +45,15 @@ function PatientHistory({ patientId }: { patientId: number }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const historyList = useListControls(history, {
+    label: 'Encounter history',
+    search: (row) => `${row.id} ${row.assessment} ${row.specialty} ${row.status}`,
+    filters: [{ key: 'status', label: 'Status', value: (row) => row.status }],
+    sorts: [
+      { key: 'date', label: 'Consultation date', value: (row) => row.createdAt },
+      { key: 'id', label: 'Encounter ID', value: (row) => row.id },
+    ],
+  });
   useEffect(() => {
     let active = true;
     if (!permitted) return;
@@ -102,7 +113,8 @@ function PatientHistory({ patientId }: { patientId: number }) {
           </button>
         </>
       )}
-      {history.map((e) => (
+      {historyList.controls}
+      {historyList.items.map((e) => (
         <div className="list-row" key={e.id}>
           <strong>{e.assessment || 'Encounter'}</strong>
           <p>
@@ -135,6 +147,29 @@ export default function Patients() {
   const [registrationRevision, setRegistrationRevision] = useState(0);
   const [editing, setEditing] = useState(false);
   const resource = useResource<Patient[]>(`/patients?search=${encodeURIComponent(searchTerm)}`);
+  const patientList = useListControls(resource.data || [], {
+    label: 'Patients',
+    search: (row) => `${row.id} ${row.name} ${row.nationalId} ${row.phone}`,
+    filters: [
+      { key: 'nationality', label: 'Nationality', value: (row) => row.nationality },
+      {
+        key: 'country',
+        label: 'Country',
+        value: (row) =>
+          row.nationality === 'MALAYSIAN'
+            ? 'Malaysia'
+            : row.countryCode
+              ? countryName(row.countryCode)
+              : 'Unknown',
+      },
+      { key: 'sex', label: 'Gender', value: (row) => row.sex },
+    ],
+    sorts: [
+      { key: 'id', label: 'Patient ID', value: (row) => row.id },
+      { key: 'name', label: 'Patient name', value: (row) => row.name },
+      { key: 'birth', label: 'Birth date', value: (row) => row.dateOfBirth },
+    ],
+  });
   function saved(patient: Patient) {
     resource.refresh();
     setSection('directory');
@@ -217,6 +252,14 @@ export default function Patients() {
                   }
                 >
                   <dl>
+                    <dt>Country of nationality</dt>
+                    <dd>
+                      {selected.nationality === 'MALAYSIAN'
+                        ? 'Malaysia'
+                        : selected.countryCode
+                          ? countryName(selected.countryCode)
+                          : 'Not recorded'}
+                    </dd>
                     <dt>Phone</dt>
                     <dd>{selected.phone || 'Not recorded'}</dd>
                     <dt>Email</dt>
@@ -251,6 +294,11 @@ export default function Patients() {
                   </button>
                 )}
               </div>
+              <p className="form-help">
+                Search patient list queries saved patients. Filters and sorting below apply to the
+                loaded results.
+              </p>
+              {patientList.controls}
               <ResourceState {...resource}>
                 {resource.data?.length ? (
                   <div className="table-wrap">
@@ -266,7 +314,7 @@ export default function Patients() {
                         </tr>
                       </thead>
                       <tbody>
-                        {resource.data.map((p) => (
+                        {patientList.items.map((p) => (
                           <tr key={p.id}>
                             <td>#{p.id}</td>
                             <td>

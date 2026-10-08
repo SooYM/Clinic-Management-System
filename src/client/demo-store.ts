@@ -479,6 +479,8 @@ export class DemoClinic {
       this.state = seed();
     }
     // Existing browser sessions retain historical prescriptions without adding retroactive holds.
+    for (const patient of this.state.rows.patients)
+      patient.countryCode ??= patient.nationality === 'MALAYSIAN' ? 'MY' : null;
     for (const table of ['reservations', 'usages', 'medicationDoses']) {
       this.state.rows[table] ||= [];
       this.state.counters[table] ??= Math.max(0, ...this.state.rows[table].map((r) => r.id));
@@ -985,10 +987,13 @@ export class DemoClinic {
       if (id) {
         const p = this.record('patients', id, branch);
         if (p.version !== value.version) fail('Patient changed. Refresh before saving.', 409);
+        if (value.countryCode === undefined)
+          value.countryCode =
+            value.nationality === 'NON_MALAYSIAN' && p.countryCode === 'MY' ? null : p.countryCode;
         Object.assign(p, value, { version: p.version + 1, updatedAt: now() });
         return p;
       }
-      const p = this.add('patients', value, branch);
+      const p = this.add('patients', { ...value, countryCode: value.countryCode ?? null }, branch);
       p.patientNumber = p.id;
       return p;
     }

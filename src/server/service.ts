@@ -178,8 +178,10 @@ export class ClinicService {
   }
   async savePatient(ctx: Context, input: any, id?: number) {
     return this.transact(async (db) => {
+      let previousCountry: string | null = null;
       if (id) {
         const previous = await this.patient(db, ctx, id);
+        previousCountry = previous.country_code;
         if (previous.version !== input.version)
           throw new DomainError('VERSION_CONFLICT', 'Patient changed. Refresh before saving.', 409);
       }
@@ -200,6 +202,11 @@ export class ClinicService {
             ? Boolean(payload.notificationConsent)
             : payload.notificationConsent,
       });
+      if (input.countryCode === undefined)
+        input.countryCode =
+          input.nationality === 'NON_MALAYSIAN' && previousCountry === 'MY'
+            ? null
+            : previousCountry;
       const locations = lookupPostcode(input.postcode);
       if (locations.length === 1) {
         const location = locations[0];
@@ -232,19 +239,20 @@ export class ClinicService {
         input.postcode,
         input.state,
         input.city,
+        input.countryCode ?? null,
       ];
       let rows;
       if (id) {
         await this.patient(db, ctx, id);
         ({ rows } = await db.query(
-          `UPDATE patients SET name=$3,national_id=$4,date_of_birth=$5,sex=$6,phone=$7,email=$8,blood_group=$9,allergies=$10,conditions=$11,notification_consent=$12,first_name=$13,last_name=$14,nationality=$15,address_line1=$16,address_line2=$17,postcode=$18,state=$19,city=$20,version=version+1,updated_at=now() WHERE tenant_id=$1 AND branch_id=$2 AND id=$21 AND version=$22 RETURNING *`,
+          `UPDATE patients SET name=$3,national_id=$4,date_of_birth=$5,sex=$6,phone=$7,email=$8,blood_group=$9,allergies=$10,conditions=$11,notification_consent=$12,first_name=$13,last_name=$14,nationality=$15,address_line1=$16,address_line2=$17,postcode=$18,state=$19,city=$20,country_code=$21,version=version+1,updated_at=now() WHERE tenant_id=$1 AND branch_id=$2 AND id=$22 AND version=$23 RETURNING *`,
           [...values, id, input.version],
         ));
         if (!rows[0])
           throw new DomainError('VERSION_CONFLICT', 'Patient changed. Refresh before saving.', 409);
       } else
         ({ rows } = await db.query(
-          `INSERT INTO patients(tenant_id,branch_id,name,national_id,date_of_birth,sex,phone,email,blood_group,allergies,conditions,notification_consent,first_name,last_name,nationality,address_line1,address_line2,postcode,state,city) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+          `INSERT INTO patients(tenant_id,branch_id,name,national_id,date_of_birth,sex,phone,email,blood_group,allergies,conditions,notification_consent,first_name,last_name,nationality,address_line1,address_line2,postcode,state,city,country_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
           values,
         ));
       await this.audit(db, ctx, id ? 'UPDATE' : 'CREATE', 'patient', rows[0].id);

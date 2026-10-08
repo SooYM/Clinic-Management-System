@@ -112,6 +112,10 @@ Patient `phone` accepts local and international text up to 50 characters, includ
 
 The patient form offers a country-code dropdown (Malaysia by default) and composes the existing `phone` string before submission. Unlisted codes use full international entry. Unedited stored numbers are preserved. No country-code column or separate API property is introduced.
 
+Patient `countryCode` is a separate optional ISO 3166-1 alpha-2 country of nationality, unrelated to phone/address. Malaysian records derive `MY`. Non-Malaysian registration/editing requires country selection in the UI; supplied API codes must be recognized and cannot be `MY`. Legacy callers may omit it; old foreign countries remain unknown until explicitly updated. Ordinary updates preserve an omitted country when nationality remains unchanged.
+
+List controls search, filter and sort already loaded records. Existing server searches/cursor loading remain available. Counts identify this boundary. Views do not change permissions, action choices, queue priority, stock or financial totals. Sorting defaults to original order and never mutates the source array.
+
 `GET /documents/:id` returns a `DocumentView`, including clinic/patient/practitioner display details, Malaysia issue date/time, status, `fields` as `{label,value}` pairs, and `diagnosis` as text or `null` when withheld. It excludes the raw signed payload, signing hash and verification token. Preview and PDF reads reject altered snapshots or metadata with `409 DOCUMENT_INTEGRITY_FAILED`; revocation remains visibly marked.
 
 `GET /documents/:id/pdf` streams an inline PDF by default. Only `?download=1` sets attachment disposition. The browser opens a letter preview first and offers a separate download action. Both outputs use the same snapshot projection and diagnosis-redaction policy.

@@ -1,5 +1,7 @@
 # V2 requirement traceability
 
+Patient country of nationality is stored separately as nullable ISO `countryCode` (migration 016). Malaysian records derive MY; non-Malaysian forms require a country selection. API compatibility preserves omitted historical foreign countries as unknown. Shared list controls provide view search, relevant filters and ascending/descending sorting across operational record lists, with loaded-record counts and original-order defaults.
+
 This matrix documents active delivered behavior and explicit gaps. It supersedes specialty, PostgreSQL and UUID proposals from the earlier specification.
 The [system specification](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md) defines scope; source paths provide executable evidence.
 Patient medication-taking extends clinic stock history with a separate clinical-only report ledger; prescription-frequency controls retain their existing numeric behavior.

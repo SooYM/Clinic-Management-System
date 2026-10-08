@@ -1,5 +1,13 @@
 # Implementation validation
 
+## Country and list controls — 2026-10-08
+
+- Full suite passed 322 tests across eighteen files with zero skips; actual MySQL used guarded disposable databases.
+- TypeScript, normal/demo builds and source formatting passed. Database health remained OK after migration 016.
+- A guarded local backup preceded migration 016. Today's baseline confirmed all existing row counts preserved, 32 tables, 26 numeric entity ID tables and sixteen migrations. An initial check mistakenly used the older settings baseline; the current country baseline corrected that verification input.
+- Country UI requires selection for foreign patients and keeps phone calling code independent. Chromium inspected the 320px form and verified desktop/phone list search, descending direction and clear/original ordering across eight modules. Populated demo lists were checked separately; no local business records were submitted or changed.
+- Schema SQL and dictionary contain no records or allocated sequence values. Render deployment itself is not established by local build/browser checks.
+
 ## Phone country dropdown — 2026-10-08
 
 - TypeScript, normal build, demo build and changed-source formatting passed.

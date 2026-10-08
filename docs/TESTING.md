@@ -1,5 +1,7 @@
 # Verification
 
+Country/list release gate (8 October 2026): `npm test` passed 322 tests across eighteen files with zero skips. Migration016, scoped patient country roundtrip, legacy compatibility, demo parity and shared immutable list projections are included. TypeScript, normal/demo builds, source formatting and local database health passed. Country selection and loaded-list controls were checked in Chromium at desktop and 320px widths.
+
 Run `npm test`. Domain tests exercise money, queue transitions, allergy conflicts, FEFO allocation and commission thresholds. Database safety tests reject ordinary database URLs and prohibit fallback to `DATABASE_URL`.
 
 MySQL tests require `TEST_DATABASE_URL` with an explicit `test` database-name segment, such as `clinic_test`. Without that variable, integration suites report skipped tests. Never interpret skipped suites as database verification. Credentials require permission to create/drop an isolated database. Suite creates a random `qa_<uuid>_test` database, applies every sorted SQL migration, inserts synthetic records and drops only that exact name after closing connections. Ordinary clinic databases are never cleanup targets.

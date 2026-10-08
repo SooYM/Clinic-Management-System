@@ -16,6 +16,7 @@ import {
   useResource,
 } from '../components';
 import { type Patient, type Reference, type Ticket, queueStates } from '../types';
+import { useListControls } from '../ListControls';
 export default function Queue({
   rooms,
   practitioners,
@@ -52,6 +53,25 @@ export default function Queue({
     };
   }, []);
   const tickets = resource.data || [];
+  const queueList = useListControls(tickets, {
+    label: 'Queue tickets',
+    search: (row) =>
+      `${row.ticketNumber} ${row.patientName || patients.data?.find((patient) => patient.id === row.patientId)?.name || ''} ${row.roomName || ''}`,
+    filters: [
+      { key: 'status', label: 'Status', value: (row) => row.status },
+      { key: 'room', label: 'Room', value: (row) => row.roomName || 'Unassigned' },
+    ],
+    sorts: [
+      { key: 'time', label: 'Check-in time', value: (row) => row.createdAt },
+      {
+        key: 'patient',
+        label: 'Patient name',
+        value: (row) =>
+          row.patientName || patients.data?.find((patient) => patient.id === row.patientId)?.name,
+      },
+      { key: 'id', label: 'Ticket ID', value: (row) => row.id },
+    ],
+  });
   const waiting = tickets.filter((t) => ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status));
   const active = tickets.filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status));
   async function transition(ticket: Ticket, target?: string) {
@@ -203,6 +223,7 @@ export default function Queue({
               </p>
             </div>
             {error && <ErrorNotice>{error}</ErrorNotice>}
+            {queueList.controls}
             <ResourceState {...resource}>
               {tickets.length ? (
                 <div className="table-wrap">
@@ -217,7 +238,7 @@ export default function Queue({
                       </tr>
                     </thead>
                     <tbody>
-                      {tickets.map((t) => (
+                      {queueList.items.map((t) => (
                         <tr key={t.id}>
                           <td className="ticket">
                             {t.ticketNumber}

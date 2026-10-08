@@ -13,6 +13,7 @@ import {
 } from '../components';
 import DocumentPreview from '../DocumentPreview';
 import { dateTime } from '../types';
+import { useListControls } from '../ListControls';
 interface ClinicalDocument {
   id: number;
   encounterId: number;
@@ -33,11 +34,28 @@ export default function ClinicalDocuments({
   const role = useRole();
   const [previewId, setPreviewId] = useState<number>();
   const documents = resource.data?.filter((d) => d.encounterId === encounterId) || [];
+  const list = useListControls(documents, {
+    label: 'Loaded documents for this encounter',
+    search: (row) => `${row.id} ${row.documentNumber} ${row.kind}`,
+    filters: [
+      { key: 'kind', label: 'Document type', value: (row) => row.kind },
+      {
+        key: 'status',
+        label: 'Document status',
+        value: (row) => (row.revokedAt ? 'REVOKED' : 'ISSUED'),
+      },
+    ],
+    sorts: [
+      { key: 'date', label: 'Issued date', value: (row) => row.createdAt },
+      { key: 'id', label: 'Document ID', value: (row) => row.id },
+    ],
+  });
   return (
     <>
       <Panel title="Issued document history">
+        {list.controls}
         <ResourceState {...resource}>
-          {documents.length ? (
+          {list.items.length ? (
             <div className="table-wrap">
               <table>
                 <thead>
@@ -50,7 +68,7 @@ export default function ClinicalDocuments({
                   </tr>
                 </thead>
                 <tbody>
-                  {documents.map((d) => (
+                  {list.items.map((d) => (
                     <tr key={d.id}>
                       <td>
                         <strong>{d.documentNumber}</strong>
@@ -80,7 +98,11 @@ export default function ClinicalDocuments({
             </div>
           ) : (
             <Empty
-              title="No documents issued for this encounter"
+              title={
+                documents.length
+                  ? 'No matching documents'
+                  : 'No documents issued for this encounter'
+              }
               description="Issued certificates, referrals, and lab orders remain linked to the clinical record."
             />
           )}

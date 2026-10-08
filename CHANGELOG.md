@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Non-Malaysian patient country-of-nationality selection and nullable ISO country storage through migration 016; existing foreign countries remain unknown.
+- Reusable loaded-record search, filters and sort direction across operational lists; original workflow order and authoritative totals remain preserved.
+
 - Patient phone country-code dropdown defaults to Malaysia, detects pasted international prefixes and supports Other country entry; unedited contact values remain unchanged.
 - Local startup instructions explain starting the existing portable MySQL instance before API/frontend services.
 

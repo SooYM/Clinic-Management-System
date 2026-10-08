@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–015.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–016.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -44,6 +44,7 @@ GP creation requires a professional registration number.
 ## 3. Patient registration and history
 
 Registration stores first name, optional last name, derived display name, nationality, IC/passport number, birth date and sex.
+Non-Malaysian registration/editing requires country of nationality in the UI. Nullable ISO countryCode is separate from phone calling code and address. Malaysian patients derive MY; historical foreign countries remain unknown. Legacy API callers may omit country; ordinary updates preserve omitted existing country.
 Single legal names are supported. Contact, blood group, allergies, chronic conditions and notification consent are recorded explicitly.
 Address fields are line 1, line 2, postcode, city and state.
 

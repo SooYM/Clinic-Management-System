@@ -1,5 +1,9 @@
 # Version 2 test cases
 
+Latest country/list gate: 322 passing tests across eighteen files, zero skips (8 October 2026, 09:06 MYT).
+Country cases cover recognized/invalid/MY-conflicting codes, legacy omission, scoped MySQL roundtrip, migration preservation and demo parity (`tests/patient-country.test.ts`, `tests/patient-country-migration.test.ts`, `tests/mysql.test.ts`).
+List cases cover combined filters/search, stable numeric/case-insensitive sorting, blanks last, original order and immutable arrays (`tests/list-controls.test.ts`). Browser `countrylistqa` checks country selection and desktop/320px record controls without changing local business data.
+
 Run `npm ci`, then `npm run format:check`, `npm run build` and `npm test`. Real database cases require a guarded `TEST_DATABASE_URL` with an explicit test database name and create/drop privileges. Never point it at clinic data. Suites create separate `qa_<uuid>_test` databases and remove only their exact generated names. Missing TEST_DATABASE_URL skips integration cases and is not a passing database gate.
 
 The latest Version 2 baseline is **267 passing cases across twelve test files, zero skips** (7 October 2026, 14:55 MYT). Rows below group related cases; they do not claim one table row equals one executed test. Exact executable assertions remain in the linked test files. See [verification evidence](TESTING.md) and [browser/deployment evidence](VALIDATION.md).

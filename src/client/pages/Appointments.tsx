@@ -15,6 +15,7 @@ import {
 } from '../components';
 import { type Patient, type Appointment, type Reference, dateTime } from '../types';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
+import { useListControls } from '../ListControls';
 export default function Appointments({
   practitioners,
   rooms,
@@ -26,6 +27,31 @@ export default function Appointments({
   const patients = useResource<Patient[]>('/references/patients');
   const [section, setSection] = useState('visits');
   const [bookingRevision, setBookingRevision] = useState(0);
+  const visits = useListControls(resource.data || [], {
+    label: 'Scheduled visits',
+    search: (row) =>
+      `${row.id} ${row.patientName || patients.data?.find((patient) => patient.id === row.patientId)?.name || ''} ${row.reason || ''}`,
+    filters: [
+      { key: 'status', label: 'Status', value: (row) => row.status },
+      {
+        key: 'doctor',
+        label: 'Practitioner',
+        value: (row) =>
+          practitioners.find((doctor) => doctor.id === row.practitionerId)?.name ||
+          String(row.practitionerId),
+      },
+    ],
+    sorts: [
+      { key: 'time', label: 'Appointment time', value: (row) => row.startsAt },
+      {
+        key: 'patient',
+        label: 'Patient name',
+        value: (row) =>
+          row.patientName || patients.data?.find((patient) => patient.id === row.patientId)?.name,
+      },
+      { key: 'id', label: 'Appointment ID', value: (row) => row.id },
+    ],
+  });
   return (
     <>
       <PageTitle
@@ -47,6 +73,7 @@ export default function Appointments({
           description="Review booked visits and their current status."
         >
           <Panel title="Scheduled visits">
+            {visits.controls}
             <ResourceState {...resource}>
               {resource.data?.length ? (
                 <div className="table-wrap">
@@ -60,7 +87,7 @@ export default function Appointments({
                       </tr>
                     </thead>
                     <tbody>
-                      {resource.data.map((a) => (
+                      {visits.items.map((a) => (
                         <tr key={a.id}>
                           <td>
                             <strong>

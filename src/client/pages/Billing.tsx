@@ -1,4 +1,5 @@
 import ReceiptPreview from '../ReceiptPreview';
+import { useListControls } from '../ListControls';
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
@@ -38,6 +39,16 @@ interface Payment {
 }
 export default function Billing({ practitioners }: { practitioners: Reference[] }) {
   const invoices = useResource<Invoice[]>('/invoices');
+  const invoiceList = useListControls(invoices.data || [], {
+    label: 'Loaded invoices',
+    search: (row) => `${row.id} ${row.invoiceNumber} ${row.patientName}`,
+    filters: [{ key: 'status', label: 'Invoice status', value: (row) => row.status }],
+    sorts: [
+      { key: 'id', label: 'Invoice ID', value: (row) => row.id },
+      { key: 'patient', label: 'Patient name', value: (row) => row.patientName },
+      { key: 'total', label: 'Total amount', value: (row) => row.totalCents },
+    ],
+  });
   const patients = useResource<Patient[]>('/references/patients');
   const [section, setSection] = useState('invoices');
   const [previewInvoice, setPreviewInvoice] = useState<number>();
@@ -88,8 +99,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
             />
           )}
           <Panel title="Invoices">
+            {invoiceList.controls}
             <ResourceState {...invoices}>
-              {invoices.data?.length ? (
+              {invoiceList.items.length ? (
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -103,7 +115,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                       </tr>
                     </thead>
                     <tbody>
-                      {invoices.data.map((i) => (
+                      {invoiceList.items.map((i) => (
                         <tr key={i.id}>
                           <td>
                             <strong>{i.invoiceNumber}</strong>
@@ -129,8 +141,12 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                 </div>
               ) : (
                 <Empty
-                  title="No invoices issued"
-                  description="Create a checkout to record clinical services, products, and practitioner revenue attribution."
+                  title={invoices.data?.length ? 'No matching invoices' : 'No invoices issued'}
+                  description={
+                    invoices.data?.length
+                      ? 'Clear filters to review all loaded invoices.'
+                      : 'Create a checkout to record clinical services, products, and practitioner revenue attribution.'
+                  }
                 />
               )}
             </ResourceState>

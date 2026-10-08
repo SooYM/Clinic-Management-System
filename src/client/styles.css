@@ -164,6 +164,32 @@ label {
   gap: 17px 20px;
   min-width: 0;
 }
+.list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+.list-controls > label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1 1 145px;
+  min-width: 0;
+}
+.list-controls > label:first-child {
+  flex-basis: 220px;
+}
+.list-controls input,
+.list-controls select {
+  width: 100%;
+  min-width: 0;
+}
+.list-controls-count {
+  flex-basis: 100%;
+  color: #334155;
+}
 @media (max-width: 640px) {
   .phone-fields {
     grid-template-columns: minmax(0, 1fr);

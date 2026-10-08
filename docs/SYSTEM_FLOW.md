@@ -6,6 +6,10 @@ Queue movement, document issuance and checkout are explicit staff actions. Signi
 
 During registration or demographic editing, staff choose a phone calling code and enter the number, or paste a full international number. Unlisted countries use Other country. Blank phone stays optional; unedited existing contacts remain unchanged. The form submits one phone string through the existing scoped patient API.
 
+Non-Malaysian intake requires a separate country of nationality. The scoped patient service validates the ISO code; Malaysian intake stores MY. Missing foreign country remains unknown until explicitly updated.
+
+List navigation follows load authorized records → filter/search the view → select sort/direction → explicitly open or act on a record. Clear filters restores original ordering. Views never alter clinical priority, stock or financial ledger totals.
+
 ```mermaid
 flowchart TD
   Login[Authenticate and select authorized branch] --> Access{Effective module and branch access?}

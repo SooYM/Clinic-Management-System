@@ -4,6 +4,7 @@ import { ErrorNotice, Field, MutationForm, formText } from '../components';
 import { type Patient } from '../types';
 import { formatMalaysianIc, parseMalaysianIc } from '../../shared/patient-identity';
 import PhoneInput from '../PhoneInput';
+import { countryOptions } from '../../shared/countries';
 const states = [
   'Johor',
   'Kedah',
@@ -38,6 +39,7 @@ export default function PatientForm({
     initial?.nationality || 'MALAYSIAN',
   );
   const [nationalId, setNationalId] = useState(initial?.nationalId || '');
+  const [countryCode, setCountryCode] = useState(initial?.countryCode || '');
   const [dateOfBirth, setDateOfBirth] = useState(initial?.dateOfBirth?.slice(0, 10) || '');
   const [sex, setSex] = useState<Patient['sex']>(initial?.sex || 'FEMALE');
   const [identityError, setIdentityError] = useState('');
@@ -171,6 +173,7 @@ export default function PatientForm({
           firstName,
           lastName,
           nationality,
+          countryCode: nationality === 'MALAYSIAN' ? 'MY' : countryCode,
           nationalId: canonical,
           dateOfBirth,
           sex,
@@ -234,6 +237,27 @@ export default function PatientForm({
             <option value="NON_MALAYSIAN">Non-Malaysian</option>
           </select>
         </Field>
+        {nationality === 'NON_MALAYSIAN' && (
+          <Field
+            label="Country of nationality"
+            hint="Select the country shown on the patient's passport."
+          >
+            <select
+              required
+              value={countryCode}
+              onChange={(event) => setCountryCode(event.target.value)}
+            >
+              <option value="">Choose country</option>
+              {countryOptions
+                .filter((country) => country.code !== 'MY')
+                .map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        )}
         <Field
           label={nationality === 'MALAYSIAN' ? 'Malaysian IC' : 'Passport number'}
           hint={

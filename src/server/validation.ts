@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { queueStatuses } from '../domain/models.js';
 import { parseMalaysianIc } from '../shared/patient-identity.js';
 import { parseBloodPressure } from '../shared/blood-pressure.js';
+import { countryCodes } from '../shared/countries.js';
 const id = idSchema,
   text = z.string().trim().min(1).max(200),
   long = z.string().max(20000).default('');
@@ -32,6 +33,11 @@ export const schemas = {
       firstName: z.string().trim().min(1).max(150).optional(),
       lastName: z.string().trim().max(150).optional(),
       nationality: z.enum(['MALAYSIAN', 'NON_MALAYSIAN']).optional(),
+      countryCode: z
+        .string()
+        .refine((value) => countryCodes.includes(value), 'Choose a valid country.')
+        .nullable()
+        .optional(),
       nationalId: text,
       dateOfBirth: date
         .refine((v) => v <= new Date().toISOString().slice(0, 10), 'Birth date cannot be future.')
@@ -52,6 +58,16 @@ export const schemas = {
     })
     .strict()
     .superRefine((value, ctx) => {
+      if (
+        value.countryCode &&
+        ((value.nationality === 'NON_MALAYSIAN' && value.countryCode === 'MY') ||
+          (value.nationality === 'MALAYSIAN' && value.countryCode !== 'MY'))
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['countryCode'],
+          message: 'Country must match patient nationality.',
+        });
       if (!value.firstName && !value.name)
         ctx.addIssue({ code: 'custom', path: ['firstName'], message: 'First name is required.' });
       if (
@@ -114,6 +130,7 @@ export const schemas = {
         value.nationality === 'MALAYSIAN' ? parseMalaysianIc(value.nationalId) : undefined;
       return {
         ...value,
+        countryCode: value.nationality === 'MALAYSIAN' ? 'MY' : value.countryCode,
         name: value.firstName
           ? [value.firstName, value.lastName].filter(Boolean).join(' ')
           : value.name!,

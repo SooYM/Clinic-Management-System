@@ -18,6 +18,7 @@ import { type Reference, type User, dateTime } from '../types';
 import AdminCatalogs from '../AdminCatalogs';
 import RoleModules from './RoleModules';
 import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
+import { useListControls } from '../ListControls';
 interface Staff extends User {
   active: boolean;
 }
@@ -57,6 +58,70 @@ export default function Admin({
   const [roomError, setRoomError] = useState('');
   const [staffRole, setStaffRole] = useState('RECEPTIONIST');
   const [editingRoom, setEditingRoom] = useState<Reference & { active: boolean }>();
+  const staffList = useListControls(
+    (users.data || []).filter((row) => showRemovedStaff || row.active),
+    {
+      label: 'Staff accounts',
+      search: (row) => `${row.id} ${row.name} ${row.email}`,
+      filters: [
+        { key: 'role', label: 'Role', value: (row) => row.role },
+        { key: 'status', label: 'Status', value: (row) => (row.active ? 'Active' : 'Removed') },
+      ],
+      sorts: [
+        { key: 'name', label: 'Name', value: (row) => row.name },
+        { key: 'id', label: 'Staff ID', value: (row) => row.id },
+      ],
+    },
+  );
+  const branchList = useListControls(
+    (branchRecords.data || []).filter((row) => showRemovedBranches || row.active),
+    {
+      label: 'Branches',
+      search: (row) => `${row.id} ${row.name} ${row.address}`,
+      filters: [
+        { key: 'status', label: 'Status', value: (row) => (row.active ? 'Active' : 'Removed') },
+      ],
+      sorts: [
+        { key: 'name', label: 'Name', value: (row) => row.name },
+        { key: 'id', label: 'Branch ID', value: (row) => row.id },
+      ],
+    },
+  );
+  const roomList = useListControls(
+    (rooms.data || []).filter((row) => showRemovedRooms || row.active),
+    {
+      label: 'Consultation rooms',
+      search: (row) => `${row.id} ${row.name} ${row.branchName || ''}`,
+      filters: [
+        {
+          key: 'branch',
+          label: 'Branch',
+          value: (row) =>
+            row.branchName ||
+            branches.find((branch) => branch.id === row.branchId)?.name ||
+            String(row.branchId),
+        },
+        { key: 'status', label: 'Status', value: (row) => (row.active ? 'Active' : 'Removed') },
+      ],
+      sorts: [
+        { key: 'name', label: 'Room name', value: (row) => row.name },
+        { key: 'id', label: 'Room ID', value: (row) => row.id },
+      ],
+    },
+  );
+  const auditList = useListControls(audit.data || [], {
+    label: 'Audit trail',
+    search: (row) =>
+      `${row.id} ${row.action} ${row.entityType} ${row.entityId} ${row.actorName || ''}`,
+    filters: [
+      { key: 'action', label: 'Action', value: (row) => row.action },
+      { key: 'type', label: 'Record type', value: (row) => row.entityType },
+    ],
+    sorts: [
+      { key: 'date', label: 'Date', value: (row) => row.createdAt },
+      { key: 'id', label: 'Audit ID', value: (row) => row.id },
+    ],
+  });
   return (
     <>
       <PageTitle
@@ -169,6 +234,7 @@ export default function Admin({
               />
               Show removed staff accounts
             </label>
+            {staffList.controls}
             <ResourceState {...users}>
               {users.data?.some((user) => showRemovedStaff || user.active) ? (
                 <div className="table-wrap">
@@ -184,42 +250,40 @@ export default function Admin({
                       </tr>
                     </thead>
                     <tbody>
-                      {users.data
-                        .filter((user) => showRemovedStaff || user.active)
-                        .map((u) => (
-                          <tr key={u.id}>
-                            <td>#{u.id}</td>
-                            <td>{u.name}</td>
-                            <td>{u.email}</td>
-                            <td>{u.role === 'DOCTOR' ? 'GP' : u.role}</td>
-                            <td>
-                              <Status value={u.active ? 'ACTIVE' : 'INACTIVE'} />
-                            </td>
-                            <td>
-                              <div className="actions">
-                                <button className="secondary" onClick={() => setEditingStaff(u)}>
-                                  Edit name
-                                </button>
-                                <button
-                                  className="secondary"
-                                  onClick={async () => {
-                                    try {
-                                      setStaffError('');
-                                      await api.put(`/admin/users/${u.id}`, { active: !u.active });
-                                      if (editingStaff?.id === u.id) setEditingStaff(undefined);
-                                      users.refresh();
-                                      onBranchCreated();
-                                    } catch (e) {
-                                      setStaffError((e as Error).message);
-                                    }
-                                  }}
-                                >
-                                  {u.active ? 'Remove access' : 'Restore access'}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                      {staffList.items.map((u) => (
+                        <tr key={u.id}>
+                          <td>#{u.id}</td>
+                          <td>{u.name}</td>
+                          <td>{u.email}</td>
+                          <td>{u.role === 'DOCTOR' ? 'GP' : u.role}</td>
+                          <td>
+                            <Status value={u.active ? 'ACTIVE' : 'INACTIVE'} />
+                          </td>
+                          <td>
+                            <div className="actions">
+                              <button className="secondary" onClick={() => setEditingStaff(u)}>
+                                Edit name
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={async () => {
+                                  try {
+                                    setStaffError('');
+                                    await api.put(`/admin/users/${u.id}`, { active: !u.active });
+                                    if (editingStaff?.id === u.id) setEditingStaff(undefined);
+                                    users.refresh();
+                                    onBranchCreated();
+                                  } catch (e) {
+                                    setStaffError((e as Error).message);
+                                  }
+                                }}
+                              >
+                                {u.active ? 'Remove access' : 'Restore access'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -273,44 +337,43 @@ export default function Admin({
               />
               Show removed branches
             </label>
+            {branchList.controls}
             <ResourceState {...branchRecords}>
-              {branchRecords.data
-                ?.filter((branch) => showRemovedBranches || branch.active)
-                .map((branch) => (
-                  <div className="list-row" key={branch.id}>
-                    <strong>{branch.name}</strong>
-                    <p>
-                      Branch ID #{branch.id} · {branch.address}
-                    </p>
-                    <div className="actions">
-                      <Status value={branch.active ? 'ACTIVE' : 'ARCHIVED'} />
-                      <button className="secondary" onClick={() => setEditingBranch(branch)}>
-                        Edit name / address
-                      </button>
-                      <button
-                        className="secondary"
-                        onClick={async () => {
-                          try {
-                            setBranchError('');
-                            await api.put('/admin/branches/' + branch.id, {
-                              name: branch.name,
-                              address: branch.address,
-                              active: !branch.active,
-                              version: branch.version,
-                            });
-                            if (editingBranch?.id === branch.id) setEditingBranch(undefined);
-                            branchRecords.refresh();
-                            onBranchCreated();
-                          } catch (failure) {
-                            setBranchError((failure as Error).message);
-                          }
-                        }}
-                      >
-                        {branch.active ? 'Remove' : 'Restore'}
-                      </button>
-                    </div>
+              {branchList.items.map((branch) => (
+                <div className="list-row" key={branch.id}>
+                  <strong>{branch.name}</strong>
+                  <p>
+                    Branch ID #{branch.id} · {branch.address}
+                  </p>
+                  <div className="actions">
+                    <Status value={branch.active ? 'ACTIVE' : 'ARCHIVED'} />
+                    <button className="secondary" onClick={() => setEditingBranch(branch)}>
+                      Edit name / address
+                    </button>
+                    <button
+                      className="secondary"
+                      onClick={async () => {
+                        try {
+                          setBranchError('');
+                          await api.put('/admin/branches/' + branch.id, {
+                            name: branch.name,
+                            address: branch.address,
+                            active: !branch.active,
+                            version: branch.version,
+                          });
+                          if (editingBranch?.id === branch.id) setEditingBranch(undefined);
+                          branchRecords.refresh();
+                          onBranchCreated();
+                        } catch (failure) {
+                          setBranchError((failure as Error).message);
+                        }
+                      }}
+                    >
+                      {branch.active ? 'Remove' : 'Restore'}
+                    </button>
                   </div>
-                ))}
+                </div>
+              ))}
             </ResourceState>
             {editingBranch && (
               <MutationForm
@@ -390,41 +453,40 @@ export default function Admin({
               />
               Show removed rooms
             </label>
+            {roomList.controls}
             <ResourceState {...rooms}>
-              {rooms.data
-                ?.filter((room) => showRemovedRooms || room.active)
-                .map((r) => (
-                  <div key={r.id} className="list-row">
-                    <strong>{r.name}</strong>
-                    <p>
-                      Room ID #{r.id} · Branch ID #{r.branchId} ·{' '}
-                      {r.branchName || branches.find((b) => b.id === r.branchId)?.name}
-                    </p>
-                    <div className="actions">
-                      <Status value={r.active ? 'ACTIVE' : 'ARCHIVED'} />
-                      <button className="secondary" onClick={() => setEditingRoom(r)}>
-                        Rename
-                      </button>
-                      <button
-                        className="secondary"
-                        onClick={async () => {
-                          try {
-                            setRoomError('');
-                            if (r.active) await api.request(`/admin/rooms/${r.id}`, 'DELETE');
-                            else await api.put(`/admin/rooms/${r.id}`, { active: true });
-                            if (editingRoom?.id === r.id) setEditingRoom(undefined);
-                            rooms.refresh();
-                            onBranchCreated();
-                          } catch (e) {
-                            setRoomError((e as Error).message);
-                          }
-                        }}
-                      >
-                        {r.active ? 'Remove' : 'Restore'}
-                      </button>
-                    </div>
+              {roomList.items.map((r) => (
+                <div key={r.id} className="list-row">
+                  <strong>{r.name}</strong>
+                  <p>
+                    Room ID #{r.id} · Branch ID #{r.branchId} ·{' '}
+                    {r.branchName || branches.find((b) => b.id === r.branchId)?.name}
+                  </p>
+                  <div className="actions">
+                    <Status value={r.active ? 'ACTIVE' : 'ARCHIVED'} />
+                    <button className="secondary" onClick={() => setEditingRoom(r)}>
+                      Rename
+                    </button>
+                    <button
+                      className="secondary"
+                      onClick={async () => {
+                        try {
+                          setRoomError('');
+                          if (r.active) await api.request(`/admin/rooms/${r.id}`, 'DELETE');
+                          else await api.put(`/admin/rooms/${r.id}`, { active: true });
+                          if (editingRoom?.id === r.id) setEditingRoom(undefined);
+                          rooms.refresh();
+                          onBranchCreated();
+                        } catch (e) {
+                          setRoomError((e as Error).message);
+                        }
+                      }}
+                    >
+                      {r.active ? 'Remove' : 'Restore'}
+                    </button>
                   </div>
-                ))}
+                </div>
+              ))}
             </ResourceState>
             {roomError && <ErrorNotice>{roomError}</ErrorNotice>}
             {editingRoom && (
@@ -474,6 +536,7 @@ export default function Admin({
           description="Review recorded access and changes to clinic records."
         >
           <Panel title="Audit trail">
+            {auditList.controls}
             <ResourceState {...audit}>
               {audit.data?.length ? (
                 <div className="table-wrap">
@@ -487,7 +550,7 @@ export default function Admin({
                       </tr>
                     </thead>
                     <tbody>
-                      {audit.data.map((a) => (
+                      {auditList.items.map((a) => (
                         <tr key={a.id}>
                           <td>{dateTime(a.createdAt)}</td>
                           <td>{a.action}</td>

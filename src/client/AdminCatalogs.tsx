@@ -2,6 +2,7 @@ import type { CatalogEntry } from '../shared/catalogs';
 export type { CatalogEntry } from '../shared/catalogs';
 import { useState } from 'react';
 import { api } from './api';
+import { useListControls } from './ListControls';
 import {
   Empty,
   ErrorNotice,
@@ -25,6 +26,21 @@ export default function AdminCatalogs() {
   const [kind, setKind] = useState('LAB_PANEL');
   const [editing, setEditing] = useState<CatalogEntry>();
   const resource = useResource<CatalogEntry[]>(`/admin/catalogs?kind=${kind}`);
+  const choices = useListControls(
+    (resource.data || []).filter((row) => showRemoved || row.active),
+    {
+      label: 'Catalog choices',
+      search: (row) => `${row.id} ${row.label}`,
+      filters: [
+        { key: 'status', label: 'Status', value: (row) => (row.active ? 'Active' : 'Removed') },
+      ],
+      sorts: [
+        { key: 'label', label: 'Choice label', value: (row) => row.label },
+        { key: 'order', label: 'Display order', value: (row) => row.sortOrder },
+        { key: 'id', label: 'Choice ID', value: (row) => row.id },
+      ],
+    },
+  );
   return (
     <Panel title="Clinical and inventory choices">
       <p className="form-help">
@@ -104,6 +120,7 @@ export default function AdminCatalogs() {
         Show removed choices
       </label>
       {error && <ErrorNotice>{error}</ErrorNotice>}
+      {choices.controls}
       <ResourceState {...resource}>
         {resource.data?.some((entry) => showRemoved || entry.active) ? (
           <div className="table-wrap">
@@ -117,47 +134,45 @@ export default function AdminCatalogs() {
                 </tr>
               </thead>
               <tbody>
-                {resource.data
-                  .filter((entry) => showRemoved || entry.active)
-                  .map((entry) => (
-                    <tr key={entry.id}>
-                      <td>
-                        {entry.label}
-                        <small>Choice ID #{entry.id}</small>
-                      </td>
-                      <td>{entry.sortOrder}</td>
-                      <td>
-                        <Status value={entry.active ? 'ACTIVE' : 'ARCHIVED'} />
-                      </td>
-                      <td>
-                        <div className="actions">
-                          <button className="secondary" onClick={() => setEditing(entry)}>
-                            Edit choice
-                          </button>
-                          <button
-                            className="secondary"
-                            onClick={async () => {
-                              try {
-                                setError('');
-                                await api.put('/admin/catalogs/' + entry.id, {
-                                  label: entry.label,
-                                  sortOrder: entry.sortOrder,
-                                  active: !entry.active,
-                                  version: entry.version,
-                                });
-                                resource.refresh();
-                                if (editing?.id === entry.id) setEditing(undefined);
-                              } catch (failure) {
-                                setError((failure as Error).message);
-                              }
-                            }}
-                          >
-                            {entry.active ? 'Remove' : 'Restore'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                {choices.items.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      {entry.label}
+                      <small>Choice ID #{entry.id}</small>
+                    </td>
+                    <td>{entry.sortOrder}</td>
+                    <td>
+                      <Status value={entry.active ? 'ACTIVE' : 'ARCHIVED'} />
+                    </td>
+                    <td>
+                      <div className="actions">
+                        <button className="secondary" onClick={() => setEditing(entry)}>
+                          Edit choice
+                        </button>
+                        <button
+                          className="secondary"
+                          onClick={async () => {
+                            try {
+                              setError('');
+                              await api.put('/admin/catalogs/' + entry.id, {
+                                label: entry.label,
+                                sortOrder: entry.sortOrder,
+                                active: !entry.active,
+                                version: entry.version,
+                              });
+                              resource.refresh();
+                              if (editing?.id === entry.id) setEditing(undefined);
+                            } catch (failure) {
+                              setError((failure as Error).message);
+                            }
+                          }}
+                        >
+                          {entry.active ? 'Remove' : 'Restore'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
