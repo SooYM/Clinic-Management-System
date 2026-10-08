@@ -110,6 +110,8 @@ MC date defaults are browser assistance, not an API override: Malaysia time befo
 
 Patient `phone` accepts local and international text up to 50 characters, including a leading `+` country code and display separators. The application preserves the supplied phone text; it does not infer a country from nationality or verify ownership.
 
+The patient form offers a country-code dropdown (Malaysia by default) and composes the existing `phone` string before submission. Unlisted codes use full international entry. Unedited stored numbers are preserved. No country-code column or separate API property is introduced.
+
 `GET /documents/:id` returns a `DocumentView`, including clinic/patient/practitioner display details, Malaysia issue date/time, status, `fields` as `{label,value}` pairs, and `diagnosis` as text or `null` when withheld. It excludes the raw signed payload, signing hash and verification token. Preview and PDF reads reject altered snapshots or metadata with `409 DOCUMENT_INTEGRITY_FAILED`; revocation remains visibly marked.
 
 `GET /documents/:id/pdf` streams an inline PDF by default. Only `?download=1` sets attachment disposition. The browser opens a letter preview first and offers a separate download action. Both outputs use the same snapshot projection and diagnosis-redaction policy.

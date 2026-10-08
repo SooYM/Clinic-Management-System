@@ -56,6 +56,6 @@ Payment gateway authorization, e-invoicing, refund workflows, external EMR excha
 Availability targets, disaster-recovery objectives and external compliance assessments require deployment-specific acceptance criteria.
 The application must not be presented as certified or load-benchmarked solely because these documents exist.
 
-Administrator-managed choices cover drugs, supplies, rooms, lab panels, specimens, inventory units and referral destinations. Role codes and workflow statuses remain fixed. Archival preserves signed records; new selections use active branch choices. Foreign phone numbers retain country codes and formatting, with a 50-character limit.
+Administrator-managed choices cover drugs, supplies, rooms, lab panels, specimens, inventory units and referral destinations. Role codes and workflow statuses remain fixed. Archival preserves signed records; new selections use active branch choices. Patient registration and editing include a phone country-code dropdown, defaulting to Malaysia; unlisted countries support full international entry. Foreign phone numbers retain country codes and formatting, with a 50-character limit. Existing unedited phone values remain unchanged; no schema or API payload change is needed.
 
 Administrator name/removal controls cover staff, branches, rooms and managed catalog/inventory choices. Removed settings stay restorable when history requires retention. Receipt layout follows the supplied clinic reference using actual data, explicit preview/download and future immutable identity/cashier snapshots.

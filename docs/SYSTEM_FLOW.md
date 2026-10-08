@@ -4,6 +4,8 @@
 
 Queue movement, document issuance and checkout are explicit staff actions. Signing does not automatically complete a queue visit or collect payment.
 
+During registration or demographic editing, staff choose a phone calling code and enter the number, or paste a full international number. Unlisted countries use Other country. Blank phone stays optional; unedited existing contacts remain unchanged. The form submits one phone string through the existing scoped patient API.
+
 ```mermaid
 flowchart TD
   Login[Authenticate and select authorized branch] --> Access{Effective module and branch access?}

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Patient phone country-code dropdown defaults to Malaysia, detects pasted international prefixes and supports Other country entry; unedited contact values remain unchanged.
+- Local startup instructions explain starting the existing portable MySQL instance before API/frontend services.
+
 - Clinical letters open a responsive preview before manual PDF download; MCs use centered letterhead and ruled fields.
 - Prescription logs show clinic reservations/dispensing and separately recorded patient medication-taking, with staff, source and timestamps.
 

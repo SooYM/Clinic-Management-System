@@ -1,5 +1,13 @@
 # Implementation validation
 
+## Phone country dropdown — 2026-10-08
+
+- TypeScript, normal build, demo build and changed-source formatting passed.
+- Focused phone-composition and demo regression suites passed 37 tests across two files. This focused gate does not replace the previous full backend suite.
+- Chromium `phoneqa` checked Malaysia default, Singapore composition, pasted UK prefix, unlisted Finland entry, missing-plus validation, optional blank phone and desktop/320px page fit. No patient was submitted or changed.
+- Impeccable found one pre-existing letter border warning outside the modified phone styles; no unrelated visual changes were made.
+- No migration or API property was added. Existing numbers are retained until phone controls change.
+
 Checked on 2026-10-07 against isolated MySQL 8.4.11 on Windows, Node.js 22.14.0.
 
 ## Automated evidence

@@ -29,7 +29,7 @@ Module access controls which workflows staff can open and use. Signing prescript
 ## Register a patient
 
 Open **Patients → Register patient**. Enter first name and optional last name as recorded on the patient's identity document.
-Phone accepts Malaysian and international numbers. Include the country code for foreign contacts, for example `+44 1632 960123`; spaces and hyphens are retained.
+Choose **Phone country code** from the dropdown, then enter the phone number. Malaysia (+60) is the default; its domestic leading zero is removed when composing an edited international number. Pasting a full international number detects listed prefixes without duplicating them. Choose **Other country — enter full number** for unlisted countries and include `+` and the calling code. Phone remains optional; existing numbers stay unchanged until edited. Spaces, hyphens and extensions are retained within the existing 50-character limit.
 For a single legal name, leave last name blank.
 
 For **Malaysian** patients, enter 12 IC digits. The form adds hyphens as `YYMMDD-SS-NNNN`, derives birth date and assigns male for an odd final digit or female for an even final digit. Review the derived details before saving. The two-digit year does not identify its century; use the birth-date correction provided by the form when needed. The system checks number/date format; it does not verify the IC with a government registry.

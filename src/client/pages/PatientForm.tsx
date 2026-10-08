@@ -3,6 +3,7 @@ import { api } from '../api';
 import { ErrorNotice, Field, MutationForm, formText } from '../components';
 import { type Patient } from '../types';
 import { formatMalaysianIc, parseMalaysianIc } from '../../shared/patient-identity';
+import PhoneInput from '../PhoneInput';
 const states = [
   'Johor',
   'Kedah',
@@ -280,19 +281,7 @@ export default function PatientForm({
             {nationality === 'NON_MALAYSIAN' && <option value="OTHER">Other</option>}
           </select>
         </Field>
-        <Field
-          label="Phone"
-          hint="Malaysian and international numbers are accepted. Include +country code for foreign numbers."
-        >
-          <input
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            defaultValue={initial?.phone}
-            maxLength={50}
-            placeholder="e.g. +60 12-345 6789 or +44 1632 960123"
-          />
-        </Field>
+        <PhoneInput initial={initial?.phone} />
         <Field label="Email">
           <input
             name="email"

@@ -20,7 +20,7 @@ const topics = [
       'Enter first and last names, then choose Malaysian or non-Malaysian.',
       'For Malaysian patients, enter all 12 IC digits. The IC is formatted automatically; date of birth and gender are derived from it. Confirm the birth century if needed.',
       'For non-Malaysian patients, enter passport number and record date of birth and gender manually.',
-      'Record address, phone, allergies, chronic conditions, and notification consent. For Malaysian five-digit postcodes, review the suggested city and state. Choose a locality when several match; unknown postcodes and non-Malaysian addresses use manual city and state. Use Edit details for later changes.',
+      'Record address, phone, allergies, chronic conditions, and notification consent. Choose Phone country code before entering the number; Malaysia is the default. Other country accepts a full international number. For Malaysian five-digit postcodes, review the suggested city and state. Choose a locality when several match; unknown postcodes and non-Malaysian addresses use manual city and state. Use Edit details for later changes.',
       'Clinical staff can open the patient’s encounter history and load older consultations.',
     ],
   },

@@ -5,6 +5,8 @@
 The system is a modular monolith: one React workspace, one Express API and a separate notification worker share MySQL 8.4.
 MySQL/InnoDB is authoritative. Browser state never establishes identity, stock quantities or financial balances.
 
+`PhoneInput` reuses native labelled controls for patient registration and demographic editing. `shared/phone-input.ts` owns country-code presets and split/join rules, sourced from [ITU national numbering plans](https://www.itu.int/oth/t0202). It composes the existing phone string; validation, storage, tenant scope and demo/full-system separation remain unchanged. Unlisted countries use full international entry rather than a new dependency or database table.
+
 ```mermaid
 flowchart TB
   Browser[React / TypeScript / Tailwind workspace]

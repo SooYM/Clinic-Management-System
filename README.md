@@ -38,6 +38,14 @@ npm run dev
 
 Open http://127.0.0.1:5173. Set explicit bootstrap credentials and a random signing key first. Bootstrap creates the clinic, initial branch, rooms and administrator; it refuses an existing users table. Add staff through Administration. Never run synthetic `db:seed` in production.
 
+MySQL must already be running before `npm run dev`; that command starts only the API and frontend. For this workspace's existing portable MySQL installation, start it after a Windows restart with PowerShell:
+
+```powershell
+Start-Process -FilePath (Join-Path $PWD '.local/mysql-8.4.11-winx64/bin/mysqld.exe') -ArgumentList ('--defaults-file="' + (Join-Path $PWD '.local/mysql.ini') + '"') -WindowStyle Hidden
+```
+
+Run this only when that existing installation is stopped. `ECONNREFUSED 127.0.0.1:33079` means nothing is accepting connections at the configured database address. Start MySQL, then restart `npm run dev`. Keep the existing data directory; migration, bootstrap and seed commands are not needed just to restart services.
+
 The [local database viewer](docs/DATABASE_ACCESS.md) uses a separate SELECT-only account. Set `DB_VIEWER_DATABASE_URL` and `DB_VIEWER_PASSWORD`, then run `npm run db:view` and open http://127.0.0.1:3002. It is excluded from production hosting.
 
 ## Free demo and Render Blueprint

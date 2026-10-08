@@ -242,6 +242,7 @@ No real patient information, provider secrets or database credentials belong in 
 Administrators edit drugs, supplies, rooms, lab panels, specimen types, inventory units and referral destinations. Choices are branch scoped and can be archived/restored. New prescribing uses active medication items. Used item categories, ingredients and units stay fixed. New signed prescriptions retain authoritative medicine snapshots; legacy records without snapshots use catalog fallback. Existing signed prescriptions remain dispensable after archival. Workflow statuses and role codes remain fixed application rules.
 
 Patient phone numbers accept Malaysian and foreign formatting, including country codes, up to 50 characters.
+Registration and demographic editing provide a phone country-code dropdown, defaulting to Malaysia (+60). Unlisted countries support full international entry. Pasted international numbers avoid duplicated prefixes. Unedited stored contacts remain unchanged; schema and API continue using the existing phone string.
 
 ## Task sections and scrolling
 
