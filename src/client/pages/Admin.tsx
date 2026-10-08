@@ -49,6 +49,8 @@ export default function Admin({
   const rooms =
     useResource<(Reference & { branchName?: string; active: boolean })[]>('/admin/rooms');
   const audit = useResource<Audit[]>('/admin/audit');
+  const clinic = useResource<{ id: number; name: string }>('/admin/clinic');
+  const [clinicSaved, setClinicSaved] = useState(false);
   const [showRemovedStaff, setShowRemovedStaff] = useState(false);
   const [showRemovedBranches, setShowRemovedBranches] = useState(false);
   const [showRemovedRooms, setShowRemovedRooms] = useState(false);
@@ -129,6 +131,51 @@ export default function Admin({
         description="Manage staff access, branches, and the system audit trail."
       />
       <WorkspaceSections label="Administration sections" value={section} onChange={setSection}>
+        <WorkspaceSection
+          id="clinic"
+          label="Clinic settings"
+          description="Set the clinic name shown on future clinic documents and receipts."
+        >
+          <Panel title="Clinic name">
+            <ResourceState {...clinic}>
+              {clinic.data && (
+                <MutationForm
+                  key={clinic.data.name}
+                  label="Save clinic name"
+                  onSuccess={() => {
+                    setClinicSaved(true);
+                    clinic.refresh();
+                  }}
+                  onSubmit={(form) =>
+                    api.put('/admin/clinic', {
+                      name: formText(form, 'name'),
+                      expectedName: clinic.data!.name,
+                    })
+                  }
+                >
+                  <Field label="Clinic name">
+                    <input
+                      name="name"
+                      required
+                      maxLength={200}
+                      defaultValue={clinic.data.name}
+                      onChange={() => setClinicSaved(false)}
+                    />
+                  </Field>
+                  <p className="form-help">
+                    New receipts use the updated clinic name. Receipts with saved clinic details
+                    keep their recorded clinic name.
+                  </p>
+                </MutationForm>
+              )}
+            </ResourceState>
+            {clinicSaved && (
+              <p className="notice success" role="status">
+                Clinic name saved.
+              </p>
+            )}
+          </Panel>
+        </WorkspaceSection>
         <WorkspaceSection
           id="staff"
           label="Staff accounts"

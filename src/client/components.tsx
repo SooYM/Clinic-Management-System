@@ -202,11 +202,13 @@ export function PatientSelect({ patients }: { patients: Patient[] }) {
     <Field label="Patient">
       <select name="patientId" required>
         <option value="">Select patient</option>
-        {patients.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name} · Patient ID #{p.id} · {p.nationalId}
-          </option>
-        ))}
+        {[...patients]
+          .sort((a, b) => a.id - b.id)
+          .map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} · Patient ID #{p.id} · {p.nationalId}
+            </option>
+          ))}
       </select>
     </Field>
   );
@@ -224,8 +226,9 @@ export function SearchablePatientSelect() {
     `/references/patients?search=${encodeURIComponent(term)}`,
   );
   const options = resource.data || [];
-  const all =
-    selected && !options.some((p) => p.id === selected.id) ? [selected, ...options] : options;
+  const all = [
+    ...(selected && !options.some((p) => p.id === selected.id) ? [selected, ...options] : options),
+  ].sort((a, b) => a.id - b.id);
   return (
     <div className="patient-picker">
       <Field

@@ -3,7 +3,7 @@ import { pool, transaction, camel, type Database } from './db.js';
 import type { Context } from './security.js';
 import { DomainError } from '../domain/models.js';
 import { catalogKinds, type CatalogKind } from '../shared/catalogs.js';
-import { schemas } from './validation.js';
+import { schemas, validateItemIngredient } from './validation.js';
 const fields = {
   label: z.string().trim().min(1).max(200),
   active: z.boolean().default(true),
@@ -146,6 +146,14 @@ export class CatalogService {
         )
       ).rows[0];
       if (!old) throw new DomainError('NOT_FOUND', 'Inventory item not found in this branch.', 404);
+      // Preserve incomplete legacy medicine metadata when archiving/restoring its history.
+      if (!(
+        old.category === 'MEDICATION' &&
+        !old.ingredient.trim() &&
+        v.category === old.category &&
+        v.ingredient === old.ingredient
+      ))
+        validateItemIngredient(v);
       if (old.version !== v.version)
         throw new DomainError(
           'VERSION_CONFLICT',

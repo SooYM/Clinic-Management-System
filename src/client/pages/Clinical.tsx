@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, isDemo } from '../api';
 import {
   Empty,
   ErrorNotice,
   Field,
+  Loading,
   MutationForm,
   PageTitle,
   Panel,
@@ -59,6 +60,130 @@ interface Document {
   kind: string;
   status: string;
   verificationUrl?: string;
+}
+type HistoryEncounter = Pick<
+  Encounter,
+  'id' | 'patientId' | 'assessment' | 'specialty' | 'status' | 'createdAt'
+> & { practitionerName?: string };
+interface HistoryPage {
+  data: HistoryEncounter[];
+  nextCursor: { before: string; beforeId: number } | null;
+}
+function ConsultationHistory({
+  patientId,
+  onOpen,
+}: {
+  patientId: number;
+  onOpen: (encounter: Encounter) => void;
+}) {
+  const [rows, setRows] = useState<HistoryEncounter[]>([]);
+  const [cursor, setCursor] = useState<HistoryPage['nextCursor']>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const list = useListControls(rows, {
+    label: 'Loaded patient consultations',
+    search: (row) => `${row.id} ${row.assessment} ${row.specialty} ${row.practitionerName || ''}`,
+    filters: [{ key: 'status', label: 'Consultation status', value: (row) => row.status }],
+    sorts: [
+      { key: 'date', label: 'Consultation date', value: (row) => row.createdAt },
+      { key: 'id', label: 'Encounter ID', value: (row) => row.id },
+    ],
+  });
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    api
+      .getPage<HistoryPage>(`/patients/${patientId}/encounters`)
+      .then((page) => {
+        if (active) {
+          setRows(page.data);
+          setCursor(page.nextCursor);
+        }
+      })
+      .catch((failure) => {
+        if (active) setError(failure.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [patientId, revision]);
+  async function older() {
+    if (!cursor) return;
+    setLoading(true);
+    setError('');
+    try {
+      const page = await api.getPage<HistoryPage>(
+        `/patients/${patientId}/encounters?before=${encodeURIComponent(cursor.before)}&beforeId=${cursor.beforeId}`,
+      );
+      setRows((existing) => [...existing, ...page.data]);
+      setCursor(page.nextCursor);
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  async function open(id: number) {
+    setLoading(true);
+    setError('');
+    try {
+      const encounter = await api.get<Encounter>(`/encounters/${id}`);
+      if (mounted.current) onOpen(encounter);
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <>
+      {list.controls}
+      {error && (
+        <>
+          <ErrorNotice>{error}</ErrorNotice>
+          <button className="secondary" onClick={() => setRevision((value) => value + 1)}>
+            Reload history
+          </button>
+        </>
+      )}
+      {loading && <Loading />}
+      {list.items.map((row) => (
+        <div className="list-row" key={row.id}>
+          <strong>{row.assessment || 'Consultation'}</strong>
+          <p>
+            Encounter #{row.id} · {dateTime(row.createdAt)} · {row.specialty} · {row.status}
+          </p>
+          {row.practitionerName && <p className="form-help">GP: {row.practitionerName}</p>}
+          <button className="secondary" disabled={loading} onClick={() => void open(row.id)}>
+            Open consultation
+          </button>
+        </div>
+      ))}
+      {!loading && !error && !rows.length && (
+        <Empty
+          title="No consultations recorded"
+          description="Create a consultation for this patient to start their history."
+        />
+      )}
+      {cursor && (
+        <button className="secondary" disabled={loading} onClick={() => void older()}>
+          Load older consultations
+        </button>
+      )}
+    </>
+  );
 }
 function MedicinePicker() {
   const [search, setSearch] = useState('');
@@ -183,6 +308,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     '/references/catalogs?kind=REFERRAL_DESTINATION',
   );
   const [selected, setSelected] = useState<Encounter>();
+  const [selectedPatientId, setSelectedPatientId] = useState<number>();
   const [documentKind, setDocumentKind] = useState('MC');
   const [doc, setDoc] = useState<Document>();
   const [error, setError] = useState('');
@@ -194,18 +320,31 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     patientResource.data?.id === selected?.patientId ? patientResource.data : undefined;
   const encounterList = useListControls(encounters.data || [], {
     label: 'Loaded consultations',
+    defaultSort: 'patient-id',
     search: (row) => `${row.id} ${row.patientName} ${row.assessment}`,
     filters: [
       { key: 'status', label: 'Consultation status', value: (row) => row.status },
       { key: 'specialty', label: 'Specialty', value: (row) => row.specialty },
     ],
     sorts: [
+      { key: 'patient-id', label: 'Patient ID', value: (row) => row.patientId },
       { key: 'date', label: 'Consultation date', value: (row) => row.createdAt },
       { key: 'patient', label: 'Patient name', value: (row) => row.patientName },
       { key: 'id', label: 'Encounter ID', value: (row) => row.id },
     ],
   });
   const matchingEncounters = encounterList.items;
+  const patientGroups = Array.from(
+    new Map(
+      matchingEncounters.map((row) => [
+        row.patientId,
+        {
+          id: row.patientId,
+          name: row.patientName || 'Patient',
+        },
+      ]),
+    ).values(),
+  );
   const searchedPrescriptions = (selected?.prescriptions || []).filter((rx) =>
     `${rx.itemName || items.data?.find((item) => item.id === rx.itemId)?.name || rx.itemId} ${rx.dosage}`
       .toLowerCase()
@@ -230,6 +369,167 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     ],
   });
   const matchingRecordedPrescriptions = prescriptionList.items;
+  const consultationForm = (
+    <Panel title={selected ? 'Consultation note' : 'New consultation'}>
+      <MutationForm
+        key={selected ? `${selected.id}:${selected.version}` : 'new'}
+        label={selected ? 'Save consultation' : 'Create consultation'}
+        disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
+        disabledReason={
+          role !== 'DOCTOR'
+            ? 'Only a GP account can create, edit, or sign clinical notes. You can review recorded consultations.'
+            : undefined
+        }
+        onSuccess={encounters.refresh}
+        onSubmit={async (f) => {
+          if (selected?.status === 'SIGNED') throw new Error('Signed encounters cannot be edited.');
+          const itemId = Number(formText(f, 'itemId'));
+          parseBloodPressure(formText(f, 'bloodPressure'));
+          const body = {
+            patientId: selected?.patientId || Number(formText(f, 'patientId')),
+            specialty: selected?.specialty || formText(f, 'specialty'),
+            queueTicketId: selected?.queueTicketId || undefined,
+            subjective: formText(f, 'subjective'),
+            objective: formText(f, 'objective'),
+            assessment: formText(f, 'assessment'),
+            plan: formText(f, 'plan'),
+            procedureNotes: formText(f, 'procedureNotes'),
+            status: formText(f, 'status'),
+            version: selected?.version,
+            vitals: {
+              ...selected?.vitals,
+              bloodPressure: formText(f, 'bloodPressure'),
+              temperature: formText(f, 'temperature'),
+            },
+            prescriptions: [
+              ...(selected?.prescriptions || []),
+              ...(itemId
+                ? [
+                    {
+                      itemId,
+                      quantity: Number(f.get('quantity')),
+                      dosage:
+                        formText(f, 'dosage') ||
+                        `${Number(f.get('frequencyPerDay'))} times daily; ${humanize(formText(f, 'mealTiming'))}; ${Number(f.get('durationDays'))} days`,
+                      durationDays: Number(f.get('durationDays')),
+                      frequencyPerDay: Number(f.get('frequencyPerDay')),
+                      mealTiming: formText(f, 'mealTiming'),
+                    },
+                  ]
+                : []),
+            ],
+          };
+          const saved = selected
+            ? await api.put<Encounter>(`/encounters/${selected.id}`, body)
+            : await api.post<Encounter>('/encounters', body);
+          setSelected(saved);
+          setSelectedPatientId(saved.patientId);
+          setSection('notes');
+        }}
+      >
+        {!selected && <SearchablePatientSelect />}
+        <div className="form-grid">
+          <Field label="Consultation template">
+            <select name="specialty" defaultValue={selected?.specialty || 'GP'}>
+              <option>GP</option>
+              <option>DENTAL</option>
+              <option>AESTHETIC</option>
+            </select>
+          </Field>
+          <Field label="Note status">
+            <select name="status" defaultValue={selected?.status || 'DRAFT'}>
+              <option>DRAFT</option>
+              <option>SIGNED</option>
+            </select>
+          </Field>
+          <BloodPressureField initial={selected?.vitals?.bloodPressure} />
+          <Field label="Temperature (°C)">
+            <input
+              name="temperature"
+              type="number"
+              step="0.1"
+              min="25"
+              max="45"
+              defaultValue={selected?.vitals?.temperature}
+            />
+          </Field>
+        </div>
+        <div className="soap-grid">
+          {(['subjective', 'objective', 'assessment', 'plan'] as const).map((key, i) => (
+            <Field
+              key={key}
+              label={`${['S', 'O', 'A', 'P'][i]} · ${key[0].toUpperCase() + key.slice(1)}`}
+            >
+              <textarea name={key} rows={3} required defaultValue={selected?.[key]} />
+            </Field>
+          ))}
+        </div>
+        <Field label="Procedure notes">
+          <textarea name="procedureNotes" rows={2} defaultValue={selected?.procedureNotes} />
+        </Field>
+        <fieldset>
+          <legend>Add prescription</legend>
+          {!!selected?.prescriptions?.length && prescriptionList.controls}
+          {!!selected?.prescriptions?.length && (
+            <Field label="Search recorded prescriptions">
+              <input
+                type="search"
+                value={prescriptionSearch}
+                onChange={(event) => setPrescriptionSearch(event.target.value)}
+                placeholder="Medicine or dosage instructions"
+              />
+            </Field>
+          )}
+          {!!prescriptionSearch && !matchingRecordedPrescriptions.length && (
+            <p className="form-help" role="status">
+              No recorded medicines match this search. The saved prescription remains unchanged.
+            </p>
+          )}
+          {matchingRecordedPrescriptions.map((rx, index) => (
+            <p key={index} className="form-help">
+              Existing:{' '}
+              {rx.itemName || items.data?.find((i) => i.id === rx.itemId)?.name || rx.itemId} ·{' '}
+              {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
+              {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.dosage} · {rx.durationDays} days
+            </p>
+          ))}
+          <MedicinePicker />
+          <div className="form-grid">
+            <Field label="Quantity">
+              <input name="quantity" type="number" min="1" defaultValue="1" />
+            </Field>
+            <Field label="Supply (days)">
+              <input name="durationDays" type="number" min="1" max="365" defaultValue="1" />
+            </Field>
+            <Field label="Frequency (times per day)">
+              <input
+                name="frequencyPerDay"
+                type="number"
+                min="1"
+                max="24"
+                step="1"
+                defaultValue="1"
+              />
+            </Field>
+            <Field label="Meal timing">
+              <select name="mealTiming">
+                <option value="AFTER_MEAL">After meal</option>
+                <option value="BEFORE_MEAL">Before meal</option>
+                <option value="ANY_TIME">Any time</option>
+              </select>
+            </Field>
+          </div>
+          <Field label="Dosage instructions">
+            <input name="dosage" placeholder="Dose, frequency, and route" />
+          </Field>
+          <p className="form-help">
+            Allergy conflicts prevent saving a prescription. Dispensing uses the earliest eligible
+            expiry.
+          </p>
+        </fieldset>
+      </MutationForm>
+    </Panel>
+  );
   return (
     <>
       <PageTitle
@@ -255,21 +555,31 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
           </span>
         </div>
       )}
-      <WorkspaceSections label="Clinical workspace sections" value={section} onChange={setSection}>
+      <WorkspaceSections
+        label="Clinical workspace sections"
+        value={section}
+        onChange={(next) => {
+          if (next === 'create') {
+            setSelected(undefined);
+            setDoc(undefined);
+          }
+          setSection(next);
+        }}
+      >
         <WorkspaceSection
           id="consultations"
           label="Consultations"
           description="Find a saved encounter or start a new consultation."
         >
           <Panel
-            title="Recent encounters"
+            title="Patients with consultations"
             action={
               role === 'DOCTOR' && (
                 <button
                   className="text-button"
                   onClick={() => {
                     setSelected(undefined);
-                    setSection('notes');
+                    setSection('create');
                     setDoc(undefined);
                   }}
                 >
@@ -290,24 +600,26 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               />
             </Field>
             {encounterList.controls}
+            <p className="form-help">
+              Each patient appears once among matching loaded consultations. Open their history to
+              load older records.
+            </p>
             <ResourceState {...encounters}>
-              {matchingEncounters.length ? (
-                matchingEncounters.map((e) => (
+              {patientGroups.length ? (
+                patientGroups.map((group) => (
                   <button
-                    className={`encounter-row ${selected?.id === e.id ? 'selected' : ''}`}
-                    key={e.id}
+                    className={`encounter-row ${selectedPatientId === group.id ? 'selected' : ''}`}
+                    key={group.id}
                     onClick={() => {
-                      setSelected(e);
-                      setSection('notes');
+                      setSelectedPatientId(group.id);
+                      setSelected(undefined);
                       setDoc(undefined);
                       setPrescriptionSearch('');
                     }}
                   >
-                    <strong>{e.patientName || 'Patient'}</strong>
-                    <span>{e.assessment}</span>
-                    <small>
-                      Encounter ID #{e.id} · {dateTime(e.createdAt)} · {e.status}
-                    </small>
+                    <strong>{group.name}</strong>
+                    <span>Open patient consultation history</span>
+                    <small>Patient ID #{group.id}</small>
                   </button>
                 ))
               ) : (
@@ -326,174 +638,44 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               )}
             </ResourceState>
           </Panel>
+          {selectedPatientId && (
+            <Panel title="Patient consultation history">
+              <p className="form-help">
+                Patient #{selectedPatientId}. Open a consultation below to unlock Notes &amp;
+                prescription, Documents and Medication logs.
+              </p>
+              <ConsultationHistory
+                key={selectedPatientId}
+                patientId={selectedPatientId}
+                onOpen={(encounter) => {
+                  setSelected(encounter);
+                  setSection('notes');
+                  setDoc(undefined);
+                  setPrescriptionSearch('');
+                }}
+              />
+            </Panel>
+          )}
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="create"
+          label="New consultation"
+          disabled={role !== 'DOCTOR'}
+          description="Choose a patient and create a separate consultation. Save before opening its record tools."
+        >
+          {!selected && consultationForm}
         </WorkspaceSection>
         <WorkspaceSection
           id="notes"
-          label="Note & prescription"
+          disabled={!selected}
+          label="Notes & prescription"
           description="Record SOAP notes, vitals and prescribed medicines."
         >
-          <Panel title={selected ? 'Consultation note' : 'New consultation'}>
-            <MutationForm
-              key={selected ? `${selected.id}:${selected.version}` : 'new'}
-              label={selected ? 'Save consultation' : 'Create consultation'}
-              disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
-              disabledReason={
-                role !== 'DOCTOR'
-                  ? 'Only a GP account can create, edit, or sign clinical notes. You can review recorded consultations.'
-                  : undefined
-              }
-              onSuccess={encounters.refresh}
-              onSubmit={async (f) => {
-                if (selected?.status === 'SIGNED')
-                  throw new Error('Signed encounters cannot be edited.');
-                const itemId = Number(formText(f, 'itemId'));
-                parseBloodPressure(formText(f, 'bloodPressure'));
-                const body = {
-                  patientId: selected?.patientId || Number(formText(f, 'patientId')),
-                  specialty: selected?.specialty || formText(f, 'specialty'),
-                  queueTicketId: selected?.queueTicketId || undefined,
-                  subjective: formText(f, 'subjective'),
-                  objective: formText(f, 'objective'),
-                  assessment: formText(f, 'assessment'),
-                  plan: formText(f, 'plan'),
-                  procedureNotes: formText(f, 'procedureNotes'),
-                  status: formText(f, 'status'),
-                  version: selected?.version,
-                  vitals: {
-                    ...selected?.vitals,
-                    bloodPressure: formText(f, 'bloodPressure'),
-                    temperature: formText(f, 'temperature'),
-                  },
-                  prescriptions: [
-                    ...(selected?.prescriptions || []),
-                    ...(itemId
-                      ? [
-                          {
-                            itemId,
-                            quantity: Number(f.get('quantity')),
-                            dosage:
-                              formText(f, 'dosage') ||
-                              `${Number(f.get('frequencyPerDay'))} times daily; ${humanize(formText(f, 'mealTiming'))}; ${Number(f.get('durationDays'))} days`,
-                            durationDays: Number(f.get('durationDays')),
-                            frequencyPerDay: Number(f.get('frequencyPerDay')),
-                            mealTiming: formText(f, 'mealTiming'),
-                          },
-                        ]
-                      : []),
-                  ],
-                };
-                const saved = selected
-                  ? await api.put<Encounter>(`/encounters/${selected.id}`, body)
-                  : await api.post<Encounter>('/encounters', body);
-                setSelected(saved);
-              }}
-            >
-              {!selected && <SearchablePatientSelect />}
-              <div className="form-grid">
-                <Field label="Consultation template">
-                  <select name="specialty" defaultValue={selected?.specialty || 'GP'}>
-                    <option>GP</option>
-                    <option>DENTAL</option>
-                    <option>AESTHETIC</option>
-                  </select>
-                </Field>
-                <Field label="Note status">
-                  <select name="status" defaultValue={selected?.status || 'DRAFT'}>
-                    <option>DRAFT</option>
-                    <option>SIGNED</option>
-                  </select>
-                </Field>
-                <BloodPressureField initial={selected?.vitals?.bloodPressure} />
-                <Field label="Temperature (°C)">
-                  <input
-                    name="temperature"
-                    type="number"
-                    step="0.1"
-                    min="25"
-                    max="45"
-                    defaultValue={selected?.vitals?.temperature}
-                  />
-                </Field>
-              </div>
-              <div className="soap-grid">
-                {(['subjective', 'objective', 'assessment', 'plan'] as const).map((key, i) => (
-                  <Field
-                    key={key}
-                    label={`${['S', 'O', 'A', 'P'][i]} · ${key[0].toUpperCase() + key.slice(1)}`}
-                  >
-                    <textarea name={key} rows={3} required defaultValue={selected?.[key]} />
-                  </Field>
-                ))}
-              </div>
-              <Field label="Procedure notes">
-                <textarea name="procedureNotes" rows={2} defaultValue={selected?.procedureNotes} />
-              </Field>
-              <fieldset>
-                <legend>Add prescription</legend>
-                {!!selected?.prescriptions?.length && prescriptionList.controls}
-                {!!selected?.prescriptions?.length && (
-                  <Field label="Search recorded prescriptions">
-                    <input
-                      type="search"
-                      value={prescriptionSearch}
-                      onChange={(event) => setPrescriptionSearch(event.target.value)}
-                      placeholder="Medicine or dosage instructions"
-                    />
-                  </Field>
-                )}
-                {!!prescriptionSearch && !matchingRecordedPrescriptions.length && (
-                  <p className="form-help" role="status">
-                    No recorded medicines match this search. The saved prescription remains
-                    unchanged.
-                  </p>
-                )}
-                {matchingRecordedPrescriptions.map((rx, index) => (
-                  <p key={index} className="form-help">
-                    Existing:{' '}
-                    {rx.itemName || items.data?.find((i) => i.id === rx.itemId)?.name || rx.itemId}{' '}
-                    · {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
-                    {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.dosage} · {rx.durationDays} days
-                  </p>
-                ))}
-                <MedicinePicker />
-                <div className="form-grid">
-                  <Field label="Quantity">
-                    <input name="quantity" type="number" min="1" defaultValue="1" />
-                  </Field>
-                  <Field label="Supply (days)">
-                    <input name="durationDays" type="number" min="1" max="365" defaultValue="1" />
-                  </Field>
-                  <Field label="Frequency (times per day)">
-                    <input
-                      name="frequencyPerDay"
-                      type="number"
-                      min="1"
-                      max="24"
-                      step="1"
-                      defaultValue="1"
-                    />
-                  </Field>
-                  <Field label="Meal timing">
-                    <select name="mealTiming">
-                      <option value="AFTER_MEAL">After meal</option>
-                      <option value="BEFORE_MEAL">Before meal</option>
-                      <option value="ANY_TIME">Any time</option>
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Dosage instructions">
-                  <input name="dosage" placeholder="Dose, frequency, and route" />
-                </Field>
-                <p className="form-help">
-                  Allergy conflicts prevent saving a prescription. Dispensing uses the earliest
-                  eligible expiry.
-                </p>
-              </fieldset>
-            </MutationForm>
-          </Panel>
+          {selected && consultationForm}
         </WorkspaceSection>
         <WorkspaceSection
           id="documents"
+          disabled={!selected}
           label="Documents"
           description="Issue, preview and review clinical letters."
         >
@@ -695,6 +877,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         </WorkspaceSection>
         <WorkspaceSection
           id="logs"
+          disabled={!selected}
           label="Medication logs"
           description="Review patient doses separately from clinic stock activity."
         >

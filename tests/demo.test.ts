@@ -825,9 +825,12 @@ describe('browser-session demo simulation', () => {
       patientId: 1,
       practitionerId: 2,
       roomId: historic.id,
-      startsAt: '2020-01-01T01:00:00Z',
-      endsAt: '2020-01-01T01:30:00Z',
+      startsAt: '2036-01-01T01:00:00Z',
+      endsAt: '2036-01-01T01:30:00Z',
       reason: 'Fictional historical visit',
+    });
+    await request(clinic, '/appointments/' + visit.id + '/cancel', 'POST', {
+      version: visit.version,
     });
     expect(await request(clinic, '/admin/rooms/' + historic.id, 'DELETE')).toEqual({
       id: historic.id,

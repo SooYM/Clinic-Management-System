@@ -7,7 +7,6 @@ import {
   Pill,
   CreditCard,
   BookOpen,
-  ChartNoAxesCombined,
   LogOut,
   Menu,
   X,
@@ -38,7 +37,6 @@ const Clinical = lazy(() => import('./pages/Clinical'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Billing = lazy(() => import('./pages/Billing'));
 const Guide = lazy(() => import('./pages/Guide'));
-const Reports = lazy(() => import('./pages/Reports'));
 const navigation = [
   { id: 'queue', label: 'Clinic overview', icon: Activity },
   { id: 'patients', label: 'Patients', icon: Users },
@@ -46,7 +44,6 @@ const navigation = [
   { id: 'clinical', label: 'Clinical workspace', icon: ClipboardList },
   { id: 'inventory', label: 'Dispensary', icon: Pill },
   { id: 'billing', label: 'Billing & payments', icon: CreditCard },
-  { id: 'reports', label: 'Reports & delivery', icon: ChartNoAxesCombined },
 ];
 interface Bootstrap {
   user: User;
@@ -256,6 +253,13 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
             href="#guide"
             className={page === 'guide' ? 'active' : ''}
             aria-current={page === 'guide' ? 'page' : undefined}
+            onClick={(event) => {
+              if (permittedPage && tourNames[page]) {
+                event.preventDefault();
+                setMobileNav(false);
+                startTour(page);
+              }
+            }}
           >
             <BookOpen size={19} />
             User guide
@@ -313,7 +317,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                 className="secondary guide-launch"
                 onClick={() => startTour(page)}
               >
-                Show me
+                User guide
               </button>
             )}
             <span className="timezone">Malaysia · MYT</span>
@@ -352,8 +356,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                     <Inventory />
                   ) : page === 'billing' ? (
                     <Billing practitioners={references.practitioners} />
-                  ) : page === 'reports' ? (
-                    <Reports />
                   ) : (
                     <Queue {...references} />
                   )}

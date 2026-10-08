@@ -210,6 +210,12 @@ export function createApp(service = new ClinicService()) {
       res.json(await service.getPatient(req.context, idSchema.parse(req.params.id)));
     }),
   );
+  api.get(
+    '/encounters/:id',
+    asyncRoute(async (req, res) => {
+      res.json(await service.getEncounter(req.context, idSchema.parse(req.params.id)));
+    }),
+  );
   const mutation = (
     path: string,
     schema: any,
@@ -233,6 +239,18 @@ export function createApp(service = new ClinicService()) {
     'put',
   );
   mutation('/appointments', schemas.appointment, (r, i) => service.schedule(r.context, i));
+  api.delete(
+    '/appointments/:id',
+    asyncRoute(async (req, res) => {
+      const { version } = z
+        .object({ version: z.number().int().positive() })
+        .strict()
+        .parse(req.body);
+      res.json(
+        await service.removeAppointment(req.context, idSchema.parse(req.params.id), version),
+      );
+    }),
+  );
   mutation(
     '/appointments/:id/cancel',
     z.object({ version: z.number().int().positive() }).strict(),

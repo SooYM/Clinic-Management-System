@@ -9,7 +9,7 @@ import {
   type QueueStatus,
 } from '../domain/models.js';
 import type { Context } from './security.js';
-import { schemas } from './validation.js';
+import { schemas, validateItemIngredient } from './validation.js';
 import { effectiveModules } from './module-access.js';
 import { lookupPostcode } from './data/postcodes.js';
 import {
@@ -37,8 +37,8 @@ export class ClinicService {
     const t = ctx.actor.tenantId,
       b = ctx.branchId;
     const queries: Record<string, string> = {
-      patients: `SELECT p.*,p.id patient_number FROM patients p WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.created_at DESC LIMIT 200`,
-      appointments: `SELECT a.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM appointments a JOIN patients p ON p.id=a.patient_id JOIN users u ON u.id=a.practitioner_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.tenant_id=$1 AND a.branch_id=$2 ORDER BY a.starts_at DESC LIMIT 200`,
+      patients: `SELECT p.*,p.id patient_number FROM patients p WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.id LIMIT 200`,
+      appointments: `SELECT a.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM appointments a JOIN patients p ON p.id=a.patient_id JOIN users u ON u.id=a.practitioner_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.tenant_id=$1 AND a.branch_id=$2 AND a.deleted_at IS NULL ORDER BY a.starts_at DESC LIMIT 200`,
       queue: `SELECT q.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM queue_tickets q JOIN patients p ON p.id=q.patient_id LEFT JOIN users u ON u.id=q.practitioner_id LEFT JOIN rooms r ON r.id=q.room_id WHERE q.tenant_id=$1 AND q.branch_id=$2 AND q.service_date=DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) ORDER BY CASE WHEN q.priority='URGENT' THEN 0 ELSE 1 END,q.created_at LIMIT 200`,
       encounters: `SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.tenant_id=$1 AND e.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR e.assessment LIKE $3 OR u.name LIKE $3) ORDER BY e.created_at DESC LIMIT 200`,
       inventory: `SELECT i.*,
@@ -49,7 +49,7 @@ export class ClinicService {
           WHERE r.item_id=i.id AND r.tenant_id=i.tenant_id AND r.branch_id=i.branch_id AND r.consumed_at IS NULL
           AND (b.expires_on>DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) OR (b.expires_on IS NULL AND i.category<>'MEDICATION'))) reserved_quantity
         FROM inventory_items i WHERE i.tenant_id=$1 AND i.branch_id=$2
-        AND (i.name LIKE $3 OR i.sku LIKE $3 OR i.ingredient LIKE $3 OR i.category LIKE $3) AND ($4='' OR i.category=$4) ORDER BY i.name LIMIT 200`,
+        AND (i.name LIKE $3 OR i.sku LIKE $3 OR i.ingredient LIKE $3 OR i.category LIKE $3) AND ($4='' OR i.category=$4) ORDER BY i.id LIMIT 200`,
       packages: `SELECT t.*,p.name patient_name FROM treatment_packages t JOIN patients p ON p.id=t.patient_id WHERE t.tenant_id=$1 AND t.branch_id=$2 ORDER BY t.created_at DESC LIMIT 200`,
       invoices: `SELECT i.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM invoices i JOIN patients p ON p.id=i.patient_id JOIN users u ON u.id=i.practitioner_id WHERE i.tenant_id=$1 AND i.branch_id=$2 ORDER BY i.created_at DESC LIMIT 200`,
       documents: `SELECT d.id,d.encounter_id,d.patient_id,d.practitioner_id,d.kind,d.document_number,d.payload,d.start_date,d.end_date,d.diagnosis_redacted,d.revoked_at,d.created_at,p.name patient_name,u.name practitioner_name FROM clinical_documents d JOIN patients p ON p.id=d.patient_id JOIN users u ON u.id=d.practitioner_id WHERE d.tenant_id=$1 AND d.branch_id=$2 ORDER BY d.created_at DESC LIMIT 200`,
@@ -260,6 +260,7 @@ export class ClinicService {
     });
   }
   async schedule(ctx: Context, input: any) {
+    input = schemas.appointment.parse(input);
     return this.transact(async (db) => {
       await this.patient(db, ctx, input.patientId);
       const practitioner = await this.practitioner(db, ctx, input.practitionerId);
@@ -276,7 +277,7 @@ export class ClinicService {
           throw new DomainError('INVALID_ROOM', 'Choose an active room in this branch.');
       }
       const overlap = await db.query(
-        `SELECT id FROM appointments WHERE status IN ('BOOKED','CHECKED_IN') AND (practitioner_id=$1 OR room_id=$2) AND starts_at<$4 AND ends_at>$3 LIMIT 1 FOR UPDATE`,
+        `SELECT id FROM appointments WHERE deleted_at IS NULL AND status IN ('BOOKED','CHECKED_IN') AND (practitioner_id=$1 OR room_id=$2) AND starts_at<$4 AND ends_at>$3 LIMIT 1 FOR UPDATE`,
         [
           input.practitionerId,
           input.roomId || null,
@@ -318,7 +319,7 @@ export class ClinicService {
   async cancelAppointment(ctx: Context, id: number, version: number) {
     return this.transact(async (db) => {
       const existing = await db.query(
-        'SELECT * FROM appointments WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+        'SELECT * FROM appointments WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE',
         [id, ctx.actor.tenantId, ctx.branchId],
       );
       const appointment = existing.rows[0];
@@ -335,6 +336,28 @@ export class ClinicService {
       );
       await this.audit(db, ctx, 'CANCEL', 'appointment', id);
       return camel(rows[0]);
+    });
+  }
+  async removeAppointment(ctx: Context, id: number, version: number) {
+    return this.transact(async (db) => {
+      const { rows } = await db.query(
+        'SELECT * FROM appointments WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE',
+        [id, ctx.actor.tenantId, ctx.branchId],
+      );
+      const existing = rows[0];
+      if (!existing) throw missing();
+      if (existing.version !== version || !['BOOKED', 'CANCELLED'].includes(existing.status))
+        throw new DomainError(
+          'VERSION_CONFLICT',
+          'Appointment changed or has clinical attendance; it cannot be removed.',
+          409,
+        );
+      const result = await db.query(
+        "UPDATE appointments SET status='CANCELLED',deleted_at=UTC_TIMESTAMP(3),version=version+1 WHERE id=$1 RETURNING *",
+        [id],
+      );
+      await this.audit(db, ctx, 'REMOVE', 'appointment', id);
+      return camel(result.rows[0]);
     });
   }
   async checkIn(ctx: Context, input: any) {
@@ -465,6 +488,15 @@ export class ClinicService {
       }),
     );
     return rows;
+  }
+  async getEncounter(ctx: Context, id: number) {
+    const { rows } = await this.db.query(
+      'SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3',
+      [id, ctx.actor.tenantId, ctx.branchId],
+    );
+    if (!rows[0]) throw missing();
+    await this.audit(this.db, ctx, 'READ_ENCOUNTER', 'encounter', id);
+    return camel(rows[0]);
   }
   async saveEncounter(ctx: Context, input: any, id?: number) {
     if (ctx.actor.role !== 'DOCTOR')
@@ -633,6 +665,7 @@ export class ClinicService {
         403,
       );
     input = schemas.item.parse(input);
+    validateItemIngredient(input);
     return this.transact(async (db) => {
       await validateCatalogChoices(db, ctx, 'INVENTORY_UNIT', [input.unit]);
       const { rows } = await db.query(

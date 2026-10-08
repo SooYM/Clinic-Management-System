@@ -6,7 +6,12 @@ export function useListControls<T>(rows: readonly T[], config: ListConfig<T>) {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState(config.defaultSort || '');
   const [descending, setDescending] = useState(false);
-  const items = applyListControls(rows, config, { search, filters, sort, descending });
+  const items = applyListControls(rows, config, {
+    search,
+    filters,
+    sort: sort || config.defaultSort || '',
+    descending: !!sort && descending,
+  });
   const label = config.label || 'List';
   return {
     items,
@@ -52,7 +57,11 @@ export function useListControls<T>(rows: readonly T[], config: ListConfig<T>) {
             value={sort}
             onChange={(e) => setSort(e.target.value)}
           >
-            <option value="">Original order</option>
+            <option value="">
+              {config.defaultSort
+                ? `Default: ${config.sorts.find((entry) => entry.key === config.defaultSort)?.label || 'ID order'}`
+                : 'Original order'}
+            </option>
             {config.sorts.map((entry) => (
               <option key={entry.key} value={entry.key}>
                 {entry.label}

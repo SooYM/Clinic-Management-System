@@ -12,6 +12,7 @@ interface SectionProps {
   id: string;
   label: string;
   description?: string;
+  disabled?: boolean;
   children: ReactNode;
   active?: boolean;
   controlId?: string;
@@ -48,8 +49,11 @@ export function WorkspaceSections({
   const prefix = useId();
   const navigation = useRef<HTMLElement>(null);
   const current = value ?? selected;
-  const active = sections.find((section) => section.props.id === current) ?? sections[0];
+  const active =
+    sections.find((section) => section.props.id === current && !section.props.disabled) ??
+    sections.find((section) => !section.props.disabled);
   function select(id: string) {
+    if (sections.find((section) => section.props.id === id)?.props.disabled) return;
     setSelected(id);
     onChange?.(id);
     navigation.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -61,6 +65,9 @@ export function WorkspaceSections({
           <button
             key={props.id}
             type="button"
+            data-guide={`section-${props.id}`}
+            disabled={props.disabled}
+            aria-disabled={props.disabled || undefined}
             id={`${prefix}-${props.id}-control`}
             aria-controls={`${prefix}-${props.id}-panel`}
             aria-current={active?.props.id === props.id ? 'page' : undefined}

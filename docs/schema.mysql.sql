@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-016, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-017, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -15,6 +15,7 @@ CREATE TABLE `appointments` (
   `status` varchar(30) NOT NULL DEFAULT 'BOOKED',
   `version` int NOT NULL DEFAULT '1',
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `deleted_at` datetime(3) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
   KEY `appointments_calendar` (`branch_id`,`starts_at`),

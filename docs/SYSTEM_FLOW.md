@@ -158,3 +158,8 @@ Choose module → choose named task section → complete its form or review its 
 Admin selects setting → edits name or removes → unused room deletes / referenced setting archives → future choices hide it → Show removed enables restoration. Safety conflicts leave the setting and history unchanged.
 
 Checkout captures receipt metadata → Invoice history → Preview receipt → readable HTML → Open printable PDF or Download PDF explicitly. Demo displays a sample preview only. Later branch/staff/patient renames do not change newly captured receipt identity.
+
+
+## Profile, booking and clinical navigation
+
+Directory → patient row/Open profile → full demographics/contact/address and consultation history. Registration → nationality/country in fixed form cell → visible phone prefix → save existing shared validated payload. Appointments → single Book appointment section → ID-sorted patient → today/future Malaysia date → conflict validation → save. Unused booked/cancelled appointment → Delete appointment → confirm → version-checked soft removal and audit. Clinical → grouped patient → paginated history → Open consultation → enabled record tools. New consultation → fresh creation form → save → selected Notes & prescription. Administration → Clinic settings → optimistic name save → future receipt snapshot. User guide → highlighted tabs/functions → close → continue normal workflow.

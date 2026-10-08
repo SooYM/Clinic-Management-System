@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import {
   Empty,
+  ErrorNotice,
   Field,
   MutationForm,
   PageTitle,
@@ -16,6 +17,7 @@ import {
 import { type Patient, type Appointment, type Reference, dateTime } from '../types';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import { useListControls } from '../ListControls';
+import { malaysiaDate } from '../../shared/clinic-dates';
 export default function Appointments({
   practitioners,
   rooms,
@@ -27,6 +29,11 @@ export default function Appointments({
   const patients = useResource<Patient[]>('/references/patients');
   const [section, setSection] = useState('visits');
   const [bookingRevision, setBookingRevision] = useState(0);
+  const [deleting, setDeleting] = useState<Appointment>();
+  const [deletingBusy, setDeletingBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const minimumDate = `${malaysiaDate()}T00:00`;
   const visits = useListControls(resource.data || [], {
     label: 'Scheduled visits',
     search: (row) =>
@@ -57,14 +64,6 @@ export default function Appointments({
       <PageTitle
         title="Appointments"
         description="Plan practitioner time and reserve the right consultation room."
-        action={
-          <button
-            data-guide="open-appointment"
-            onClick={() => setSection(section === 'booking' ? 'visits' : 'booking')}
-          >
-            {section === 'booking' ? 'Close booking' : 'Book appointment'}
-          </button>
-        }
       />
       <WorkspaceSections label="Appointment sections" value={section} onChange={setSection}>
         <WorkspaceSection
@@ -73,6 +72,59 @@ export default function Appointments({
           description="Review booked visits and their current status."
         >
           <Panel title="Scheduled visits">
+            {deleteSuccess && (
+              <p className="notice success" role="status">
+                Appointment deleted from scheduled visits. Audit history remains preserved.
+              </p>
+            )}
+            {deleteError && <ErrorNotice>{deleteError}</ErrorNotice>}
+            {deleting && (
+              <div
+                className="notice appointment-delete-confirm"
+                role="group"
+                aria-label="Confirm appointment deletion"
+              >
+                <p>
+                  Delete appointment #{deleting.id} for{' '}
+                  {deleting.patientName ||
+                    patients.data?.find((patient) => patient.id === deleting.patientId)?.name ||
+                    'this patient'}{' '}
+                  on {dateTime(deleting.startsAt)}? Linked clinical visits cannot be deleted.
+                </p>
+                <div className="actions">
+                  <button
+                    type="button"
+                    disabled={deletingBusy}
+                    onClick={async () => {
+                      setDeletingBusy(true);
+                      setDeleteError('');
+                      try {
+                        await api.request(`/appointments/${deleting.id}`, 'DELETE', {
+                          version: deleting.version,
+                        });
+                        setDeleting(undefined);
+                        setDeleteSuccess(true);
+                        resource.refresh();
+                      } catch (error) {
+                        setDeleteError((error as Error).message);
+                      } finally {
+                        setDeletingBusy(false);
+                      }
+                    }}
+                  >
+                    {deletingBusy ? 'Deleting…' : 'Confirm delete'}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={deletingBusy}
+                    onClick={() => setDeleting(undefined)}
+                  >
+                    Keep appointment
+                  </button>
+                </div>
+              </div>
+            )}
             {visits.controls}
             <ResourceState {...resource}>
               {resource.data?.length ? (
@@ -84,6 +136,7 @@ export default function Appointments({
                         <th>Time</th>
                         <th>Reason</th>
                         <th>Status</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -103,6 +156,21 @@ export default function Appointments({
                           <td>{a.reason || 'Consultation'}</td>
                           <td>
                             <Status value={a.status} />
+                          </td>
+                          <td>
+                            {['BOOKED', 'CANCELLED'].includes(a.status) && (
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => {
+                                  setDeleting(a);
+                                  setDeleteError('');
+                                  setDeleteSuccess(false);
+                                }}
+                              >
+                                Delete appointment
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -151,14 +219,15 @@ export default function Appointments({
                   <input name="reason" required />
                 </Field>
                 <Field label="Starts">
-                  <input name="startsAt" type="datetime-local" required />
+                  <input name="startsAt" type="datetime-local" min={minimumDate} required />
                 </Field>
                 <Field label="Ends">
-                  <input name="endsAt" type="datetime-local" required />
+                  <input name="endsAt" type="datetime-local" min={minimumDate} required />
                 </Field>
               </div>
               <p className="form-help">
-                Overlapping practitioner and room bookings are checked before confirmation.
+                Overlapping practitioner and room bookings are checked before confirmation. Choose
+                today or a future date in Malaysia time. Earlier times today are allowed.
               </p>
             </MutationForm>
           </Panel>

@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–016.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–017.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -254,3 +254,8 @@ Operational modules separate lists, entry forms and history into named sections.
 Administrators edit staff names and branch name/address. Settings lists expose Remove and Restore, hiding removed entries by default with Show removed controls. Room removal deletes unreferenced rooms and archives historical rooms; busy rooms and upcoming bookings block removal. Branch removal archives, preserving history; selected branch, final active branch and active staff home assignments are protected. Restoring staff access requires an active home branch. Catalog and inventory removal archives choices; used stock identity rules remain unchanged. Role/status codes remain fixed domain rules.
 
 Receipt preview uses clinic/branch header, patient name and IC/passport, receipt/date, itemized quantities/prices/amounts, total, recorded payment breakdown, cashier and MYT issue time. No copied logo, registration number, tax or discount is invented. New invoices capture immutable receipt metadata; existing invoices use current records and checkout audit fallback. Browser demo previews are labeled sample receipts and do not provide real PDF/payment verification.
+
+
+## Current workflow refinements
+
+Patients and appointment patient choices default to numeric patient ID; stock items default to item ID. Patient rows open complete profiles, including contacts and address. Nationality country controls occupy a fixed form position; selected phone calling codes appear inside the number field. Appointment dates must be today or future in Malaysia time. Booked/cancelled appointments support audited soft removal; attended appointments remain protected. Clinical lists group loaded matching encounters by patient, with separately loaded paginated history and explicit record selection. New consultation is a separate creation section; record tools remain disabled until selection. Ingredient is mandatory for medicines and optional for supplies/retail. Administrators rename the clinic through Clinic settings; future receipt snapshots use the new name. Reports & delivery navigation is retired; underlying notification history and compatibility grants remain. User guide labels and circles actual tabs and functions.

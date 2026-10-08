@@ -61,7 +61,7 @@ export function referenceRouter() {
         .max(200)
         .parse(req.query.search || '');
       const { rows } = await pool.query(
-        'SELECT id,id patient_number,name,national_id,phone FROM patients WHERE tenant_id=$1 AND branch_id=$2 AND (name LIKE $3 OR national_id LIKE $3 OR phone LIKE $3) ORDER BY name LIMIT 200',
+        'SELECT id,id patient_number,name,national_id,phone FROM patients WHERE tenant_id=$1 AND branch_id=$2 AND (name LIKE $3 OR national_id LIKE $3 OR phone LIKE $3) ORDER BY id LIMIT 200',
         [req.context.actor.tenantId, req.context.branchId, `%${search}%`],
       );
       await audit(req, 'READ_REFERENCES', 'patient', null, rows.length);

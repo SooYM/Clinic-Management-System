@@ -149,6 +149,7 @@ export default function Patients() {
   const resource = useResource<Patient[]>(`/patients?search=${encodeURIComponent(searchTerm)}`);
   const patientList = useListControls(resource.data || [], {
     label: 'Patients',
+    defaultSort: 'id',
     search: (row) => `${row.id} ${row.name} ${row.nationalId} ${row.phone}`,
     filters: [
       { key: 'nationality', label: 'Nationality', value: (row) => row.nationality },
@@ -182,7 +183,7 @@ export default function Patients() {
     <>
       <PageTitle
         title="Patients"
-        description="Find a patient, review their chart, or register a first visit."
+        description="Find a patient, review their profile, or register a first visit."
         action={
           canEdit && (
             <button
@@ -236,7 +237,7 @@ export default function Patients() {
               </div>
               <div className="two-column">
                 <Panel
-                  title="Patient details"
+                  title="Patient profile"
                   action={
                     canEdit && (
                       <button
@@ -252,6 +253,20 @@ export default function Patients() {
                   }
                 >
                   <dl>
+                    <dt>Patient ID</dt>
+                    <dd>#{selected.id}</dd>
+                    <dt>First name</dt>
+                    <dd>{selected.firstName || selected.name}</dd>
+                    <dt>Last name</dt>
+                    <dd>{selected.lastName || 'Not recorded'}</dd>
+                    <dt>Nationality</dt>
+                    <dd>
+                      {selected.nationality === 'MALAYSIAN'
+                        ? 'Malaysian'
+                        : selected.nationality === 'NON_MALAYSIAN'
+                          ? 'Non-Malaysian'
+                          : 'Not recorded'}
+                    </dd>
                     <dt>Country of nationality</dt>
                     <dd>
                       {selected.nationality === 'MALAYSIAN'
@@ -260,14 +275,42 @@ export default function Patients() {
                           ? countryName(selected.countryCode)
                           : 'Not recorded'}
                     </dd>
+                    <dt>
+                      {selected.nationality === 'MALAYSIAN'
+                        ? 'IC number'
+                        : 'Passport / identity number'}
+                    </dt>
+                    <dd>{selected.nationalId}</dd>
+                    <dt>Date of birth</dt>
+                    <dd>{selected.dateOfBirth?.slice(0, 10) || 'Not recorded'}</dd>
+                    <dt>Gender</dt>
+                    <dd>{selected.sex || 'Not recorded'}</dd>
+                    <dt>Blood group</dt>
+                    <dd>{selected.bloodGroup || 'Not recorded'}</dd>
                     <dt>Phone</dt>
                     <dd>{selected.phone || 'Not recorded'}</dd>
                     <dt>Email</dt>
                     <dd>{selected.email || 'Not recorded'}</dd>
+                    <dt>Address line 1</dt>
+                    <dd>{selected.addressLine1 || 'Not recorded'}</dd>
+                    <dt>Address line 2</dt>
+                    <dd>{selected.addressLine2 || 'Not recorded'}</dd>
+                    <dt>Postcode</dt>
+                    <dd>{selected.postcode || 'Not recorded'}</dd>
+                    <dt>City / town</dt>
+                    <dd>{selected.city || 'Not recorded'}</dd>
+                    <dt>State / region</dt>
+                    <dd>{selected.state || 'Not recorded'}</dd>
+                    <dt>Allergies</dt>
+                    <dd>{selected.allergies?.join(', ') || 'None recorded'}</dd>
                     <dt>Chronic conditions</dt>
                     <dd>{selected.conditions?.join(', ') || 'None recorded'}</dd>
                     <dt>Notification consent</dt>
                     <dd>{selected.notificationConsent ? 'Consented' : 'Not consented'}</dd>
+                    <dt>Registered</dt>
+                    <dd>{selected.createdAt ? dateTime(selected.createdAt) : 'Not recorded'}</dd>
+                    <dt>Last updated</dt>
+                    <dd>{selected.updatedAt ? dateTime(selected.updatedAt) : 'Not recorded'}</dd>
                   </dl>
                 </Panel>
                 <Panel title="Encounter history">
@@ -315,7 +358,15 @@ export default function Patients() {
                       </thead>
                       <tbody>
                         {patientList.items.map((p) => (
-                          <tr key={p.id}>
+                          <tr
+                            key={p.id}
+                            className="patient-profile-row"
+                            onClick={() => {
+                              setSelected(p);
+                              setSection('directory');
+                              setEditing(false);
+                            }}
+                          >
                             <td>#{p.id}</td>
                             <td>
                               <strong>{p.name}</strong>
@@ -339,7 +390,7 @@ export default function Patients() {
                                   setEditing(false);
                                 }}
                               >
-                                Open chart
+                                Open profile
                               </button>
                             </td>
                           </tr>

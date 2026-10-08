@@ -44,4 +44,9 @@ The Blueprint was checked against Render's current published JSON schema. Run th
 
 V1's recovery Git tag preserves prior source. Reverting a main commit restores source configuration but does not transfer browser session data to any database. Never reset local MySQL to repair the demo.
 
-The browser demo includes settings lifecycle parity and in-page official-receipt samples. Receipt PDFs and actual payment verification remain unavailable in demo mode. The normal MySQL application now requires migrations through 016.
+The browser demo includes settings lifecycle parity and in-page official-receipt samples. Receipt PDFs and actual payment verification remain unavailable in demo mode. The normal MySQL application now requires migrations through 017.
+
+
+## Current demo workflow update
+
+The demo includes profile row navigation, fixed nationality controls, prefixed phone entry, grouped clinical history, separate creation, booking removal, clinic name settings and contextual tab guides. Reports & delivery is removed from navigation. Session data remains fictional and temporary. Git publication does not prove Blueprint sync, health or hosted browser success; verify those separately after Render deploys.

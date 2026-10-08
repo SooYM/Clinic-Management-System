@@ -14,6 +14,8 @@ export interface Reference {
   branchNumber?: number;
 }
 export interface Patient {
+  createdAt?: string;
+  updatedAt?: string;
   id: number;
   name: string;
   nationalId: string;

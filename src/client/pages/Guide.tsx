@@ -19,8 +19,8 @@ const topics = [
       'Open Patients and search before registering, to avoid duplicate records.',
       'Enter first and last names, then choose Malaysian or non-Malaysian.',
       'For Malaysian patients, enter all 12 IC digits. The IC is formatted automatically; date of birth and gender are derived from it. Confirm the birth century if needed.',
-      'For non-Malaysian patients, enter passport number and record date of birth and gender manually.',
-      'Record address, phone, allergies, chronic conditions, and notification consent. Choose Phone country code before entering the number; Malaysia is the default. Other country accepts a full international number. For Malaysian five-digit postcodes, review the suggested city and state. Choose a locality when several match; unknown postcodes and non-Malaysian addresses use manual city and state. Use Edit details for later changes.',
+      'For non-Malaysian patients, choose country, enter passport number and record date of birth and gender manually.',
+      'Record address, phone, allergies, chronic conditions, and notification consent. Choose Phone country code before entering the number; Malaysia is the default. Other country accepts a full international number. For Malaysian five-digit postcodes, review the suggested city and state. Choose a locality when several match; unknown postcodes and non-Malaysian addresses use manual city and state. Use Open profile and Edit details for later changes.',
       'Clinical staff can open the patient’s encounter history and load older consultations.',
     ],
   },
@@ -46,7 +46,7 @@ const topics = [
   {
     title: 'Record a GP consultation',
     steps: [
-      'Open Clinical workspace and select a patient. Record subjective findings, objective findings, assessment, and plan.',
+      'Open Clinical workspace → Consultations. Select a patient, then Open consultation from their history. New consultation has a separate creation tab. Save before record tools unlock.',
       'Add each medicine with quantity, times per day, meal timing, dosage instructions, and supply days. Recorded allergies are checked before saving.',
       'Save as draft while charting; sign when complete. Signing reserves eligible medicine stock and reduces available quantity. Signed notes are permanent.',
       'Enter blood pressure as SYS/DIA with systolic above diastolic. An unusual monitor-range warning asks you to verify the reading but does not block recording clinical extremes.',
@@ -68,12 +68,11 @@ const topics = [
     ],
   },
   {
-    title: 'Take payment and review delivery',
+    title: 'Take payment and preview receipts',
     steps: [
       'Open Billing & payments and create an itemised checkout for the patient and practitioner.',
       'Add cash, card, QR, or deposit payment amounts. Split amounts must equal the invoice total exactly.',
-      'Complete checkout and download the receipt. Record patient deposits separately before using a deposit payment.',
-      'Open Reports & delivery to review appointment, queue, and refill notification statuses. Failed or queued delivery does not mean the patient received a message.',
+      'Complete checkout, preview the receipt, then download PDF when needed. Record patient deposits separately before using a deposit payment.',
     ],
   },
   {
@@ -104,7 +103,7 @@ export default function Guide() {
           label="Visual walkthroughs"
           description="Choose a task to highlight its actual controls in the app."
         >
-          <Panel title="Show me on the screen">
+          <Panel title="User guide on the screen">
             <p className="form-help">
               Choose a walkthrough to circle the actual controls. Use Next, Back or Close; nothing
               is saved by the guide.
@@ -113,7 +112,7 @@ export default function Guide() {
               {available.map(([id, label]) => (
                 <button className="secondary" key={id} onClick={() => startTour(id)}>
                   {label}
-                  <span>Start visual guide</span>
+                  <span>User guide</span>
                 </button>
               ))}
             </div>

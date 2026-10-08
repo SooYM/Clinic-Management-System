@@ -33,6 +33,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   const database = `qa_${randomUUID().replaceAll('-', '')}_test`;
   let admin: mysql.Connection, sql: mysql.Connection, service: any, applicationPool: any;
   let server: Server, baseUrl: string, legacyServer: Server, legacyBaseUrl: string;
+  let settingsServer: Server, settingsBaseUrl: string;
   let fixtureSequence = 1_000_000;
   const fixtureId = () => ++fixtureSequence;
   const receptionist = 2,
@@ -183,6 +184,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     server = (await import('../src/server/app')).createApp().listen(0, '127.0.0.1');
     await new Promise<void>((resolve) => server.once('listening', resolve));
     baseUrl = `http://127.0.0.1:${(server.address() as any).port}`;
+    // New settings cases use their own real app instance to retain the production per-IP rate limit.
+    settingsServer = (await import('../src/server/app')).createApp().listen(0, '127.0.0.1');
+    await new Promise<void>((resolve) => settingsServer.once('listening', resolve));
+    settingsBaseUrl = `http://127.0.0.1:${(settingsServer.address() as any).port}`;
     // Retained adapters are exercised only in this isolated historical test harness.
     // The deployed createApp must keep these modules retired.
     const legacyApp = express();
@@ -207,6 +212,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     legacyBaseUrl = `http://127.0.0.1:${(legacyServer.address() as any).port}`;
   });
   afterAll(async () => {
+    if (settingsServer) await new Promise<void>((resolve) => settingsServer.close(() => resolve()));
     if (legacyServer) {
       legacyServer.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
@@ -347,6 +353,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     });
   const adminHttp = (path: string, method = 'GET', body?: any) =>
     http(path, method, body, { Cookie: `cms_session=${adminToken}` });
+  const settingsHttp = (
+    path: string,
+    method = 'GET',
+    body?: any,
+    extra: Record<string, string> = {},
+  ) => http(path, method, body, extra, settingsBaseUrl);
+  const settingsAdminHttp = (path: string, method = 'GET', body?: any) =>
+    settingsHttp(path, method, body, { Cookie: `cms_session=${adminToken}` });
   const legacyHttp = (
     path: string,
     method = 'GET',
@@ -355,6 +369,145 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   ) => http(path, method, body, extra, legacyBaseUrl);
   const legacyAdminHttp = (path: string, method = 'GET', body?: any) =>
     legacyHttp(path, method, body, { Cookie: `cms_session=${adminToken}` });
+  it('blocks prior Malaysian appointment dates and removes only unattended bookings with history and scope preserved', async () => {
+    const p = await patient(),
+      payload = {
+        patientId: p.id,
+        practitionerId: doctor,
+        startsAt: '2038-01-01T01:00:00Z',
+        endsAt: '2038-01-01T02:00:00Z',
+        reason: 'Fictional removal',
+      };
+    expect(
+      (
+        await settingsHttp('/appointments', 'POST', {
+          ...payload,
+          startsAt: '2020-01-01T01:00:00Z',
+          endsAt: '2020-01-01T02:00:00Z',
+        })
+      ).status,
+    ).toBe(400);
+    const booked = await service.schedule(ctx, payload);
+    expect(
+      (
+        await settingsHttp(
+          '/appointments/' + booked.id,
+          'DELETE',
+          { version: booked.version },
+          { 'X-CSRF-Token': '' },
+        )
+      ).status,
+    ).toBe(403);
+    await expect(
+      service.removeAppointment(otherCtx, booked.id, booked.version),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(
+      (await settingsHttp('/appointments/' + booked.id, 'DELETE', { version: booked.version + 1 }))
+        .status,
+    ).toBe(409);
+    expect(
+      (await settingsHttp('/appointments/' + booked.id, 'DELETE', { version: booked.version }))
+        .status,
+    ).toBe(200);
+    expect((await service.list(ctx, 'appointments')).some((a: any) => a.id === booked.id)).toBe(
+      false,
+    );
+    expect(
+      (await rows('SELECT status,deleted_at FROM appointments WHERE id=?', [booked.id]))[0],
+    ).toMatchObject({ status: 'CANCELLED', deleted_at: expect.any(Date) });
+    expect(
+      (
+        await rows(
+          "SELECT COUNT(*) n FROM audit_logs WHERE entity_type='appointment' AND entity_id=? AND action='REMOVE'",
+          [booked.id],
+        )
+      )[0].n,
+    ).toBe(1);
+    const next = await service.schedule(ctx, payload);
+    await sql.query("UPDATE appointments SET status='CHECKED_IN' WHERE id=?", [next.id]);
+    await expect(service.removeAppointment(ctx, next.id, next.version)).rejects.toMatchObject({
+      code: 'VERSION_CONFLICT',
+    });
+  });
+  it('allows admin clinic rename with optimistic conflict and keeps scoped encounter details read only', async () => {
+    const clinic = await (await settingsAdminHttp('/admin/clinic')).json();
+    expect(
+      (await settingsHttp('/admin/clinic', 'PUT', { name: 'Denied', expectedName: clinic.name }))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await settingsAdminHttp('/admin/clinic', 'PUT', {
+          name: 'QA Updated Clinic',
+          expectedName: clinic.name,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await settingsAdminHttp('/admin/clinic', 'PUT', {
+          name: 'Stale',
+          expectedName: clinic.name,
+        })
+      ).status,
+    ).toBe(409);
+    expect((await service.bootstrap(ctx)).tenant.name).toBe('QA Updated Clinic');
+    await settingsAdminHttp('/admin/clinic', 'PUT', {
+      name: clinic.name,
+      expectedName: 'QA Updated Clinic',
+    });
+    const p = await patient(),
+      e = await encounter(p.id, [], { subjective: 'Line one\nLine two' });
+    const detail = await (await settingsAdminHttp('/encounters/' + e.id)).json();
+    expect(detail).toMatchObject({
+      id: e.id,
+      patientId: p.id,
+      subjective: 'Line one\nLine two',
+      status: 'SIGNED',
+    });
+    await expect(service.getEncounter(otherCtx, e.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+  it('permits ingredient-free supplies and retail items but requires medicine ingredients', async () => {
+    const adminCtx = { ...ctx, actor: { ...ctx.actor, id: administrator, role: 'ADMIN' } };
+    for (const category of ['CONSUMABLE', 'RETAIL'])
+      expect(
+        (
+          await service.addItem(adminCtx, {
+            name: 'Fictional supply',
+            sku: randomUUID(),
+            category,
+            priceCents: 0,
+          })
+        ).ingredient,
+      ).toBe('');
+    expect(
+      (
+        await settingsAdminHttp('/inventory', 'POST', {
+          name: 'Missing ingredient',
+          sku: randomUUID(),
+          category: 'MEDICATION',
+          priceCents: 0,
+        })
+      ).status,
+    ).toBe(400);
+    const legacy = await item();
+    await sql.query("UPDATE inventory_items SET ingredient='' WHERE id=?", [legacy.id]);
+    expect(
+      (
+        await settingsAdminHttp('/admin/inventory/' + legacy.id, 'PUT', {
+          name: legacy.name,
+          sku: legacy.sku,
+          ingredient: '',
+          category: legacy.category,
+          unit: legacy.unit,
+          priceCents: legacy.priceCents,
+          reorderLevel: legacy.reorderLevel,
+          active: false,
+          version: legacy.version,
+        })
+      ).status,
+    ).toBe(200);
+  });
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
   const photoInput = {
@@ -2244,7 +2397,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         [tenant, branch, filler.id, doctor, 'GP'],
       );
     }
-    expect((await service.list(ctx, 'patients')).some((row: any) => row.id === p.id)).toBe(false);
+    const idOrderedPatients = await service.list(ctx, 'patients');
+    expect(idOrderedPatients.map((row: any) => row.id)).toEqual(
+      idOrderedPatients.map((row: any) => row.id).sort((a: number, b: number) => a - b),
+    );
     expect(
       (await service.list(ctx, 'patients', 'Old Search Needle')).map((row: any) => row.id),
     ).toEqual([p.id]);

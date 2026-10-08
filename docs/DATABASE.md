@@ -2,9 +2,11 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `016_patient_country.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `017_appointment_removal.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
+
+Migration 017 adds nullable `appointments.deleted_at` for audited removal without deleting booking/notification history. Active lists and conflict checks exclude removed appointments. Existing entity IDs and rows remain unchanged. Clinic name customization updates the existing `tenants.name`; receipt snapshots preserve previously recorded names.
 
 Migration 016 adds nullable `patients.country_code` for ISO country of nationality. Only explicitly Malaysian historical records receive MY. Unknown foreign countries remain NULL; recognized-country validation is centralized in the application. No extra entity or ID is introduced.
 

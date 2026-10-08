@@ -222,32 +222,31 @@ export default function PatientForm({
             placeholder="e.g. Abdullah"
           />
         </Field>
-        <Field label="Nationality">
-          <select
-            value={nationality}
-            onChange={(e) => {
-              setNationality(e.target.value as Patient['nationality']);
-              setNationalId('');
-              setDateOfBirth('');
-              setIdentityError('');
-              clearAutofilled();
-            }}
-          >
-            <option value="MALAYSIAN">Malaysian</option>
-            <option value="NON_MALAYSIAN">Non-Malaysian</option>
-          </select>
-        </Field>
-        {nationality === 'NON_MALAYSIAN' && (
-          <Field
-            label="Country of nationality"
-            hint="Select the country shown on the patient's passport."
-          >
+        <div className="nationality-fields">
+          <Field label="Nationality">
             <select
-              required
-              value={countryCode}
+              value={nationality}
+              onChange={(e) => {
+                setNationality(e.target.value as Patient['nationality']);
+                setNationalId('');
+                setDateOfBirth('');
+                setIdentityError('');
+                clearAutofilled();
+              }}
+            >
+              <option value="MALAYSIAN">Malaysian</option>
+              <option value="NON_MALAYSIAN">Non-Malaysian</option>
+            </select>
+          </Field>
+          <Field label="Country of nationality" hint="Country recorded on the identity document.">
+            <select
+              required={nationality === 'NON_MALAYSIAN'}
+              disabled={nationality === 'MALAYSIAN'}
+              value={nationality === 'MALAYSIAN' ? 'MY' : countryCode}
               onChange={(event) => setCountryCode(event.target.value)}
             >
               <option value="">Choose country</option>
+              {nationality === 'MALAYSIAN' && <option value="MY">Malaysia</option>}
               {countryOptions
                 .filter((country) => country.code !== 'MY')
                 .map((country) => (
@@ -257,7 +256,7 @@ export default function PatientForm({
                 ))}
             </select>
           </Field>
-        )}
+        </div>
         <Field
           label={nationality === 'MALAYSIAN' ? 'Malaysian IC' : 'Passport number'}
           hint={
@@ -281,11 +280,7 @@ export default function PatientForm({
         </Field>
         <Field
           label="Date of birth"
-          hint={
-            nationality === 'MALAYSIAN'
-              ? 'Confirm the birth century; YY-MM-DD must match the IC.'
-              : undefined
-          }
+          hint="Confirm the birth date. Malaysian patients may correct only the IC birth century."
         >
           <input
             type="date"

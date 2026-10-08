@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Patient rows open full profiles; patient selectors and inventory default to ascending IDs. Country selection has a stable layout and phone inputs show selected prefixes.
+- Today/future booking dates, one booking entry, confirmed appointment removal with retained history (migration 017), and editable clinic names.
+- Clinical lists group by patient; separate creation and record review, with locked record tools until selection.
+- Contextual User guide labels tabs/functions; Reports & delivery navigation retired. Supplies and retail ingredients remain optional.
+
 - Non-Malaysian patient country-of-nationality selection and nullable ISO country storage through migration 016; existing foreign countries remain unknown.
 - Reusable loaded-record search, filters and sort direction across operational lists; original workflow order and authoritative totals remain preserved.
 

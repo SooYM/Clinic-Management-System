@@ -38,20 +38,22 @@ export default function RoleModules({ onSaved }: { onSaved: () => void }) {
               </select>
             </Field>
             <div className="access-matrix">
-              {resource.data.moduleDefinitions.map((module) => (
-                <label className="checkbox" key={module.id}>
-                  <input
-                    type="checkbox"
-                    checked={modules.includes(module.id)}
-                    onChange={(e) =>
-                      setModules((v) =>
-                        e.target.checked ? [...v, module.id] : v.filter((id) => id !== module.id),
-                      )
-                    }
-                  />
-                  {module.label}
-                </label>
-              ))}
+              {resource.data.moduleDefinitions
+                .filter((module) => module.id !== 'reports')
+                .map((module) => (
+                  <label className="checkbox" key={module.id}>
+                    <input
+                      type="checkbox"
+                      checked={modules.includes(module.id)}
+                      onChange={(e) =>
+                        setModules((v) =>
+                          e.target.checked ? [...v, module.id] : v.filter((id) => id !== module.id),
+                        )
+                      }
+                    />
+                    {module.label}
+                  </label>
+                ))}
             </div>
             <p className="form-help">
               Module access applies to staff with this role. Clinical signing and other restricted

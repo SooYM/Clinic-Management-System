@@ -118,3 +118,16 @@ SECTION-UI-01: Named Chromium sectionqa verifies every section in eight multi-ta
 SETTINGS-02: Real/admin-demo cases verify branch/staff renames, optimistic versions, current/home/final-branch guards, active branch authentication, staff restoration constraints, unused-room deletion, historical-room archival, upcoming/busy room conflicts, scopes, CSRF and audit. Browser verifies branch rename/remove/restore and unused-room removal with visible list changes.
 
 RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, original snapshot after master edits, exact payments, inline PDF and explicit attachment. Renderer tests verify MYT date rollover, snapshot metadata precedence, one-page ordinary PDF and bounded long-item pagination. Demo tests verify labeled preview, stable new snapshots and legacy fallback. Browser verifies in-page preview, no demo PDF link/download and 320px fit.
+
+
+## Workflow refinement cases
+
+| Case | Expected result | Evidence |
+| --- | --- | --- |
+| Patient ID defaults/profile | Ascending numeric IDs; row opens full identity, contacts and address | Fictional browser |
+| Nationality/phone | Country cell stays fixed; calling prefix visible and submitted once | Desktop/320px browser |
+| Booking date/removal | Today/future MYT only; scoped version check; attended protected; soft removal audited | Actual MySQL/shared/demo tests and browser |
+| Clinical grouping/selection | One loaded patient group; paginated full history; explicit record unlock; fresh creation | Fictional GP browser and scoped API tests |
+| Inventory ingredient/ID | Medication required; supplies/retail optional; ID defaults; historical archive allowed | Actual MySQL/demo tests and browser |
+| Clinic name | Admin-only optimistic update; new receipt identity; old snapshots preserved | Actual MySQL/demo tests |
+| Guide/navigation | Reports UI absent; real tabs/functions circled; disabled tools stay locked | Desktop/320px browser |

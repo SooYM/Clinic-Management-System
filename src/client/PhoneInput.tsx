@@ -28,23 +28,36 @@ export default function PhoneInput({ initial = '' }: { initial?: string }) {
         label="Phone"
         hint={
           parts.code
-            ? 'Enter the number without the country code. Full international numbers can also be pasted.'
-            : 'Include + and the country code, for example +358 40 123 4567.'
+            ? 'The selected calling code is included automatically.'
+            : 'Enter the full international number, for example +358 40 123 4567.'
         }
       >
-        <input
-          type="tel"
-          autoComplete="tel-national"
-          value={parts.number}
-          onChange={(event) => {
-            setChanged(true);
-            const number = event.target.value;
-            setParts(number.trim().startsWith('+') ? splitPhone(number) : { ...parts, number });
-          }}
-          maxLength={parts.code ? 50 - parts.code.length - 1 : 50}
-          pattern={parts.code ? undefined : '\\+.*'}
-          placeholder={parts.code === '+60' ? 'e.g. 12-345 6789' : 'Phone number'}
-        />
+        <div className="phone-entry">
+          {parts.code && (
+            <span className="phone-prefix" aria-hidden="true">
+              {parts.code}
+            </span>
+          )}
+          <input
+            type="tel"
+            autoComplete="tel-national"
+            value={parts.number}
+            onChange={(event) => {
+              setChanged(true);
+              const number = event.target.value;
+              setParts(number.trim().startsWith('+') ? splitPhone(number) : { ...parts, number });
+            }}
+            maxLength={parts.code ? 50 - parts.code.length - 1 : 50}
+            pattern={parts.code ? undefined : '\\+.*'}
+            placeholder={
+              parts.code === '+60'
+                ? '12-345 6789'
+                : parts.code
+                  ? 'Phone number'
+                  : '+358 40 123 4567'
+            }
+          />
+        </div>
       </Field>
       <input
         type="hidden"

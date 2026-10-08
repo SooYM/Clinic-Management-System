@@ -57,3 +57,8 @@ Latest catalog gate at 15:53 MYT: **290/290 tests across thirteen files passed w
 Task-section UI verification on 7 October 2026 retained the 290/290 regression gate and passed normal/demo builds, formatting, desktop/320px layouts, section isolation, draft retention and guided navigation. See VALIDATION.md for concrete checks and limits.
 
 Settings/receipt gate on 7 October 2026 at 16:43 MYT passed 305/305 tests across fourteen files, zero skips. Typecheck, both builds and formatting passed. Five additional real integration cases, seven demo cases and three receipt renderer cases extend the earlier290 gate. Subsequent display-only receipt scrolling/currency wrapping and admin copy fixes passed builds/format and focused browser confirmation; GitHub CI checks final source.
+
+
+## Workflow refinement gate — 2026-10-08
+
+At 10:00 MYT the full suite passed 329/329 tests across 19 files with zero skips. Actual guarded disposable MySQL tests apply migrations through 017. Coverage includes date boundaries, scoped/versioned appointment removal, attended protection, clinic-name conflicts and receipt snapshot retention, medication ingredient validation and legacy archival compatibility. Browser demo checks use fictional records and prove profile navigation, ID ordering, stable nationality layout, prefix composition, date constraints, deletion confirmation, grouped history, separate creation, disabled tools and highlighted guides at desktop/320px. These checks do not establish a successful hosted Render deployment.

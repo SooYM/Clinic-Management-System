@@ -5,7 +5,7 @@ This guide covers the current clinic workflows. Use **User guide** in the applic
 ## Visual walkthroughs and phone use
 
 Open **User guide → Show me on the screen** and choose an available workflow.
-Or select **Show me** in the current screen's header. The guide circles actual buttons, fields and workflow sections.
+Select **User guide** in the current screen's header or sidebar to label its tabs and explain their functions. The guide circles actual buttons, fields and workflow sections. The dedicated guide page also retains workflow topics.
 Use **Next**, **Back**, **Close**, or **Escape**. **Focus highlighted control** moves keyboard focus to the relevant field or button.
 Tours follow your role's modules and never save patients, bookings, prescriptions, payments or administrative changes.
 Some steps open an input form for demonstration; review and submit it yourself only after closing the guide.
@@ -23,6 +23,7 @@ You can scroll or interact with controls while a guide is open; it does not lock
 3. Add staff accounts. Choose **GP** for practitioners and enter their professional registration number. Active GPs assigned to the branch automatically appear in appointment and queue practitioner selectors.
 4. Configure **Role module access**. Enable the modules each role needs, then save. The server checks access as well as hiding unavailable navigation. Administrative settings remain administrator-only; account security and help remain available to staff.
 5. Add medication, consumable or retail items in **Dispensary**, then receive their stock batches. A catalog entry alone is not available stock.
+6. Open **Clinic settings** to change the clinic name used on future receipts and documents. Existing receipt snapshots retain their recorded clinic name; legacy receipts use current metadata where no snapshot exists.
 
 Module access controls which workflows staff can open and use. Signing prescriptions and issuing clinical documents also require practitioner authority. Giving a receptionist clinical module access does not turn that account into a GP.
 
@@ -30,17 +31,18 @@ Module access controls which workflows staff can open and use. Signing prescript
 
 Open **Patients → Register patient**. Enter first name and optional last name as recorded on the patient's identity document.
 Choose **Phone country code** from the dropdown, then enter the phone number. Malaysia (+60) is the default; its domestic leading zero is removed when composing an edited international number. Pasting a full international number detects listed prefixes without duplicating them. Choose **Other country — enter full number** for unlisted countries and include `+` and the calling code. Phone remains optional; existing numbers stay unchanged until edited. Spaces, hyphens and extensions are retained within the existing 50-character limit.
+The selected calling code appears inside the number field. It is included automatically when saving. Country of nationality occupies a fixed position; Malaysia is shown as a fixed country for Malaysian patients.
 
 For **Non-Malaysian**, choose **Country of nationality** as shown on the passport. This is independent of address and phone calling code. Existing foreign patients without recorded country need a selection when their demographics are edited.
 
-Record lists include **Search loaded records**, relevant filters, **Sort by**, **Direction** and **Clear filters**. Original order preserves the usual workflow sequence. Counts show matches out of loaded records; existing server searches/Load older actions retrieve more records where available. Filters affect the displayed list, not stock, billing totals or saved records.
+Record lists include **Search loaded records**, relevant filters, **Sort by**, **Direction** and **Clear filters**. Patients and inventory items default to ascending IDs; their Default option and Clear filters return to ID order. Queue views retain their workflow order. Counts show matches out of loaded records; server searches/Load older retrieve more records. Filters affect the view, not stock, billing totals or saved records.
 For a single legal name, leave last name blank.
 
 For **Malaysian** patients, enter 12 IC digits. The form adds hyphens as `YYMMDD-SS-NNNN`, derives birth date and assigns male for an odd final digit or female for an even final digit. Review the derived details before saving. The two-digit year does not identify its century; use the birth-date correction provided by the form when needed. The system checks number/date format; it does not verify the IC with a government registry.
 
 For **Non-Malaysian** patients, enter passport number, date of birth and gender manually. Enter address line 1, optional line 2, postcode, city and state. Malaysian postcodes fill city/state from the bundled lookup. Confirm the locality if more than one matches; unknown postcodes and non-Malaysian addresses allow manual entry. Record contact details, allergies, chronic conditions and notification consent.
 
-Search the directory by name, identity number or phone. Open a chart to edit demographics or review the patient's encounter history. Signed clinical records remain unchanged by demographic edits.
+Search the directory by name, identity number or phone. Click a patient row or **Open profile** to view identity, nationality, phone, email, full address, allergies, conditions, consent and timestamps. Use Edit patient for demographic changes. Signed clinical records remain unchanged by demographic edits.
 
 Record IDs are numeric: 1, 2, 3 and onward within each table. Patient IDs are separate from IC/passport numbers. Workspace shows tenant and branch IDs. Deleted records leave gaps; existing records keep their IDs.
 
@@ -50,11 +52,15 @@ IC format/date fields are described in [Microsoft's Malaysia identity number def
 
 Open **Appointments → Book appointment**. Search for the patient instead of scrolling through the whole directory. Confirm the selected patient, practitioner, optional room, date and time before booking. A room or practitioner conflict prevents saving.
 
+Patient choices follow ascending patient IDs. Booking dates must be today or later in Malaysia time; an earlier time today remains permitted. Use Delete appointment and confirm removal for unused booked or cancelled appointments. Attended appointments cannot be removed; removal preserves history and audit records.
+
 Use **Clinic overview** to check patients into the queue. Assign the GP and room when calling a ticket. Start the consultation, then move the visit to dispensary or payment as appropriate. The waiting-room display shows ticket numbers and rooms without patient identity.
 
 ## GP consultation and prescribing
 
-Open **Clinical workspace**, choose the patient and record subjective history, objective findings, assessment and plan. Review allergies before prescribing.
+Open **Clinical workspace → New consultation**, choose the patient and record subjective history, objective findings, assessment and plan. Creating the consultation opens its Notes & prescription section. Review allergies before prescribing.
+
+The Consultations section groups matching loaded records by patient. Click a patient to load their consultation history, then Open consultation to select a record. Notes & prescription, Documents and Medication logs stay greyed out until a consultation is selected. New consultation clears record selection and opens a separate creation form.
 
 SOAP fields use separate rows. Search the patient selector or consultation list to locate the correct record.
 Enter blood pressure as `SYS/DIA`, such as `120/80`, using positive whole numbers with systolic greater than diastolic.
@@ -142,7 +148,7 @@ Use the section buttons below each module title. The highlighted button identifi
 | Administration     | Staff accounts; Branches; Consultation rooms; Catalog choices; Role access; Audit trail |
 | User guide         | Visual walkthroughs; Written instructions                                               |
 
-Section switches keep entered values until you save or leave the module. They do not save drafts to the database. Add/edit buttons open the matching section. Show me automatically opens each walkthrough step’s section. Account security and Reports & delivery already contain one task and remain simple pages.
+Section switches keep entered values until you save or leave the module. They do not save drafts to the database. Add/edit buttons open the matching section. User guide highlights tabs and opens permitted walkthrough sections. Clinical record tools stay disabled until a consultation is selected. Reports & delivery is removed from navigation; retained notification infrastructure does not require a staff screen.
 
 ## Rename or remove settings
 

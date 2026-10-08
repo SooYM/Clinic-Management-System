@@ -59,6 +59,49 @@ async function audit(db: Database, req: Request, action: string, entity: string,
 export function administrationRouter() {
   const router = Router();
   router.get(
+    '/admin/clinic',
+    roles('ADMIN'),
+    route(async (req, res) => {
+      const result = await pool.query('SELECT id,name FROM tenants WHERE id=$1', [
+        req.context.actor.tenantId,
+      ]);
+      res.json(result.rows[0]);
+    }),
+  );
+  router.put(
+    '/admin/clinic',
+    roles('ADMIN'),
+    route(async (req, res) => {
+      const input = z
+        .object({
+          name: z.string().trim().min(1).max(200),
+          expectedName: z.string().min(1).max(200),
+        })
+        .strict()
+        .parse(req.body);
+      const result = await transaction(async (db) => {
+        const existing = (
+          await db.query('SELECT id,name FROM tenants WHERE id=$1 FOR UPDATE', [
+            req.context.actor.tenantId,
+          ])
+        ).rows[0];
+        if (existing.name !== input.expectedName)
+          throw new DomainError(
+            'VERSION_CONFLICT',
+            'Clinic name changed. Refresh before saving.',
+            409,
+          );
+        await db.query('UPDATE tenants SET name=$2 WHERE id=$1', [
+          req.context.actor.tenantId,
+          input.name,
+        ]);
+        await audit(db, req, 'UPDATE', 'tenant', req.context.actor.tenantId);
+        return { id: existing.id, name: input.name };
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
     '/admin/role-modules',
     roles('ADMIN'),
     route(async (req, res) => {

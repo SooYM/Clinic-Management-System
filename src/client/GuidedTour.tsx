@@ -6,10 +6,157 @@ interface Step {
   title: string;
   text: string;
   open?: string;
+  section?: string;
 }
 const anchor = (name: string) => `[data-guide="${name}"]`;
 const field = (name: string) => `${anchor(`field-${name}`)}`;
 const panel = (name: string) => anchor(`panel-${name}`);
+const sectionGuides: Record<string, [string, string, string][]> = {
+  patients: [
+    [
+      'directory',
+      'Patient directory',
+      'Search, filter and sort patients. Open profile to review identity, contact details, address and clinical history. Edit details updates the saved record.',
+    ],
+    [
+      'registration',
+      'Patient registration',
+      'Create a patient after checking the directory. Select nationality and country, review identity details and country code, and record safety information.',
+    ],
+  ],
+  appointments: [
+    [
+      'visits',
+      'Scheduled visits',
+      'Search, filter and sort saved appointments. Review patient, GP, room and visit times before changing booking details.',
+    ],
+    [
+      'booking',
+      'Book appointment',
+      'Choose a patient and GP, set start and end times, and optionally assign a room. Saving validates booking conflicts.',
+    ],
+  ],
+  queue: [
+    [
+      'queue',
+      'Live queue',
+      'Review current tickets, assign room and GP, and move patients through triage, consultation, dispensing and payment. Skip and undo controls correct waiting-room actions.',
+    ],
+    [
+      'check-in',
+      'Check in patient',
+      'Select a registered patient and priority to start a visit. One active visit per patient is allowed.',
+    ],
+  ],
+  clinical: [
+    [
+      'consultations',
+      'Consultations by patient',
+      'Patients appear once in ascending patient ID order. Select a patient to review their consultation history, then use Open consultation to select a specific encounter.',
+    ],
+    [
+      'create',
+      'New consultation',
+      'GPs create a separate consultation here. Select a patient, record SOAP findings and medicines, and save before using the record tabs.',
+    ],
+    [
+      'notes',
+      'Notes & prescription',
+      'Select a saved consultation to unlock this tab. Review SOAP notes and medicine instructions; the attending GP can edit drafts. Signed notes remain permanent.',
+    ],
+    [
+      'documents',
+      'Documents',
+      'Select a consultation to unlock this tab. Issue letters from signed records, preview their contents, download PDFs separately, and review or revoke issued documents.',
+    ],
+    [
+      'logs',
+      'Medication logs',
+      'Select a consultation to unlock this tab. Review clinic prescription activity and separately record patient-reported or staff-observed Taken or Missed doses. Dose logs do not change stock.',
+    ],
+  ],
+  inventory: [
+    [
+      'stock',
+      'Stock catalogue',
+      'Search, filter and sort medicines, supplies and retail products. Review available, physical and reserved stock. Administrators maintain item details and archived choices.',
+    ],
+    [
+      'receive',
+      'Receive stock',
+      'Choose an item and record batch, quantity and expiry. Receiving a batch adds stock; creating a catalogue item alone does not.',
+    ],
+    [
+      'supplies',
+      'Use supplies',
+      'Record physical usage of consumables and retail products with quantity and reason. Medicines follow signed-prescription dispensing instead.',
+    ],
+    [
+      'dispense',
+      'Dispense medicines',
+      'Review a signed prescription and patient allergies before dispensing eligible batches. Display filters never change the entire prescription being dispensed.',
+    ],
+    [
+      'history',
+      'Prescription history',
+      'Find pending and dispensed prescriptions. View their prescribing, reservation and dispensing activity separately from patient medication-taking records.',
+    ],
+  ],
+  billing: [
+    [
+      'invoices',
+      'Invoice history',
+      'Search, filter and sort saved invoices. Preview receipt first, then open or download the printable PDF separately.',
+    ],
+    [
+      'checkout',
+      'Patient checkout',
+      'Select patient and GP, add itemised charges, and record payment methods. Split payments must exactly equal the total.',
+    ],
+    [
+      'deposits',
+      'Patient deposits',
+      'Record deposits before spending their available balance at checkout. Receipt and invoice history retain recorded payments.',
+    ],
+  ],
+  admin: [
+    [
+      'staff',
+      'Staff accounts',
+      'Create staff with appropriate role and branch, edit names and remove or restore access. GP accounts also populate practitioner choices.',
+    ],
+    [
+      'clinic',
+      'Clinic settings',
+      'Edit the clinic name used across your workspace and new documents. Historical receipt snapshots remain preserved.',
+    ],
+    [
+      'branches',
+      'Branches',
+      'Create branches, edit their names and addresses, or remove and restore them while preserving history. Current, final or active-staff branches remain protected.',
+    ],
+    [
+      'rooms',
+      'Consultation rooms',
+      'Create and rename rooms or remove unused rooms. Historical rooms archive; busy rooms and future bookings prevent removal.',
+    ],
+    [
+      'catalogs',
+      'Catalog choices',
+      'Maintain drugs, inventory units, lab panels, specimen types and referral destinations. Archived choices remain in history and disappear from new selections.',
+    ],
+    [
+      'access',
+      'Role access',
+      'Choose which visible modules each role can access. Branch scope and clinical permissions remain enforced independently.',
+    ],
+    [
+      'audit',
+      'Audit trail',
+      'Search, filter and sort recorded actions. Audit records show who acted and when, and cannot be edited through this guide.',
+    ],
+  ],
+};
 export const tourNames: Record<string, string> = {
   patients: 'Patient registration',
   appointments: 'Appointment booking',
@@ -17,7 +164,6 @@ export const tourNames: Record<string, string> = {
   clinical: 'GP consultation',
   inventory: 'Stock and dispensing',
   billing: 'Patient checkout',
-  reports: 'Notification delivery',
   admin: 'Clinic administration',
   account: 'Account security',
 };
@@ -60,25 +206,25 @@ const tours: Record<string, Step[]> = {
   ],
   appointments: [
     {
-      target: anchor('open-appointment'),
+      target: anchor('section-booking'),
       title: 'Open a booking',
       text: 'Book an appointment for an existing patient. The tour opens this form without creating a booking.',
     },
     {
       target: `${panel('new-appointment')} ${field('search-patient')}`,
-      open: 'open-appointment',
+      open: 'section-booking',
       title: 'Search and select the patient',
       text: 'Type a name, identity number or phone, then choose the matching patient from the selector.',
     },
     {
       target: `${panel('new-appointment')} ${field('practitioner')}`,
-      open: 'open-appointment',
+      open: 'section-booking',
       title: 'Assign a GP',
       text: 'Active GP accounts in this branch appear here. Rooms are optional; archived rooms are excluded.',
     },
     {
       target: field('starts'),
-      open: 'open-appointment',
+      open: 'section-booking',
       title: 'Confirm the time',
       text: 'Set start and end times. Practitioner and room overlaps prevent booking. The guide never confirms a booking.',
     },
@@ -201,13 +347,6 @@ const tours: Record<string, Step[]> = {
       text: 'Successful checkout adds a persisted invoice. Receipt links use recorded payments; card and QR entries do not authorize a gateway charge.',
     },
   ],
-  reports: [
-    {
-      target: panel('patient-notification-delivery'),
-      title: 'Read delivery states',
-      text: 'Pending, failed and unconfigured messages are distinct from sent messages. SENT records provider acceptance, not patient receipt.',
-    },
-  ],
   admin: [
     {
       target: `${panel('create-staff-account')} ${field('role')}`,
@@ -267,7 +406,7 @@ export function GuidedTour({
   const [keyboardOffset, setKeyboardOffset] = useState(12);
   const card = useRef<HTMLDivElement>(null);
   const target = useRef<HTMLElement | null>(null);
-  const steps =
+  const taskSteps =
     role !== 'DOCTOR' && module === 'clinical'
       ? [
           tours.clinical[0],
@@ -285,6 +424,25 @@ export function GuidedTour({
               !step.target.includes('open-inventory-item'),
           )
         : tours[module] || [];
+  const steps: Step[] = [
+    ...(sectionGuides[module] || []).map(([id, title, text]) => ({
+      target: anchor(`section-${id}`),
+      title,
+      text,
+      // Do not clear an encounter or open an unavailable tab during the guide.
+      section: module === 'clinical' ? undefined : id,
+    })),
+    ...(module === 'clinical'
+      ? [
+          {
+            target: panel('patients-with-consultations'),
+            title: 'Select patient, then consultation',
+            text: 'Open a patient group to see their dated consultation history. Use Open consultation to unlock the record tabs. New consultation creates a separate record; the guide never saves or signs it.',
+            section: 'consultations',
+          },
+        ]
+      : taskSteps),
+  ];
   const step = steps[index];
   useLayoutEffect(() => {
     if (!step) return;
@@ -296,6 +454,15 @@ export function GuidedTour({
     const deadline = Date.now() + 3500;
     const update = () => {
       if (stopped) return;
+      if (step.section && !prepared) {
+        const sectionControl = document.querySelector<HTMLButtonElement>(
+          anchor(`section-${step.section}`),
+        );
+        if (sectionControl && !sectionControl.disabled) {
+          sectionControl.click();
+          prepared = true;
+        }
+      }
       const matches = Array.from(document.querySelectorAll<HTMLElement>(step.target));
       let element = matches.find(
         (e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden',
@@ -303,13 +470,16 @@ export function GuidedTour({
       if (!element) {
         const section = matches[0]?.closest<HTMLElement>('[data-workspace-section][hidden]');
         const controlId = section?.getAttribute('aria-labelledby');
-        if (controlId) document.getElementById(controlId)?.click();
+        const control = controlId
+          ? (document.getElementById(controlId) as HTMLButtonElement | null)
+          : null;
+        if (control && !control.disabled) control.click();
       }
       if (element && element.offsetHeight > innerHeight * 0.45)
         element = element.querySelector<HTMLElement>('.panel-heading, .field') || element;
       if (!element && step.open && !prepared) {
         const opener = document.querySelector<HTMLButtonElement>(anchor(step.open));
-        if (opener) {
+        if (opener && !opener.disabled) {
           opener.click();
           prepared = true;
         }

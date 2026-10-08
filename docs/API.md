@@ -1,5 +1,11 @@
 # HTTP API contract
 
+Usability update: appointments reject start dates before today in Malaysia time (today remains allowed). `DELETE /api/appointments/:id` accepts `{version}` under existing scoped appointment permissions and CSRF. It marks BOOKED/CANCELLED rows cancelled with `deleted_at`, hides them from active reads/conflicts, and audits REMOVE; attended/status-changed bookings reject with 409. Historical rows remain stored.
+
+`GET /api/encounters/:id` returns a scoped full consultation for clinical history review. `GET /api/admin/clinic` returns `{id,name}`; `PUT` accepts `{name,expectedName}` for administrators, audits the change and returns 409 on stale names. Future receipt snapshots use the saved name; previous snapshots remain unchanged.
+
+Patient registry and minimal references return ascending patient IDs by default; inventory uses ascending item IDs. New MEDICATION ingredients are required; CONSUMABLE/RETAIL ingredients are optional. Unchanged legacy medicine records with missing ingredients retain archival compatibility. Reports navigation is retired; existing backend notification APIs and historical grants remain retained.
+
 Browser and API share an origin. JSON requests use `Content-Type: application/json`. After `POST /api/auth/login`, keep returned `cms_session` cookie and `csrfToken`. Send `X-CSRF-Token` on state changes and optionally `X-Branch-ID` to select an authorized branch. Unauthorized requests return 401; role, origin or CSRF rejection returns 403. Mutation bodies reject unknown fields.
 
 Successful collection reads return `{ "data": [] }`; single-resource and mutation responses return resource objects. Mutation requests normally return 201; edits return 200. Logout returns 204. Failure response contains `error`, `code` and request identifier; validation failures also include field details. Never treat a 500 response as proof the transaction succeeded; reuse original idempotency key for financial retry.

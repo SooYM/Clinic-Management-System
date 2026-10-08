@@ -1,7 +1,7 @@
 import { catalogKinds } from '../shared/catalogs';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { buildReceiptView } from '../shared/receipt-view';
-import { schemas } from '../server/validation';
+import { schemas, validateItemIngredient } from '../server/validation';
 import {
   ClinicalEncounter,
   DomainError,
@@ -768,6 +768,8 @@ export class DemoClinic {
       const search = (url.searchParams.get('search') || '').toLowerCase();
       return {
         data: this.scoped('patients', branch)
+          .slice()
+          .sort((a, b) => a.id - b.id)
           .filter((p) =>
             [p.name, p.nationalId, p.phone].some((v) => v.toLowerCase().includes(search)),
           )
@@ -856,6 +858,13 @@ export class DemoClinic {
       const item = this.record('inventory', id!, branch);
       const { active, version, ...fields } = body;
       const value = schemas.item.parse(fields);
+      if (!(
+        item.category === 'MEDICATION' &&
+        !item.ingredient.trim() &&
+        value.category === item.category &&
+        value.ingredient === item.ingredient
+      ))
+        validateItemIngredient(value);
       if (typeof active !== 'boolean' || version !== item.version)
         fail('Inventory item changed; refresh before saving.', 409);
       if (this.scoped('inventory', branch).some((i) => i.id !== item.id && i.sku === value.sku))
@@ -954,9 +963,12 @@ export class DemoClinic {
     if (route === '/patients' && method === 'GET') {
       const search = (url.searchParams.get('search') || '').toLowerCase();
       return {
-        data: this.scoped('patients', branch).filter((p) =>
-          [p.name, p.nationalId, p.phone].some((v) => v.toLowerCase().includes(search)),
-        ),
+        data: this.scoped('patients', branch)
+          .slice()
+          .sort((a, b) => a.id - b.id)
+          .filter((p) =>
+            [p.name, p.nationalId, p.phone].some((v) => v.toLowerCase().includes(search)),
+          ),
       };
     }
     if (/^\/patients\/\d+$/.test(route) && method === 'GET')
@@ -997,6 +1009,8 @@ export class DemoClinic {
       p.patientNumber = p.id;
       return p;
     }
+    if (/^\/encounters\/\d+$/.test(route) && method === 'GET')
+      return this.enrich(this.record('encounters', id!, branch));
     if (route === '/appointments' && method === 'POST') {
       const v = schemas.appointment.parse(body);
       this.record('patients', v.patientId, branch);
@@ -1018,8 +1032,20 @@ export class DemoClinic {
     }
     if (/^\/appointments\/\d+\/cancel$/.test(route)) {
       const a = this.record('appointments', id!, branch);
-      if (a.version !== body.version) fail('Appointment changed.', 409);
+      if (a.deletedAt) fail('Appointment not found.', 404);
+      if (a.version !== body.version || a.status !== 'BOOKED') fail('Appointment changed.', 409);
       a.status = 'CANCELLED';
+      a.version++;
+      return a;
+    }
+    if (/^\/appointments\/\d+$/.test(route) && method === 'DELETE') {
+      const { version } = z.object({ version: z.number().int().positive() }).strict().parse(body);
+      const a = this.record('appointments', id!, branch);
+      if (a.deletedAt) fail('Appointment not found.', 404);
+      if (a.version !== version || !['BOOKED', 'CANCELLED'].includes(a.status))
+        fail('Appointment changed or has clinical attendance; it cannot be removed.', 409);
+      a.status = 'CANCELLED';
+      a.deletedAt = now();
       a.version++;
       return a;
     }
@@ -1150,6 +1176,7 @@ export class DemoClinic {
     if (route === '/inventory' && method === 'POST') {
       if (user.role !== 'ADMIN') fail('Only administrators can add inventory items.', 403);
       const v = schemas.item.parse(body);
+      validateItemIngredient(v);
       if (this.scoped('inventory', branch).some((i) => i.sku === v.sku))
         fail('SKU already exists.', 409);
       this.validateCatalogChoice('INVENTORY_UNIT', v.unit, branch);
@@ -1591,6 +1618,24 @@ export class DemoClinic {
       d.revokedAt = now();
       return d;
     }
+    if (route === '/admin/clinic' && method === 'GET') {
+      const clinic = this.state.rows.tenants[0];
+      return { id: clinic.id, name: clinic.name };
+    }
+    if (route === '/admin/clinic' && method === 'PUT') {
+      const input = z
+        .object({
+          name: z.string().trim().min(1).max(200),
+          expectedName: z.string().min(1).max(200),
+        })
+        .strict()
+        .parse(body);
+      const clinic = this.state.rows.tenants[0];
+      if (clinic.name !== input.expectedName)
+        fail('Clinic name changed. Refresh before saving.', 409);
+      clinic.name = input.name;
+      return { id: clinic.id, name: clinic.name };
+    }
     if (route === '/admin/role-modules' && method === 'GET')
       return {
         roles: roleIds.map((role) => ({
@@ -1785,6 +1830,7 @@ export class DemoClinic {
     )
       return {
         data: this.scoped(route.slice(1), branch)
+          .filter((r) => route !== '/appointments' || !r.deletedAt)
           .map((r) => this.enrich(r))
           .filter(
             (r: Row) =>
@@ -1804,15 +1850,17 @@ export class DemoClinic {
       };
     if (route === '/inventory' && method === 'GET')
       return {
-        data: this.inventory(branch).filter(
-          (r) =>
-            (!url.searchParams.get('category') ||
-              r.category === url.searchParams.get('category')) &&
-            [r.name, r.sku, r.ingredient, r.category]
-              .join(' ')
-              .toLowerCase()
-              .includes((url.searchParams.get('search') || '').toLowerCase()),
-        ),
+        data: this.inventory(branch)
+          .sort((a, b) => a.id - b.id)
+          .filter(
+            (r) =>
+              (!url.searchParams.get('category') ||
+                r.category === url.searchParams.get('category')) &&
+              [r.name, r.sku, r.ingredient, r.category]
+                .join(' ')
+                .toLowerCase()
+                .includes((url.searchParams.get('search') || '').toLowerCase()),
+          ),
       };
     fail('This operation needs the real MySQL application.', 503);
   }

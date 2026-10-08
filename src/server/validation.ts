@@ -4,10 +4,17 @@ import { queueStatuses } from '../domain/models.js';
 import { parseMalaysianIc } from '../shared/patient-identity.js';
 import { parseBloodPressure } from '../shared/blood-pressure.js';
 import { countryCodes } from '../shared/countries.js';
+import { malaysiaDate } from '../shared/clinic-dates.js';
 const id = idSchema,
   text = z.string().trim().min(1).max(200),
   long = z.string().max(20000).default('');
 export const integer = z.number().int().positive().max(1_000_000);
+export function validateItemIngredient(value: { category: string; ingredient: string }) {
+  if (value.category === 'MEDICATION' && !value.ingredient.trim())
+    throw new z.ZodError([
+      { code: 'custom', path: ['ingredient'], message: 'Medicine ingredient is required.' },
+    ]);
+}
 const cents = z.number().int().min(0).max(2_000_000_000);
 const date = z
   .string()
@@ -151,7 +158,11 @@ export const schemas = {
       reason: z.string().max(500).default(''),
     })
     .strict()
-    .refine((v) => new Date(v.endsAt) > new Date(v.startsAt), 'End must follow start.'),
+    .refine((v) => new Date(v.endsAt) > new Date(v.startsAt), 'End must follow start.')
+    .refine(
+      (v) => malaysiaDate(new Date(v.startsAt)) >= malaysiaDate(),
+      'Appointment date must be today or later.',
+    ),
   queue: z
     .object({ patientId: id, priority: z.enum(['NORMAL', 'URGENT']).default('NORMAL') })
     .strict(),
@@ -217,7 +228,7 @@ export const schemas = {
     .object({
       name: text,
       sku: text,
-      ingredient: z.string().max(500).default(''),
+      ingredient: z.string().trim().max(500).default(''),
       category: z.enum(['MEDICATION', 'CONSUMABLE', 'RETAIL']).default('MEDICATION'),
       unit: z.string().trim().min(1).max(50).default('unit'),
       priceCents: cents,

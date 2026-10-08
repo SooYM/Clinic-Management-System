@@ -22,6 +22,7 @@ import { type InventoryItem, dateTime, humanize } from '../types';
 import { useListControls } from '../ListControls';
 function StockBatches({ item }: { item: InventoryItem }) {
   const list = useListControls(item.batches || [], {
+    defaultSort: 'id',
     label: `${item.name} batches`,
     search: (row) => `${row.id} ${row.batchNumber}`,
     filters: [
@@ -32,6 +33,7 @@ function StockBatches({ item }: { item: InventoryItem }) {
       },
     ],
     sorts: [
+      { key: 'id', label: 'Batch ID', value: (row) => row.id },
       { key: 'expiry', label: 'Expiry date', value: (row) => row.expiresOn || '9999' },
       { key: 'batch', label: 'Batch number', value: (row) => row.batchNumber },
       { key: 'quantity', label: 'Quantity', value: (row) => row.quantity },
@@ -75,10 +77,12 @@ function PendingMedicines({
   prescriptions: PendingPrescription['prescriptions'];
 }) {
   const list = useListControls(prescriptions, {
+    defaultSort: 'id',
     label: 'Selected prescription medicines',
     search: (row) => `${row.itemName} ${row.dosage}`,
     filters: [{ key: 'meal', label: 'Meal timing', value: (row) => row.mealTiming || 'ANY_TIME' }],
     sorts: [
+      { key: 'id', label: 'Item ID', value: (row) => row.itemId },
       { key: 'name', label: 'Medicine name', value: (row) => row.itemName },
       { key: 'quantity', label: 'Quantity', value: (row) => row.quantity },
       { key: 'frequency', label: 'Times per day', value: (row) => row.frequencyPerDay || 1 },
@@ -111,9 +115,11 @@ export default function Inventory() {
   const editorRef = useRef<HTMLDivElement>(null);
   const units = useResource<CatalogEntry[]>('/references/catalogs?kind=INVENTORY_UNIT');
   const [editingItem, setEditingItem] = useState<InventoryItem>();
+  const [itemCategory, setItemCategory] = useState('MEDICATION');
   const [create, setCreate] = useState(false);
   useEffect(() => {
     if (create || editingItem) editorRef.current?.scrollIntoView({ block: 'start' });
+    setItemCategory(editingItem?.category || 'MEDICATION');
   }, [create, editingItem]);
   const [historySearch, setHistorySearch] = useState('');
   const [logEncounterId, setLogEncounterId] = useState('');
@@ -140,9 +146,10 @@ export default function Inventory() {
   const [dispenseKey, setDispenseKey] = useState(crypto.randomUUID());
   const selected = pending.data?.find((e) => e.id === Number(encounterId));
   const matchingPrescriptions = pending.data || [];
-  const matchingItems = resource.data || [];
+  const matchingItems = [...(resource.data || [])].sort((left, right) => left.id - right.id);
   const catalogItems = matchingItems.filter((item) => showRemoved || item.active !== false);
   const catalogList = useListControls(catalogItems, {
+    defaultSort: 'id',
     label: 'Loaded stock catalogue',
     search: (row) => `${row.id} ${row.name} ${row.sku} ${row.ingredient || ''}`,
     filters: [
@@ -169,6 +176,7 @@ export default function Inventory() {
     ],
   });
   const pendingList = useListControls(matchingPrescriptions, {
+    defaultSort: 'id',
     label: 'Loaded pending prescriptions',
     search: (row) =>
       `${row.id} ${row.patientName} ${row.practitionerName} ${row.prescriptions.map((rx) => rx.itemName).join(' ')}`,
@@ -180,6 +188,7 @@ export default function Inventory() {
     ],
   });
   const historyList = useListControls(history.data || [], {
+    defaultSort: 'id',
     label: 'Loaded prescription history',
     search: (row) => `${row.id} ${row.patientId} ${row.patientName}`,
     filters: [
@@ -197,9 +206,9 @@ export default function Inventory() {
   const receivingItem = resource.data?.find((item) => item.id === Number(receivingItemId));
   const optionalExpiry =
     receivingItem?.category === 'CONSUMABLE' || receivingItem?.category === 'RETAIL';
-  const supplies = matchingItems.filter(
-    (item) => item.category === 'CONSUMABLE' || item.category === 'RETAIL',
-  );
+  const supplies = matchingItems
+    .filter((item) => item.category === 'CONSUMABLE' || item.category === 'RETAIL')
+    .sort((left, right) => left.id - right.id);
   function refresh() {
     setLogRevision((revision) => revision + 1);
     resource.refresh();
@@ -286,15 +295,27 @@ export default function Inventory() {
                         placeholder="e.g. PARA-500"
                       />
                     </Field>
-                    <Field label="Active ingredient">
+                    <Field
+                      label="Active ingredient"
+                      hint={
+                        itemCategory === 'MEDICATION'
+                          ? 'Required for medicines.'
+                          : 'Optional for supplies and retail items, such as lab coats.'
+                      }
+                    >
                       <input
                         name="ingredient"
                         defaultValue={editingItem?.ingredient}
+                        required={itemCategory === 'MEDICATION'}
                         placeholder="e.g. Paracetamol"
                       />
                     </Field>
                     <Field label="Category">
-                      <select name="category" defaultValue={editingItem?.category || 'MEDICATION'}>
+                      <select
+                        name="category"
+                        value={itemCategory}
+                        onChange={(event) => setItemCategory(event.target.value)}
+                      >
                         <option value="MEDICATION">Medication</option>
                         <option value="CONSUMABLE">Consumables and supplies</option>
                         <option value="RETAIL">Retail products (e.g. lab coat)</option>
@@ -530,7 +551,7 @@ export default function Inventory() {
                   onChange={(event) => setReceivingItemId(event.target.value)}
                 >
                   <option value="">Select item</option>
-                  {resource.data?.map((i) => (
+                  {matchingItems.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name} · {humanize(i.category || 'MEDICATION')}
                     </option>
