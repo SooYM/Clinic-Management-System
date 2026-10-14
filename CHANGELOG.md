@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add Others nationality country with validated custom label, profile/edit persistence and migration023 consistency checks.
+
 - Open `/display` without sign-in, with active branch selection and anonymous queue polling every 15 seconds.
 
 - Compact clinical history and add audited attending-GP draft removal; signed records remain individually protected.

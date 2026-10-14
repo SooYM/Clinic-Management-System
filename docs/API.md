@@ -118,7 +118,7 @@ Patient `phone` accepts local and international text up to 50 characters, includ
 
 The patient form offers a country-code dropdown (Malaysia by default) and composes the existing `phone` string before submission. Unlisted codes use full international entry. Unedited stored numbers are preserved. No country-code column or separate API property is introduced.
 
-Patient `countryCode` is a separate optional ISO 3166-1 alpha-2 country of nationality, unrelated to phone/address. Malaysian records derive `MY`. Non-Malaysian registration/editing requires country selection in the UI; supplied API codes must be recognized and cannot be `MY`. Legacy callers may omit it; old foreign countries remain unknown until explicitly updated. Ordinary updates preserve an omitted country when nationality remains unchanged.
+Patient `countryCode` is a separate optional ISO 3166-1 alpha-2 country of nationality or the OTHER sentinel, unrelated to phone/address. Malaysian records derive `MY`. Non-Malaysian registration/editing requires country selection in the UI; supplied API codes must be recognized and cannot be `MY`. Legacy callers may omit it; old foreign countries remain unknown until explicitly updated. Ordinary updates preserve an omitted country when nationality remains unchanged.
 
 List controls search, filter and sort already loaded records. Existing server searches/cursor loading remain available. Counts identify this boundary. Views do not change permissions, action choices, queue priority, stock or financial totals. Sorting defaults to original order and never mutates the source array.
 
@@ -198,3 +198,7 @@ The `/display` browser route needs no login. Its read-only endpoints run after t
 `branchId` must be a positive safe integer. Missing/malformed IDs return 400; unknown or inactive branches return 404. The query selects the chosen branch's tenant directly; staff cookies and `X-Branch-ID` do not override selection. Responses use `Cache-Control: no-store`. Public queue data includes only today's Asia/Kuala_Lumpur service date, unexpired visits younger than 12 hours, and statuses `REGISTERED`, `TRIAGE_WAITING`, `CALLED_TO_ROOM`, `IN_CONSULTATION`. It excludes internal ticket IDs, patient identifiers/names, practitioner names, contacts, clinical fields, configuration secrets and authentication tokens.
 
 Clients poll every 15 seconds; no public SSE session is created. Existing `/api/queue`, `/api/queue/display` and `/api/queue/events` remain authenticated and permission-controlled. POST requests do not create a public queue mutation route.
+
+## Custom nationality country contract
+
+POST/PUT /api/patients accepts countryCode=OTHER with countryName (trimmed 1–100 characters) for NON_MALAYSIAN. Missing/blank/oversized custom names return validation400 at countryName; OTHER without foreign nationality rejects. Read/list payloads include nullable countryName. Explicit ISO selection or MALAYSIAN/MY clears countryName. Legacy edit payloads omitting both country fields preserve a previous OTHER/name pair; switching away from Malaysian nationality without a country retains the existing unknown-country fallback. Phone calling-code choices retain their existing behavior.

@@ -165,7 +165,7 @@ export default function Patients() {
           row.nationality === 'MALAYSIAN'
             ? 'Malaysia'
             : row.countryCode
-              ? countryName(row.countryCode)
+              ? countryName(row.countryCode, row.countryName)
               : 'Unknown',
       },
       { key: 'sex', label: 'Gender', value: (row) => row.sex },
@@ -314,7 +314,7 @@ export default function Patients() {
                         <dt>Country of nationality</dt>
                         <dd>
                           {selected.countryCode
-                            ? countryName(selected.countryCode)
+                            ? countryName(selected.countryCode, selected.countryName)
                             : 'Not recorded'}
                         </dd>
                       </>

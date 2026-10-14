@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `022_appointment_arrivals.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `023_patient_custom_country.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -172,3 +172,7 @@ Operational check-ins last at most 12 hours from created_at or until Malaysia mi
 queue_tickets.appointment_id is nullable unsigned BIGINT with a tenant/branch-scoped foreign key to appointments and a unique index. One scheduled appointment can create at most one linked ticket. Existing tickets retain NULL linkage; existing appointment room_id values remain historical, and new bookings use NULL. Reset deletion order removes queue_tickets before appointments after dependent encounters. The 32-table/26-numeric-entity layout remains. patient_deposits and DEPOSIT payment enum values remain historical storage only.
 
 Daily queue reset uses existing service_date/expired_at fields and lifecycle auditing; no migration, deletion or sequence reset is required. Vitals temperature validation changes application rules only; existing JSON histories remain stored unchanged.
+
+## Migration 023: custom nationality country
+
+023_patient_custom_country.sql widens patients.country_code from CHAR(2) to VARCHAR(5) and adds nullable country_name VARCHAR(100). The format check accepts uppercase ISO-shaped codes or OTHER. A second check requires a nonblank custom name for OTHER and NULL name for every other/unknown code, with explicit NULL handling. Existing ISO/null values are retained, existing names start NULL, and entity IDs/relationships remain unchanged. Application validation recognizes actual ISO codes and bounds trimmed names. Apply the new migration after backup; applied migrations remain immutable.

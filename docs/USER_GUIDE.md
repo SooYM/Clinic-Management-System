@@ -218,3 +218,7 @@ Temperature accepts28°C–40°C inclusive. Leave it blank when no reading is be
 ## Waiting-room screen without sign-in
 
 Open `/display` on the clinic website; locally use `http://127.0.0.1:5173/display`. Choose the clinic branch from the dropdown. Calling/waiting ticket numbers and rooms refresh every 15 seconds. Patient names and medical details are hidden. Choose another branch to change the queue. Staff still sign in to manage visits; this screen only displays information.
+
+## Country not in the nationality list
+
+For a non-Malaysian patient, choose Others in Country of nationality and enter the country name. The name is required and supports up to100 characters. Profiles and later edits retain it. Choosing a listed country clears the custom name; Malaysian records use Malaysia internally. Nationality country remains separate from the phone calling code and postal address.

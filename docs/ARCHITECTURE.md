@@ -5,7 +5,7 @@
 The system is a modular monolith: one React workspace, one Express API and a separate notification worker share MySQL 8.4.
 MySQL/InnoDB is authoritative. Browser state never establishes identity, stock quantities or financial balances.
 
-`shared/countries.ts` provides validated ISO country codes and native `Intl.DisplayNames` labels. Patient `countryCode` identifies nationality independently of phone/address. Migration 016 adds nullable country storage without guessing foreign nationalities; explicitly Malaysian legacy rows receive MY.
+`shared/countries.ts` provides validated ISO country codes, an OTHER custom-country option, and native `Intl.DisplayNames` labels. Patient `countryCode` identifies nationality independently of phone/address. Migration 016 adds nullable country storage without guessing foreign nationalities; explicitly Malaysian legacy rows receive MY.
 
 `ListControls` provides native search/filter/sort controls across record lists. Its pure shared projection keeps arrays immutable. Existing queries/paging define loaded records. Views preserve original order and selected-record actions; filtered rows never determine authoritative totals.
 
@@ -174,3 +174,5 @@ Shared SearchBox owns accessible combobox/listbox behavior, bounded suggestions 
 ## Anonymous display boundary
 
 `public-display.ts` provides a separate read-only router mounted before staff authentication and after shared API security/rate-limit middleware. It returns active public branch branding and a deliberately small anonymous queue projection. Explicit branch selection resolves tenant scope in SQL; no patient or practitioner join is needed. Malaysia service-day, 12-hour lifetime and expiry predicates apply independently of staff lifecycle cleanup. Staff queue endpoints preserve their existing authentication, CSRF and module permissions. The browser polls every 15 seconds; it does not reuse staff SSE credentials. Render demo remains browser-local simulation rather than a shared clinical database.
+
+Custom-country labels use the existing patient aggregate; no new country entity or editable master catalogue is introduced. Shared countryOptions adds Others after ISO labels, while countryName(code, customName) formats the stored value. API and demo share patient validation and preserve legacy omitted-field edits before normalization. Migration023 enforces code/name consistency in MySQL; the demo stores the same nullable field in its browser state.

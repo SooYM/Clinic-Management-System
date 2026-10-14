@@ -269,3 +269,14 @@ Full payment: disabled for zero invoice; exact cent total filled; chosen method/
 | Read staff queue/display/events without cookie | 401; staff APIs remain protected | Guarded real MySQL/HTTP |
 | POST to public queue URL | No public write route; request rejects | Guarded real MySQL/HTTP |
 | Open `/display`, select branch, wait | No login prompt; refresh every 15 seconds | Browser acceptance |
+
+## Custom nationality country cases
+
+| Case | Expected result | Evidence |
+| --- | --- | --- |
+| Choose Others and enter padded label | Trimmed countryName saved with OTHER and rendered on profile | Shared/demo + MySQL/HTTP |
+| Missing/blank/over100 custom name | Validation failure; no patient write | Shared/demo + MySQL/HTTP |
+| Edit/reload custom-country patient | Name retained; legacy payload omitting both country fields preserves it | Demo + MySQL/HTTP |
+| Replace Others with ISO country or Malaysian/MY | countryName becomes NULL | Shared/demo + MySQL/HTTP |
+| Set SQL NULL country with nonnull name | Database consistency check rejects | Guarded MySQL |
+| Existing foreign record without country | Unknown remains supported for legacy input; no inferred country | Shared/MySQL regression |

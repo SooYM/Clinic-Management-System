@@ -5064,4 +5064,56 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         .status,
     ).toBe(401);
   });
+  it('roundtrips Others nationality through HTTP and preserves legacy edits while clearing ISO replacement', async () => {
+    const input = {
+      firstName: 'QA Custom',
+      lastName: 'Country',
+      nationality: 'NON_MALAYSIAN',
+      nationalId: randomUUID(),
+      dateOfBirth: '1990-01-01',
+      sex: 'OTHER',
+      countryCode: 'OTHER',
+      countryName: '  Fictional territory  ',
+    };
+    const created = await settingsAdminHttp('/patients', 'POST', input);
+    expect(created.status).toBe(201);
+    const patient = await created.json();
+    expect(patient).toMatchObject({ countryCode: 'OTHER', countryName: 'Fictional territory' });
+    const { countryCode, countryName, ...legacy } = input;
+    const update = await settingsAdminHttp(`/patients/${patient.id}`, 'PUT', {
+      ...legacy,
+      version: patient.version,
+    });
+    expect(update.status).toBe(200);
+    const preserved = await update.json();
+    expect(preserved).toMatchObject({ countryCode: 'OTHER', countryName: 'Fictional territory' });
+    const read = await settingsAdminHttp(`/patients/${patient.id}`);
+    expect((await read.json()).countryName).toBe('Fictional territory');
+    const changed = await settingsAdminHttp(`/patients/${patient.id}`, 'PUT', {
+      ...input,
+      countryCode: 'SG',
+      version: preserved.version,
+    });
+    expect(changed.status).toBe(200);
+    expect(await changed.json()).toMatchObject({ countryCode: 'SG', countryName: null });
+    for (const name of ['', '   ', 'x'.repeat(101)])
+      expect(
+        (
+          await settingsAdminHttp('/patients', 'POST', {
+            ...input,
+            nationalId: randomUUID(),
+            countryName: name,
+          })
+        ).status,
+      ).toBe(400);
+    expect(
+      (await rows('SELECT country_code,country_name FROM patients WHERE id=?', [patient.id]))[0],
+    ).toEqual({ country_code: 'SG', country_name: null });
+    await expect(
+      sql.query('UPDATE patients SET country_code=NULL,country_name=? WHERE id=?', [
+        'unexpected',
+        patient.id,
+      ]),
+    ).rejects.toMatchObject({ code: 'ER_CHECK_CONSTRAINT_VIOLATED' });
+  });
 });

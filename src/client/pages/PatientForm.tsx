@@ -40,6 +40,8 @@ export default function PatientForm({
   );
   const [nationalId, setNationalId] = useState(initial?.nationalId || '');
   const [countryCode, setCountryCode] = useState(initial?.countryCode || '');
+  const [customCountryName, setCustomCountryName] = useState(initial?.countryName || '');
+  const otherCountry = nationality === 'NON_MALAYSIAN' && countryCode === 'OTHER';
   const [dateOfBirth, setDateOfBirth] = useState(initial?.dateOfBirth?.slice(0, 10) || '');
   const [sex, setSex] = useState<Patient['sex']>(initial?.sex || 'FEMALE');
   const [identityError, setIdentityError] = useState('');
@@ -168,12 +170,14 @@ export default function PatientForm({
         }
         const firstName = formText(f, 'firstName'),
           lastName = formText(f, 'lastName');
+        if (otherCountry && !customCountryName.trim()) throw new Error('Enter the country name.');
         const body = {
           name: [firstName, lastName].filter(Boolean).join(' '),
           firstName,
           lastName,
           nationality,
           countryCode: nationality === 'MALAYSIAN' ? 'MY' : countryCode,
+          countryName: otherCountry ? customCountryName.trim() : null,
           nationalId: canonical,
           dateOfBirth,
           sex,
@@ -228,6 +232,7 @@ export default function PatientForm({
               value={nationality}
               onChange={(e) => {
                 setNationality(e.target.value as Patient['nationality']);
+                if (e.target.value === 'MALAYSIAN') setCustomCountryName('');
                 setNationalId('');
                 setDateOfBirth('');
                 setIdentityError('');
@@ -238,24 +243,46 @@ export default function PatientForm({
               <option value="NON_MALAYSIAN">Non-Malaysian</option>
             </select>
           </Field>
-          <Field label="Country of nationality" hint="Country recorded on the identity document.">
-            <select
-              required={nationality === 'NON_MALAYSIAN'}
-              disabled={nationality !== 'NON_MALAYSIAN'}
-              value={nationality === 'MALAYSIAN' ? 'MY' : countryCode}
-              onChange={(event) => setCountryCode(event.target.value)}
+          <div>
+            <Field label="Country of nationality" hint="Country recorded on the identity document.">
+              <select
+                required={nationality === 'NON_MALAYSIAN'}
+                disabled={nationality !== 'NON_MALAYSIAN'}
+                value={nationality === 'MALAYSIAN' ? 'MY' : countryCode}
+                onChange={(event) => {
+                  setCountryCode(event.target.value);
+                  if (event.target.value !== 'OTHER') setCustomCountryName('');
+                }}
+              >
+                <option value="">Choose country</option>
+                {nationality === 'MALAYSIAN' && <option value="MY">Malaysia</option>}
+                {countryOptions
+                  .filter((country) => country.code !== 'MY')
+                  .map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.name}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <div
+              style={{ visibility: otherCountry ? 'visible' : 'hidden', marginTop: 17 }}
+              aria-hidden={!otherCountry}
             >
-              <option value="">Choose country</option>
-              {nationality === 'MALAYSIAN' && <option value="MY">Malaysia</option>}
-              {countryOptions
-                .filter((country) => country.code !== 'MY')
-                .map((country) => (
-                  <option key={country.code} value={country.code}>
-                    {country.name}
-                  </option>
-                ))}
-            </select>
-          </Field>
+              <Field label="Country name" hint="Enter the name shown on the identity document.">
+                <input
+                  name="countryName"
+                  value={customCountryName}
+                  onChange={(event) => setCustomCountryName(event.target.value)}
+                  required={otherCountry}
+                  disabled={!otherCountry}
+                  maxLength={100}
+                  placeholder="Enter country name"
+                  autoComplete="off"
+                />
+              </Field>
+            </div>
+          </div>
         </div>
         <Field
           label={nationality === 'MALAYSIAN' ? 'Malaysian IC' : 'Passport number'}

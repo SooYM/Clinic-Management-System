@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–022. No records or credentials are included.
+Schema-only reference after migrations001–023. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -292,7 +292,8 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | postcode             | varchar(20)     | NO       |                      |                              |
 | state                | varchar(100)    | NO       |                      |                              |
 | city                 | varchar(100)    | NO       |                      |                              |
-| country_code         | char(2)         | YES      | NULL                 |                              |
+| country_code         | varchar(5)      | YES      | NULL                 |                              |
+| country_name         | varchar(100)    | YES      | NULL                 |                              |
 
 ## payments
 

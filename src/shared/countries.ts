@@ -13,8 +13,10 @@ export const countryCodes = (
 const displayNames = new Intl.DisplayNames(['en'], { type: 'region' });
 export const countryOptions = countryCodes
   .map((code) => ({ code, name: displayNames.of(code) || code }))
-  .sort((a, b) => a.name.localeCompare(b.name, 'en'));
+  .sort((a, b) => a.name.localeCompare(b.name, 'en'))
+  .concat([{ code: 'OTHER', name: 'Others' }]);
 
-export function countryName(code?: string | null) {
+export function countryName(code?: string | null, customName?: string | null) {
+  if (code === 'OTHER') return customName?.trim() || 'Others';
   return code && countryCodes.includes(code) ? displayNames.of(code) || code : 'Not recorded';
 }

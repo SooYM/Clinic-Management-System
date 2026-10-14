@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–022.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–023.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -44,7 +44,7 @@ GP creation requires a professional registration number.
 ## 3. Patient registration and history
 
 Registration stores first name, optional last name, derived display name, nationality, IC/passport number, birth date and sex.
-Non-Malaysian registration/editing requires country of nationality in the UI. Nullable ISO countryCode is separate from phone calling code and address. Malaysian patients derive MY; historical foreign countries remain unknown. Legacy API callers may omit country; ordinary updates preserve omitted existing country.
+Non-Malaysian registration/editing requires country of nationality in the UI. Nullable ISO countryCode or OTHER plus countryName is separate from phone calling code and address. Malaysian patients derive MY; historical foreign countries remain unknown. Legacy API callers may omit country; ordinary updates preserve omitted existing country.
 Single legal names are supported. Contact, blood group, allergies, chronic conditions and notification consent are recorded explicitly.
 Address fields are line 1, line 2, postcode, city and state.
 
@@ -310,3 +310,7 @@ New/edited consultation temperature entries must be finite numeric values betwee
 ## Public waiting-room display
 
 `/display` opens without staff sign-in. Visitors choose an active clinic branch; duplicate branch names are distinguished by clinic name. The screen polls every 15 seconds and shows anonymous ticket numbers, queue stages and consultation rooms. It displays only current Malaysia service-day visits awaiting registration/triage or called/in consultation, with no expired, completed or skipped tickets. Patient identities, practitioner details, contact information and clinical data are never part of the public projection. Staff queue management, history and refresh events retain session and module authorization.
+
+## Custom nationality country
+
+Non-Malaysian Country of nationality includes Others. Choosing it requires a user-entered country name of 1–100 characters after trimming. Store countryCode=OTHER and countryName together; preserve the label when opening/editing a profile. A standard ISO country or Malaysian nationality clears the custom label. Omitted country fields in legacy updates retain an existing custom country; no missing historical nationality is guessed.

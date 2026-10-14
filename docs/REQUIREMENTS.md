@@ -1,6 +1,6 @@
 # V2 requirement traceability
 
-Patient country of nationality is stored separately as nullable ISO `countryCode` (migration 016). Malaysian records derive MY; non-Malaysian forms require a country selection. API compatibility preserves omitted historical foreign countries as unknown. Shared list controls provide view search, relevant filters and ascending/descending sorting across operational record lists, with loaded-record counts and original-order defaults.
+Patient country of nationality is stored separately as nullable ISO `countryCode` or OTHER with custom `countryName` (migration 016). Malaysian records derive MY; non-Malaysian forms require a country selection. API compatibility preserves omitted historical foreign countries as unknown. Shared list controls provide view search, relevant filters and ascending/descending sorting across operational record lists, with loaded-record counts and original-order defaults.
 
 This matrix documents active delivered behavior and explicit gaps. It supersedes specialty, PostgreSQL and UUID proposals from the earlier specification.
 The [system specification](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md) defines scope; source paths provide executable evidence.
@@ -99,3 +99,5 @@ Daily live queue shows all current Malaysia-day visits and an uncapped total; it
 ## Public waiting-room requirement
 
 The waiting-room display opens at `/display` without authentication and offers an active branch selector. Show anonymous ticket numbers, stages and room names only. Refresh every 15 seconds. Scope each branch to its own tenant; exclude expired/prior-day/completed/skipped tickets and private data. Staff queue APIs and events retain existing access checks.
+
+Non-Malaysian nationality selection includes Others plus required free-text countryName (trimmed1–100 characters). Store it with countryCode=OTHER, show it on profiles, retain it during edits, and clear it when selecting ISO/Malaysian nationality. Existing missing-country compatibility and phone/address separation remain unchanged.

@@ -482,8 +482,10 @@ export class DemoClinic {
       this.state = seed();
     }
     // Existing browser sessions retain historical prescriptions without adding retroactive holds.
-    for (const patient of this.state.rows.patients)
+    for (const patient of this.state.rows.patients) {
       patient.countryCode ??= patient.nationality === 'MALAYSIAN' ? 'MY' : null;
+      patient.countryName ??= null;
+    }
     for (const table of ['reservations', 'usages', 'medicationDoses']) {
       this.state.rows[table] ||= [];
       this.state.counters[table] ??= Math.max(0, ...this.state.rows[table].map((r) => r.id));
@@ -1267,7 +1269,20 @@ export class DemoClinic {
       (route === '/patients' && method === 'POST') ||
       (/^\/patients\/\d+$/.test(route) && method === 'PUT')
     ) {
-      const value = schemas.patient.parse(body);
+      const previous = id ? this.record('patients', id, branch) : undefined;
+      const value = schemas.patient.parse({
+        ...body,
+        countryCode:
+          body.countryCode === undefined
+            ? body.nationality === 'NON_MALAYSIAN' && previous?.countryCode === 'MY'
+              ? null
+              : previous?.countryCode
+            : body.countryCode,
+        countryName:
+          body.countryCode === undefined && body.countryName === undefined
+            ? previous?.countryName
+            : body.countryName,
+      });
       const choices = (postcodes as Record<string, string[][]>)[value.postcode] || [];
       if (choices.length === 1) {
         const [city, code] = choices[0],
@@ -1295,7 +1310,15 @@ export class DemoClinic {
         Object.assign(p, value, { version: p.version + 1, updatedAt: now() });
         return p;
       }
-      const p = this.add('patients', { ...value, countryCode: value.countryCode ?? null }, branch);
+      const p = this.add(
+        'patients',
+        {
+          ...value,
+          countryCode: value.countryCode ?? null,
+          countryName: value.countryName ?? null,
+        },
+        branch,
+      );
       p.patientNumber = p.id;
       return p;
     }

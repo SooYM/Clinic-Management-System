@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-022, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-023, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -399,7 +399,8 @@ CREATE TABLE `patients` (
   `postcode` varchar(20) NOT NULL DEFAULT '',
   `state` varchar(100) NOT NULL DEFAULT '',
   `city` varchar(100) NOT NULL DEFAULT '',
-  `country_code` char(2) DEFAULT NULL,
+  `country_code` varchar(5) DEFAULT NULL,
+  `country_name` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`national_id`),
   UNIQUE KEY `tenant_id_2` (`tenant_id`,`id`),
@@ -407,7 +408,8 @@ CREATE TABLE `patients` (
   CONSTRAINT `patients_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `patients_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
   CONSTRAINT `patients_chk_1` CHECK ((`sex` in (_utf8mb4'MALE',_utf8mb4'FEMALE',_utf8mb4'OTHER'))),
-  CONSTRAINT `patients_country_code_format` CHECK (((`country_code` is null) or regexp_like(`country_code`,_utf8mb4'^[A-Z]{2}$',_utf8mb4'c'))),
+  CONSTRAINT `patients_country_code_format` CHECK (((`country_code` is null) or (`country_code` = _utf8mb4'OTHER') or regexp_like(`country_code`,_utf8mb4'^[A-Z]{2}$',_utf8mb4'c'))),
+  CONSTRAINT `patients_custom_country` CHECK ((((`country_code` is not null) and (`country_code` = _utf8mb4'OTHER') and (`country_name` is not null) and (char_length(trim(`country_name`)) between 1 and 100)) or (((`country_code` is null) or (`country_code` <> _utf8mb4'OTHER')) and (`country_name` is null)))),
   CONSTRAINT `patients_nationality_allowed` CHECK (((`nationality` is null) or (`nationality` in (_utf8mb4'MALAYSIAN',_utf8mb4'NON_MALAYSIAN'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

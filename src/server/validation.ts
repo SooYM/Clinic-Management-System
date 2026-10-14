@@ -42,9 +42,13 @@ export const schemas = {
       nationality: z.enum(['MALAYSIAN', 'NON_MALAYSIAN']).optional(),
       countryCode: z
         .string()
-        .refine((value) => countryCodes.includes(value), 'Choose a valid country.')
+        .refine(
+          (value) => value === 'OTHER' || countryCodes.includes(value),
+          'Choose a valid country.',
+        )
         .nullable()
         .optional(),
+      countryName: z.string().trim().max(100).nullable().optional(),
       nationalId: text,
       dateOfBirth: date
         .refine((v) => v <= new Date().toISOString().slice(0, 10), 'Birth date cannot be future.')
@@ -65,6 +69,18 @@ export const schemas = {
     })
     .strict()
     .superRefine((value, ctx) => {
+      if (value.countryCode === 'OTHER' && value.nationality !== 'NON_MALAYSIAN')
+        ctx.addIssue({
+          code: 'custom',
+          path: ['countryCode'],
+          message: 'Others is available for non-Malaysian nationality only.',
+        });
+      if (value.countryCode === 'OTHER' && !value.countryName)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['countryName'],
+          message: 'Enter country name when choosing Others.',
+        });
       if (
         value.countryCode &&
         ((value.nationality === 'NON_MALAYSIAN' && value.countryCode === 'MY') ||
@@ -138,6 +154,11 @@ export const schemas = {
       return {
         ...value,
         countryCode: value.nationality === 'MALAYSIAN' ? 'MY' : value.countryCode,
+        countryName:
+          value.nationality === 'MALAYSIAN' ||
+          (value.countryCode !== undefined && value.countryCode !== 'OTHER')
+            ? null
+            : value.countryName,
         name: value.firstName
           ? [value.firstName, value.lastName].filter(Boolean).join(' ')
           : value.name!,
