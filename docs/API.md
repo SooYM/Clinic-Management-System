@@ -157,3 +157,8 @@ POST /api/queue/:id/transition accepts status CALLED_TO_ROOM directly from REGIS
 ## Queue expiry and assigned suggestions
 
 GET /api/clinical/queue-suggestions requires clinical module and DOCTOR role. Returns {data:[queueTicketId,patientId,patientNumber,patientName,ticketNumber,roomId,roomName,status,version,createdAt,calledAt,expiresAt,encounterId]}; encounterId is nullable. Scope is current tenant/branch and assigned GP. POST /api/queue returns PATIENT_ALREADY_CHECKED_IN 409 for an active duplicate. Expired transitions return QUEUE_EXPIRED 409. POST /api/encounters may link an assigned CALLED_TO_ROOM or IN_CONSULTATION ticket; creates/starts atomically and returns ENCOUNTER_EXISTS 409 if already linked. Existing clinical edits keep their original association and are permitted after operational expiry.
+
+
+## Signing handoff and multiple prescriptions
+
+POST /api/encounters and PUT /api/encounters/:id retain prescriptions:[{itemId,quantity,durationDays,frequencyPerDay,mealTiming,dosage}] with a maximum of 50. SIGNED saves now atomically advance a scoped linked active visit to DISPENSARY_WAITING after all reservations succeed. Stored queue association is authoritative when draft updates omit queueTicketId. No new endpoint/schema or weaker permission rule is introduced.

@@ -1946,3 +1946,19 @@ dd {
 .assigned-patient-row > div {
   flex: 1 1 16rem;
 }
+.prescription-rows {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.prescription-row {
+  border: 0;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 0;
+  padding: 16px 0;
+  min-width: 0;
+}
+.prescription-rows legend,
+.prescription-row legend {
+  padding: 0;
+}

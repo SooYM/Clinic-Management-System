@@ -193,7 +193,13 @@ function ConsultationHistory({
     </>
   );
 }
-function MedicinePicker() {
+function MedicinePicker({
+  name,
+  onSelectionChange,
+}: {
+  name: string;
+  onSelectionChange: (selected: boolean) => void;
+}) {
   const [search, setSearch] = useState('');
   const term = useDebouncedValue(search.trim());
   const resource = useResource<InventoryItem[]>(
@@ -215,11 +221,13 @@ function MedicinePicker() {
       </Field>
       <Field label="Medicine">
         <select
-          name="itemId"
+          name={name}
           value={selected?.id || ''}
-          onChange={(event) =>
-            setSelected(options.find((item) => item.id === Number(event.target.value)))
-          }
+          onChange={(event) => {
+            const medicine = options.find((item) => item.id === Number(event.target.value));
+            setSelected(medicine);
+            onSelectionChange(!!medicine);
+          }}
         >
           <option value="">No additional medication</option>
           {options.map((item) => (
@@ -242,6 +250,139 @@ function MedicinePicker() {
         </p>
       )}
     </>
+  );
+}
+function PrescriptionRow({
+  rowId,
+  number,
+  onRemove,
+}: {
+  rowId: number;
+  number: number;
+  onRemove: (hasMedicine: boolean) => void;
+}) {
+  const [hasMedicine, setHasMedicine] = useState(false);
+  const prefix = `prescription-${rowId}-`;
+  return (
+    <fieldset className="prescription-row" data-prescription-row={rowId}>
+      <legend>Prescription {number}</legend>
+      <input type="hidden" name="prescriptionRow" value={rowId} />
+      <MedicinePicker name={`${prefix}itemId`} onSelectionChange={setHasMedicine} />
+      <div className="form-grid">
+        <Field label="Quantity">
+          <input
+            name={`${prefix}quantity`}
+            type="number"
+            min="1"
+            step="1"
+            defaultValue="1"
+            required={hasMedicine}
+            disabled={!hasMedicine}
+          />
+        </Field>
+        <Field label="Supply (days)">
+          <input
+            name={`${prefix}durationDays`}
+            type="number"
+            min="1"
+            max="365"
+            step="1"
+            defaultValue="1"
+            required={hasMedicine}
+            disabled={!hasMedicine}
+          />
+        </Field>
+        <Field label="Frequency (times per day)">
+          <input
+            name={`${prefix}frequencyPerDay`}
+            type="number"
+            min="1"
+            max="24"
+            step="1"
+            defaultValue="1"
+            required={hasMedicine}
+            disabled={!hasMedicine}
+          />
+        </Field>
+        <Field label="Meal timing">
+          <select name={`${prefix}mealTiming`} disabled={!hasMedicine}>
+            <option value="AFTER_MEAL">After meal</option>
+            <option value="BEFORE_MEAL">Before meal</option>
+            <option value="ANY_TIME">Any time</option>
+          </select>
+        </Field>
+      </div>
+      <Field
+        label="Dosage instructions"
+        hint="Optional; frequency, meal timing and duration form the default instructions."
+      >
+        <input
+          name={`${prefix}dosage`}
+          placeholder="Dose, frequency, and route"
+          disabled={!hasMedicine}
+          maxLength={200}
+        />
+      </Field>
+      <button type="button" className="text-button" onClick={() => onRemove(hasMedicine)}>
+        Remove prescription row {number}
+      </button>
+    </fieldset>
+  );
+}
+function PrescriptionRows({
+  recordedCount,
+  disabled,
+  onDirty,
+}: {
+  recordedCount: number;
+  disabled: boolean;
+  onDirty: () => void;
+}) {
+  const [rows, setRows] = useState(recordedCount < 50 ? [1] : []);
+  const nextId = useRef(2);
+  const confirm = useConfirm();
+  async function remove(rowId: number, hasMedicine: boolean) {
+    if (
+      hasMedicine &&
+      !(await confirm({
+        title: 'Remove prescription row?',
+        message:
+          'This unsaved medicine and its instructions will be removed from this consultation draft.',
+        confirmLabel: 'Remove row',
+      }))
+    )
+      return;
+    setRows((current) => current.filter((id) => id !== rowId));
+    onDirty();
+  }
+  return (
+    <fieldset className="prescription-rows" disabled={disabled}>
+      <legend>Additional medicines</legend>
+      <p className="form-help">Use one row per medicine. Blank rows are skipped when saving.</p>
+      {rows.map((rowId, index) => (
+        <PrescriptionRow
+          key={rowId}
+          rowId={rowId}
+          number={index + 1}
+          onRemove={(hasMedicine) => void remove(rowId, hasMedicine)}
+        />
+      ))}
+      <button
+        type="button"
+        className="secondary"
+        disabled={recordedCount + rows.length >= 50}
+        onClick={() => {
+          const rowId = nextId.current++;
+          setRows((current) => [...current, rowId]);
+          onDirty();
+        }}
+      >
+        Add prescription
+      </button>
+      {recordedCount + rows.length >= 50 && (
+        <p className="form-help">A consultation supports up to 50 medicines.</p>
+      )}
+    </fieldset>
   );
 }
 function McLeaveStart() {
@@ -490,7 +631,27 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 'This queue assignment has expired. Refresh and select an active assignment before saving.',
               );
             }
-            const itemId = Number(formText(f, 'itemId'));
+            const additionalPrescriptions = f.getAll('prescriptionRow').flatMap((rowId) => {
+              const prefix = `prescription-${rowId}-`;
+              const itemId = Number(formText(f, `${prefix}itemId`));
+              if (!itemId) return [];
+              const quantity = Number(f.get(`${prefix}quantity`));
+              const durationDays = Number(f.get(`${prefix}durationDays`));
+              const frequencyPerDay = Number(f.get(`${prefix}frequencyPerDay`));
+              const mealTiming = formText(f, `${prefix}mealTiming`);
+              return [
+                {
+                  itemId,
+                  quantity,
+                  durationDays,
+                  frequencyPerDay,
+                  mealTiming,
+                  dosage:
+                    formText(f, `${prefix}dosage`) ||
+                    `${frequencyPerDay} times daily; ${humanize(mealTiming)}; ${durationDays} days`,
+                },
+              ];
+            });
             parseBloodPressure(formText(f, 'bloodPressure'));
             const body = {
               patientId: selected?.patientId || selectedPatientId,
@@ -512,23 +673,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 bloodPressure: formText(f, 'bloodPressure'),
                 temperature: formText(f, 'temperature'),
               },
-              prescriptions: [
-                ...(selected?.prescriptions || []),
-                ...(itemId
-                  ? [
-                      {
-                        itemId,
-                        quantity: Number(f.get('quantity')),
-                        dosage:
-                          formText(f, 'dosage') ||
-                          `${Number(f.get('frequencyPerDay'))} times daily; ${humanize(formText(f, 'mealTiming'))}; ${Number(f.get('durationDays'))} days`,
-                        durationDays: Number(f.get('durationDays')),
-                        frequencyPerDay: Number(f.get('frequencyPerDay')),
-                        mealTiming: formText(f, 'mealTiming'),
-                      },
-                    ]
-                  : []),
-              ],
+              prescriptions: [...(selected?.prescriptions || []), ...additionalPrescriptions],
             };
             const saved = selected
               ? await api.put<Encounter>(`/encounters/${selected.id}`, body)
@@ -591,7 +736,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
             <textarea name="procedureNotes" rows={2} defaultValue={selected?.procedureNotes} />
           </Field>
           <fieldset>
-            <legend>Add prescription</legend>
+            <legend>Prescriptions</legend>
             {!!selected?.prescriptions?.length && prescriptionList.controls}
             {!!selected?.prescriptions?.length && (
               <Field label="Search recorded prescriptions">
@@ -616,38 +761,16 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.dosage} · {rx.durationDays} days
               </p>
             ))}
-            <MedicinePicker />
-            <div className="form-grid">
-              <Field label="Quantity">
-                <input name="quantity" type="number" min="1" defaultValue="1" />
-              </Field>
-              <Field label="Supply (days)">
-                <input name="durationDays" type="number" min="1" max="365" defaultValue="1" />
-              </Field>
-              <Field label="Frequency (times per day)">
-                <input
-                  name="frequencyPerDay"
-                  type="number"
-                  min="1"
-                  max="24"
-                  step="1"
-                  defaultValue="1"
-                />
-              </Field>
-              <Field label="Meal timing">
-                <select name="mealTiming">
-                  <option value="AFTER_MEAL">After meal</option>
-                  <option value="BEFORE_MEAL">Before meal</option>
-                  <option value="ANY_TIME">Any time</option>
-                </select>
-              </Field>
-            </div>
-            <Field label="Dosage instructions">
-              <input name="dosage" placeholder="Dose, frequency, and route" />
-            </Field>
+            <PrescriptionRows
+              recordedCount={selected?.prescriptions?.length || 0}
+              disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
+              onDirty={() => {
+                noteDirty.current = true;
+              }}
+            />
             <p className="form-help">
-              Allergy conflicts prevent saving a prescription. Dispensing uses the earliest eligible
-              expiry.
+              Allergy conflicts prevent saving a prescription. Signing sends prescribed medicines to
+              the dispensary; dispensing uses the earliest eligible expiry.
             </p>
           </fieldset>
         </MutationForm>

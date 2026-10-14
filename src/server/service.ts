@@ -560,6 +560,8 @@ export class ClinicService {
     if (!id && input.queueTicketId) await this.transact((db) => expireQueue(db, ctx));
     return this.transact(async (db) => {
       if (!id && input.queueTicketId) await expireQueue(db, ctx);
+      // Take lifecycle lock before encounter/item locks; linked signing and room calls use the same order.
+      if (id) await lock(db, [`queue-lifecycle:${ctx.actor.tenantId}:${ctx.branchId}`]);
       let existingQueueId: number | null = null;
       if (id) {
         const existing = await db.query(
@@ -676,6 +678,25 @@ export class ClinicService {
       }
       if (input.status === 'SIGNED')
         await this.reservePrescription(db, ctx, rows[0].id, input.prescriptions);
+      if (input.status === 'SIGNED' && rows[0].queue_ticket_id) {
+        const linked = (
+          await db.query(
+            "SELECT id FROM queue_tickets WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND patient_id=$4 AND practitioner_id=$5 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status='IN_CONSULTATION' FOR UPDATE",
+            [rows[0].queue_ticket_id, ctx.actor.tenantId, ctx.branchId, patient.id, ctx.actor.id],
+          )
+        ).rows[0];
+        if (linked) {
+          new QueueTicket('IN_CONSULTATION').transition('DISPENSARY_WAITING');
+          await db.query(
+            "UPDATE queue_tickets SET status='DISPENSARY_WAITING',version=version+1 WHERE id=$1",
+            [linked.id],
+          );
+          await this.audit(db, ctx, 'TRANSITION', 'queue', linked.id, {
+            from: 'IN_CONSULTATION',
+            to: 'DISPENSARY_WAITING',
+          });
+        }
+      }
       if (input.status === 'SIGNED')
         for (const rx of input.prescriptions) {
           const due = new Date();

@@ -178,3 +178,8 @@ Check in patient → Waiting for doctor → Call to room beside that patient →
 ## Check-in expiry and nurse-to-GP flow
 
 Check in → active visit for 12 hours → nurse calls assigned doctor/room → GP Assigned patients → Start consultation → prefilled SOAP form → consented save, linked encounter and atomic start. If nurse already started consultation, suggestion is still shown. Existing encounter → Open consultation. Exact 12-hour cutoff → mark expired/release operational locks → new check-in; prior clinical history retained. Duplicate before cutoff → clear existing-ticket error.
+
+
+## Signed consultation to dispensary
+
+Assigned patient → Start consultation → SOAP and one or more medicine rows → draft save or SIGNED → popup consent → validate all medicines → reserve all stock → linked active visit DISPENSARY_WAITING → pharmacist pending prescription. Any failure rolls back the complete signed handoff. Existing draft → append rows → save → no duplicates on unchanged resave.

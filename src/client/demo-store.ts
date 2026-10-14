@@ -646,6 +646,34 @@ export class DemoClinic {
         );
     }
   }
+  private advanceSignedConsultation(encounter: Row, branch: number, actorName: string) {
+    if (!encounter.queueTicketId) return;
+    const ticket = this.scoped('queue', branch).find((row) => row.id === encounter.queueTicketId);
+    if (
+      !ticket ||
+      !activeQueue(ticket) ||
+      ticket.patientId !== encounter.patientId ||
+      ticket.practitionerId !== encounter.practitionerId ||
+      ticket.status !== 'IN_CONSULTATION'
+    )
+      return;
+    const prior = ticket.status;
+    ticket.status = new QueueTicket(ticket.status as QueueStatus).transition('DISPENSARY_WAITING');
+    ticket.version++;
+    this.add(
+      'audit',
+      {
+        actorName,
+        action: 'SIGN_CONSULTATION',
+        entityType: 'queue',
+        entityId: ticket.id,
+        requestId: 'browser-demo',
+        from: prior,
+        to: ticket.status,
+      },
+      branch,
+    );
+  }
   private availableBatches(itemId: number, branch: number) {
     return this.scoped('batches', branch)
       .filter((b) => b.itemId === itemId)
@@ -1210,6 +1238,7 @@ export class DemoClinic {
       const v = schemas.encounter.parse(body),
         p = this.record('patients', v.patientId, branch);
       const existing = id ? this.record('encounters', id, branch) : undefined;
+      if (existing && v.queueTicketId === undefined) v.queueTicketId = existing.queueTicketId;
       if (existing && (v.queueTicketId || null) !== (existing.queueTicketId || null))
         fail('The consultation queue ticket cannot change.', 409);
       const ticket =
@@ -1265,7 +1294,10 @@ export class DemoClinic {
           version: e.version + 1,
           signedAt: v.status === 'SIGNED' ? now() : null,
         });
-        if (v.status === 'SIGNED') this.reserve(e, branch);
+        if (v.status === 'SIGNED') {
+          this.reserve(e, branch);
+          this.advanceSignedConsultation(e, branch, user.name);
+        }
         return this.enrich(e);
       }
       if (ticket?.status === 'CALLED_TO_ROOM') {
@@ -1292,6 +1324,7 @@ export class DemoClinic {
       );
       if (v.status === 'SIGNED') {
         this.reserve(e, branch);
+        this.advanceSignedConsultation(e, branch, user.name);
         this.notice(p, 'REFILL', branch);
       }
       return this.enrich(e);

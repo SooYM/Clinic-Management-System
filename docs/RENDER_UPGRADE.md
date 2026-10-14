@@ -60,3 +60,8 @@ Rebuild demo assets to include single-entry task tabs, patient-first consultatio
 ## Demo expiry and handoff
 
 Demo mirrors 12-hour queue expiry, clear duplicate errors, assigned GP suggestions and linked-note creation/resume. Fictional data remains session-scoped. Rebuild demo assets; no persistent database is added. Git publication does not establish successful Render deployment.
+
+
+## Multiple prescription demo update
+
+Demo mirrors repeatable medicine rows and atomic signed-consultation queue handoff. Rebuild frontend assets. No migration or Blueprint environment change is required; verify hosted deployment separately after publication.

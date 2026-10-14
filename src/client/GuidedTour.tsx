@@ -271,12 +271,12 @@ const tours: Record<string, Step[]> = {
     {
       target: field('medicine'),
       title: 'Prescribe from the catalog',
-      text: 'Choose a medicine, then record quantity, supply days, times per day, meal timing and dosage instructions. Clinical decisions remain yours.',
+      text: 'Choose a medicine and its instructions. Add prescription creates another independent medicine row; remove unsaved rows when needed. Clinical decisions remain yours.',
     },
     {
       target: field('note-status'),
       title: 'Review before signing',
-      text: 'Keep the note as a draft while working. Signing makes it permanent and reserves eligible medicine stock, reducing available quantity before dispensing.',
+      text: 'Keep the note as a draft while working. Signing makes it permanent, reserves all prescribed medicines and sends the linked active visit to dispensary.',
     },
     {
       target: panel('clinical-documents'),

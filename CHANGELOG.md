@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add repeatable prescription rows with independent medicine instructions and safe draft resaves.
+- Advance linked active visits to dispensary atomically when GP consultations are signed.
+
 - Expire queue check-ins after 12 hours without deleting history; provide clear active-ticket errors.
 - Suggest assigned patients to GPs; prefill linked consultations and resume existing encounters with atomic handoff.
 

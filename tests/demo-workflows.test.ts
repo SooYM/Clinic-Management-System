@@ -25,6 +25,163 @@ const rx = (quantity: number) => ({
   durationDays: 1,
 });
 afterEach(() => vi.useRealTimers());
+async function calledPatient(clinic: DemoClinic, patientId = 4) {
+  const ticket = await clinic.request('/queue', 'POST', { patientId, priority: 'NORMAL' });
+  return clinic.request(`/queue/${ticket.id}/transition`, 'POST', {
+    status: 'CALLED_TO_ROOM',
+    version: ticket.version,
+    practitionerId: 2,
+    roomId: 1,
+  });
+}
+describe('demo signed consultation queue handoff', () => {
+  it('moves a linked signed consultation with no medicines to dispensary waiting', async () => {
+    const { clinic } = await ready();
+    const ticket = await calledPatient(clinic);
+    await clinic.request('/encounters', 'POST', {
+      patientId: 4,
+      queueTicketId: ticket.id,
+      prescriptions: [],
+      assessment: 'Fictional consultation without medicines',
+      status: 'SIGNED',
+    });
+    expect(
+      (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id).status,
+    ).toBe('DISPENSARY_WAITING');
+  });
+  it.each(['create', 'draft'])(
+    'moves a %s signed multi-medicine consultation to dispensing after all holds succeed',
+    async (mode) => {
+      const { clinic, storage } = await ready();
+      const ticket = await calledPatient(clinic);
+      const prescriptions = [rx(2), { ...rx(3), itemId: 2 }];
+      const body = {
+        patientId: 4,
+        queueTicketId: ticket.id,
+        prescriptions,
+        assessment: 'Fictional multi-medicine review',
+      };
+      const draft =
+        mode === 'draft' ? await clinic.request('/encounters', 'POST', body) : undefined;
+      const signed = await clinic.request(
+        draft ? `/encounters/${draft.id}` : '/encounters',
+        draft ? 'PUT' : 'POST',
+        {
+          ...body,
+          queueTicketId: draft ? undefined : ticket.id,
+          status: 'SIGNED',
+          version: draft?.version,
+        },
+      );
+      const state = JSON.parse([...storage.entries.values()][0]);
+      expect(state.rows.queue.find((row: any) => row.id === ticket.id)).toMatchObject({
+        status: 'DISPENSARY_WAITING',
+        expiredAt: null,
+      });
+      expect(
+        state.rows.reservations
+          .filter((row: any) => row.encounterId === signed.id)
+          .map((row: any) => [row.itemId, row.quantity]),
+      ).toEqual([
+        [1, 2],
+        [2, 3],
+      ]);
+      expect(
+        (await clinic.request('/dispensary/encounters')).data.find(
+          (row: any) => row.id === signed.id,
+        ).prescriptions,
+      ).toHaveLength(2);
+      expect((await clinic.request('/clinical/queue-suggestions')).data).toEqual([]);
+    },
+  );
+  it.each(['create', 'draft'])(
+    'rolls back the %s chart, first medicine hold and queue when second medicine stock is insufficient',
+    async (mode) => {
+      const { clinic, storage } = await ready();
+      const ticket = await calledPatient(clinic);
+      const body = {
+        patientId: 4,
+        queueTicketId: ticket.id,
+        prescriptions: [rx(2), { ...rx(999), itemId: 2 }],
+        assessment: 'Fictional rollback review',
+      };
+      const draft =
+        mode === 'draft' ? await clinic.request('/encounters', 'POST', body) : undefined;
+      const before = [...storage.entries.values()][0];
+      await expect(
+        clinic.request(draft ? `/encounters/${draft.id}` : '/encounters', draft ? 'PUT' : 'POST', {
+          ...body,
+          status: 'SIGNED',
+          version: draft?.version,
+        }),
+      ).rejects.toThrow('Insufficient');
+      expect([...storage.entries.values()][0]).toBe(before);
+      expect(
+        (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id).status,
+      ).toBe(draft ? 'IN_CONSULTATION' : 'CALLED_TO_ROOM');
+      if (draft)
+        expect(await clinic.request(`/encounters/${draft.id}`)).toMatchObject({
+          status: 'DRAFT',
+          version: draft.version,
+        });
+    },
+  );
+  it.each(['expired', 'DISPENSARY_WAITING', 'PAYMENT_WAITING', 'COMPLETED'])(
+    'signs an existing chart without reviving or regressing its %s queue ticket',
+    async (state) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-14T00:00:00Z'));
+      const { clinic, storage } = await ready();
+      const ticket = await calledPatient(clinic);
+      const draft = await clinic.request('/encounters', 'POST', {
+        patientId: 4,
+        queueTicketId: ticket.id,
+        prescriptions: [],
+        assessment: 'Fictional historic review',
+      });
+      if (state === 'expired') vi.setSystemTime(new Date('2026-10-14T12:00:00Z'));
+      else {
+        const active = (await clinic.request('/queue')).data.find(
+          (row: any) => row.id === ticket.id,
+        );
+        const payment = await clinic.request(`/queue/${ticket.id}/transition`, 'POST', {
+          status: state === 'DISPENSARY_WAITING' ? 'DISPENSARY_WAITING' : 'PAYMENT_WAITING',
+          version: active.version,
+        });
+        if (state === 'COMPLETED')
+          await clinic.request(`/queue/${ticket.id}/transition`, 'POST', {
+            status: 'COMPLETED',
+            version: payment.version,
+          });
+      }
+      await clinic.request(`/encounters/${draft.id}`, 'PUT', {
+        patientId: 4,
+        prescriptions: [],
+        assessment: 'Fictional historic review',
+        status: 'SIGNED',
+        version: draft.version,
+      });
+      const saved = JSON.parse([...storage.entries.values()][0]).rows.queue.find(
+        (row: any) => row.id === ticket.id,
+      );
+      expect(saved.status).toBe(state === 'expired' ? 'IN_CONSULTATION' : state);
+      expect(Boolean(saved.expiredAt)).toBe(state === 'expired');
+    },
+  );
+  it('does not associate a manual signed chart with another active patient ticket', async () => {
+    const { clinic } = await ready();
+    const ticket = await calledPatient(clinic);
+    await clinic.request('/encounters', 'POST', {
+      patientId: 4,
+      prescriptions: [],
+      assessment: 'Fictional manual chart',
+      status: 'SIGNED',
+    });
+    expect(
+      (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id),
+    ).toMatchObject({ status: 'CALLED_TO_ROOM', version: ticket.version });
+  });
+});
 describe('demo queue expiry and doctor handoff', () => {
   it('allows a clinical-only GP to use assigned suggestions without queue module access', async () => {
     const { clinic, storage } = await ready();

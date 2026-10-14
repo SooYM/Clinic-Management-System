@@ -3891,6 +3891,256 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ]);
     }
   });
+  it('signed creation advances a linked called visit to dispensary and releases its room with clinical-only permission', async () => {
+    const p = await patient(),
+      roomId = fixtureId(),
+      first = await item({ name: 'QA Signed First' }),
+      second = await item({ name: 'QA Signed Second' });
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Signed Room',
+    ]);
+    for (const medicine of [first, second])
+      await service.receiveBatch(ctx, {
+        itemId: medicine.id,
+        batchNumber: randomUUID(),
+        quantity: 20,
+        expiresOn: '2035-01-01',
+      });
+    const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    await service.transitionQueue(ctx, ticket.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    await sql.query(
+      "INSERT INTO role_module_permissions(tenant_id,role,modules) VALUES(?,'DOCTOR',?) ON DUPLICATE KEY UPDATE modules=VALUES(modules)",
+      [tenant, JSON.stringify(['clinical'])],
+    );
+    let signed: any;
+    try {
+      const response = await settingsHttp(
+        '/encounters',
+        'POST',
+        {
+          patientId: p.id,
+          queueTicketId: ticket.id,
+          status: 'SIGNED',
+          prescriptions: [rx(first.id, 2), rx(second.id, 4)],
+          assessment: 'QA Signed assessment',
+        },
+        { Cookie: `cms_session=${doctorToken}` },
+      );
+      expect(response.status).toBe(201);
+      signed = await response.json();
+    } finally {
+      await sql.query("DELETE FROM role_module_permissions WHERE tenant_id=? AND role='DOCTOR'", [
+        tenant,
+      ]);
+    }
+    expect(
+      (
+        await rows('SELECT status,version,occupied_room_id FROM queue_tickets WHERE id=?', [
+          ticket.id,
+        ])
+      )[0],
+    ).toMatchObject({ status: 'DISPENSARY_WAITING', version: 4, occupied_room_id: null });
+    expect(
+      await rows(
+        'SELECT item_id,quantity FROM prescription_reservations WHERE encounter_id=? ORDER BY item_id',
+        [signed.id],
+      ),
+    ).toEqual([
+      { item_id: first.id, quantity: 2 },
+      { item_id: second.id, quantity: 4 },
+    ]);
+    expect(
+      (await (await settingsAdminHttp('/dispensary/encounters')).json()).data.some(
+        (v: any) => v.id === signed.id,
+      ),
+    ).toBe(true);
+    const nextPatient = await patient(),
+      next = await service.checkIn(ctx, { patientId: nextPatient.id, priority: 'NORMAL' });
+    expect(
+      (
+        await service.transitionQueue(ctx, next.id, {
+          version: 1,
+          status: 'CALLED_TO_ROOM',
+          roomId,
+          practitionerId: doctor,
+        })
+      ).roomId,
+    ).toBe(roomId);
+    expect(
+      await rows(
+        "SELECT id FROM audit_logs WHERE entity_id=? AND action='TRANSITION' AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.to'))='DISPENSARY_WAITING'",
+        [ticket.id],
+      ),
+    ).toHaveLength(1);
+  });
+  it('draft signing rolls back all item holds, note changes and queue advancement when the second medicine is unavailable', async () => {
+    const p = await patient(),
+      roomId = fixtureId(),
+      first = await item(),
+      second = await item();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Rollback Signed Room',
+    ]);
+    await service.receiveBatch(ctx, {
+      itemId: first.id,
+      batchNumber: randomUUID(),
+      quantity: 10,
+      expiresOn: '2035-01-01',
+    });
+    const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    await service.transitionQueue(ctx, ticket.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    const input = {
+      patientId: p.id,
+      queueTicketId: ticket.id,
+      prescriptions: [rx(first.id, 2), rx(second.id, 3)],
+      assessment: 'QA Original note',
+      status: 'DRAFT',
+    };
+    const draft = await service.saveEncounter(ctx, input);
+    const { queueTicketId: ignored, ...withoutQueue } = input;
+    const sign = {
+      ...withoutQueue,
+      status: 'SIGNED',
+      assessment: 'QA Signing note',
+      version: draft.version,
+    };
+    await expect(service.saveEncounter(ctx, sign, draft.id)).rejects.toMatchObject({
+      code: 'INSUFFICIENT_STOCK',
+    });
+    expect(
+      (await rows('SELECT status,assessment,version FROM encounters WHERE id=?', [draft.id]))[0],
+    ).toMatchObject({ status: 'DRAFT', assessment: 'QA Original note', version: 1 });
+    expect(
+      await rows('SELECT id FROM prescription_reservations WHERE encounter_id=?', [draft.id]),
+    ).toHaveLength(0);
+    expect(
+      (
+        await rows('SELECT status,version,occupied_room_id FROM queue_tickets WHERE id=?', [
+          ticket.id,
+        ])
+      )[0],
+    ).toMatchObject({ status: 'IN_CONSULTATION', version: 3, occupied_room_id: roomId });
+    await service.receiveBatch(ctx, {
+      itemId: second.id,
+      batchNumber: randomUUID(),
+      quantity: 10,
+      expiresOn: '2035-01-01',
+    });
+    expect((await service.saveEncounter(ctx, sign, draft.id)).status).toBe('SIGNED');
+    expect(
+      (
+        await rows('SELECT status,version,occupied_room_id FROM queue_tickets WHERE id=?', [
+          ticket.id,
+        ])
+      )[0],
+    ).toMatchObject({ status: 'DISPENSARY_WAITING', version: 4, occupied_room_id: null });
+    expect(
+      await rows(
+        'SELECT quantity FROM prescription_reservations WHERE encounter_id=? ORDER BY item_id',
+        [draft.id],
+      ),
+    ).toEqual([{ quantity: 2 }, { quantity: 3 }]);
+  });
+  it('signs a no-prescription consultation into dispensary without auto-linking other manual charts', async () => {
+    const p = await patient(),
+      roomId = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA No Rx Room',
+    ]);
+    const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    await service.transitionQueue(ctx, ticket.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    const manual = await encounter(p.id);
+    expect(manual.queueTicketId).toBeNull();
+    expect(
+      (await rows('SELECT status,version FROM queue_tickets WHERE id=?', [ticket.id]))[0],
+    ).toMatchObject({ status: 'CALLED_TO_ROOM', version: 2 });
+    const signed = await encounter(p.id, [], { queueTicketId: ticket.id });
+    expect(signed.status).toBe('SIGNED');
+    expect(
+      (await rows('SELECT status,version FROM queue_tickets WHERE id=?', [ticket.id]))[0],
+    ).toMatchObject({ status: 'DISPENSARY_WAITING', version: 4 });
+  });
+  it.each(['DISPENSARY_WAITING', 'PAYMENT_WAITING', 'COMPLETED', 'EXPIRED'])(
+    'does not regress or resurrect %s linked visits when signing an existing draft',
+    async (status) => {
+      const p = await patient(),
+        roomId = fixtureId();
+      await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+        roomId,
+        tenant,
+        branch,
+        'QA Historic Sign ' + status,
+      ]);
+      const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+      await service.transitionQueue(ctx, ticket.id, {
+        version: 1,
+        status: 'CALLED_TO_ROOM',
+        roomId,
+        practitionerId: doctor,
+      });
+      const draft = await service.saveEncounter(ctx, {
+        patientId: p.id,
+        queueTicketId: ticket.id,
+        status: 'DRAFT',
+      });
+      if (status === 'EXPIRED')
+        await sql.query(
+          'UPDATE queue_tickets SET expired_at=UTC_TIMESTAMP(3),created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR),version=version+1 WHERE id=?',
+          [ticket.id],
+        );
+      else
+        await sql.query('UPDATE queue_tickets SET status=?,version=version+1 WHERE id=?', [
+          status,
+          ticket.id,
+        ]);
+      const before = (
+        await rows('SELECT status,version,expired_at FROM queue_tickets WHERE id=?', [ticket.id])
+      )[0];
+      expect(
+        (
+          await service.saveEncounter(
+            ctx,
+            {
+              patientId: p.id,
+              assessment: 'QA Historic assessment',
+              status: 'SIGNED',
+              version: draft.version,
+            },
+            draft.id,
+          )
+        ).status,
+      ).toBe('SIGNED');
+      expect(
+        (
+          await rows('SELECT status,version,expired_at FROM queue_tickets WHERE id=?', [ticket.id])
+        )[0],
+      ).toEqual(before);
+    },
+  );
   it('renders receipt PDF inline or explicit attachment with actual receipt text', async () => {
     const p = await patient({ name: 'QA PDF Receipt Patient', nationalId: 'QA-PASSPORT' }),
       bill = await service.createInvoice(ctx, invoice(p.id));

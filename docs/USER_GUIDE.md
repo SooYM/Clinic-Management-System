@@ -174,3 +174,8 @@ Section buttons change the task without forcing a jump to the top. Appointment n
 A check-in expires 12 hours after it was created. If already active, use the existing Live queue ticket; the error now explains this. Expiry releases patient/room assignments and keeps clinical history. It does not delete medical notes.
 
 After the nurse calls or starts the visit with the assigned GP, the GP opens Clinical workspace → Assigned patients. Start consultation fills the patient and queue reference automatically; confirm the completed note to save. Open consultation resumes an existing note. Suggestions refresh automatically or with Refresh assignments. If none appear, verify branch, assigned GP, visit state and the 12-hour lifetime. Manual patient selection remains available.
+
+
+## Add multiple medicines and send to dispensary
+
+Use Add prescription for each additional medicine. Give each row its own quantity, frequency, meal timing, instructions and supply days. Remove unwanted unsaved rows; blank rows are skipped. Save a draft while working. Choose SIGNED and confirm when complete: all eligible stock is reserved and the linked active visit moves to dispensary automatically. If any medicine lacks stock, neither signing nor handoff completes. Signed notes cannot be edited. A signed visit without medicines still reaches dispensary, but has nothing to dispense; staff can continue it to payment.

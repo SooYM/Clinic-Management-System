@@ -168,3 +168,16 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | Linked save | Patient/GP/expiry checks; failed save does not start; concurrent one encounter | Actual MySQL/demo |
 | Existing draft | Resume linked encounter; edits after operational expiry; association immutable | Actual MySQL/demo |
 | Nurse handoff UI | GP prefilled suggestion, no manual reentry; popup consent; context cancel preserves SOAP | Fictional desktop/320px browser |
+
+
+## Multiple prescription and signing cases
+
+| Case | Expected | Evidence |
+| --- | --- | --- |
+| Multiple medicine rows | Independent values and stable neighbors; blank rows skipped | Desktop/320px browser |
+| Draft resave | Recorded list remains unchanged without new selections | Browser/demo/MySQL |
+| Create or save SIGNED | All holds reserved and linked queue advances atomically | Actual MySQL/demo/browser |
+| Second medicine unavailable | No chart/hold/queue partial commit | Actual MySQL/demo |
+| Zero medicines | Linked queue advances; no dispense work without medicine | Actual MySQL/demo |
+| Expired/advanced/unlinked | No queue resurrection, regression or unrelated visit change | Actual MySQL/demo |
+| Signed note | Row editing/addition disabled | Browser |

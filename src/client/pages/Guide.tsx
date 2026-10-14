@@ -50,9 +50,9 @@ const topics = [
     title: 'Record a GP consultation',
     module: 'clinical',
     steps: [
-      'Open Clinical workspace → Consultations. Select a patient, then Open consultation from their history. New consultation has a separate creation tab. Save before record tools unlock.',
-      'Add each medicine with quantity, times per day, meal timing, dosage instructions, and supply days. Recorded allergies are checked before saving.',
-      'Save as draft while charting; sign when complete. Signing reserves eligible medicine stock and reduces available quantity. Signed notes are permanent.',
+      'Open Clinical workspace → Assigned patients to start or resume an assigned visit. You can also choose a patient manually and use Patient history or New consultation. Save before record tools unlock.',
+      'Use Add prescription for each extra medicine. Each row has its own quantity, times per day, meal timing, dosage instructions and supply days. Remove an unsaved row when needed. Recorded allergies are checked before saving.',
+      'Save as draft while charting; sign when complete. Signing reserves every prescribed medicine and sends the linked active visit to dispensary. Insufficient stock prevents signing and queue handoff together. Signed notes are permanent.',
       'Enter blood pressure as SYS/DIA with systolic above diastolic. An unusual monitor-range warning asks you to verify the reading but does not block recording clinical extremes.',
       'Issue medical certificates, referrals, or lab orders from the encounter. Medical certificates can hide diagnosis from employers.',
       'Only the attending GP can issue documents from a signed consultation. New MC leave dates default to today before 5 pm Malaysia time, or tomorrow from 5 pm; review and change the date when needed.',

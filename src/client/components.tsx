@@ -301,7 +301,7 @@ export function MutationForm({
           title: `${label}?`,
           message:
             values.get('status') === 'SIGNED'
-              ? 'Signing makes this consultation permanent and reserves prescribed stock. Confirm only after reviewing the patient, note and medicines.'
+              ? 'Signing makes this consultation permanent, reserves prescribed stock and sends its linked active visit to dispensary. Confirm only after reviewing the patient, note and medicines.'
               : 'Review the entered details. Confirm to apply this change; Cancel keeps your form unchanged.',
           confirmLabel: label,
         }))
