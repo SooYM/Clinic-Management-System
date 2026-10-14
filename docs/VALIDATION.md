@@ -203,3 +203,5 @@ Full regression completed successfully, including 133 actual guarded MySQL cases
 ## Synchronized handoff validation — 2026-10-14
 
 Full regression passed: 385 tests across 22 files, including 136 guarded real MySQL cases. Production/demo builds, typecheck and formatting passed. Fictional browser workflow verified assigned GP suggestions, stock labels, signed prescription reservation, first/default dispensing, automatic payment handoff, prefilled patient/GP/medicine checkout, payment completion, and compact bounded history at 320px. Successful migration021 followed a guarded local backup. Baseline rows remained intact across 32 tables and 26 numeric entity IDs; 21 migrations are applied. Browser QA used fictional session data only. Git publication does not establish Render deployment.
+
+Checkout scroll verified on desktop and 320px phone, including same-patient repeat and reduced-motion. The form appears below sticky navigation without horizontal overflow. Demo build and typecheck passed; fictional browser fixtures only.

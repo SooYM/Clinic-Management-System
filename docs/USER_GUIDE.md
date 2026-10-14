@@ -196,3 +196,5 @@ Only an explicitly privileged Super Admin sees Administration → Danger zone. R
 4. Review the suggested prescription and confirm **Dispense medicines**. The visit moves to payment automatically. Staff with billing access can click **Open patient checkout**; other billing staff see the patient in their own suggestions.
 5. **Billing & payments → Patient checkout** opens first. Choose **Prepare checkout** to fill patient, GP and medicine charge lines. Review prices, add consultation charges where appropriate, enter payments, and confirm **Complete checkout**. The linked visit completes and leaves billing suggestions.
 Suggestions and stock update automatically within 15 seconds while visible and when returning to the window. **Prescription history** has compact rows, collapsed filters, and a bounded scroll area. Opening usage logs is optional. Nothing records a payment merely by opening a suggestion.
+
+Click **Prepare checkout** to fill the patient and charges and scroll directly to the checkout form. Canceling replacement keeps the existing checkout and position.

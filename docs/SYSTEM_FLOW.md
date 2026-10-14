@@ -202,3 +202,5 @@ flowchart LR
   H --> I[Visit completed]
 ```
 Drafts remain editable without stock holds. Signing rejects insufficient eligible stock atomically. Dispensing and payment preserve idempotency. Automatic transitions apply only to the linked active queue ticket; expired visits stay expired.
+
+Prepare checkout → confirm replacement if needed → prefill patient/GP/charges → scroll to checkout below sticky navigation. Cancel → retain entries and scroll position.

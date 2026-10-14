@@ -53,6 +53,7 @@ interface Payment {
 export default function Billing({ practitioners }: { practitioners: Reference[] }) {
   const confirm = useConfirm();
   const checkoutDirty = useRef(false);
+  const checkoutForm = useRef<HTMLDivElement>(null);
   const invoices = useResource<Invoice[]>('/invoices', 15000);
   const suggestions = useResource<BillingSuggestion[]>('/billing/suggestions', 15000);
   const [selectedVisit, setSelectedVisit] = useState<BillingSuggestion>();
@@ -97,6 +98,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
   async function chooseVisit(visit: BillingSuggestion) {
     if (selectedVisit?.encounterId === visit.encounterId) {
       setSection('checkout');
+      scrollToCheckout();
       return;
     }
     if (!(await discardCheckout())) return;
@@ -116,6 +118,21 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
         : [{ description: 'Consultation', quantity: 1, unitPriceCents: 0, category: 'SERVICE' }],
     );
     setPayments([{ method: 'CASH', amountCents: 0, reference: '' }]);
+    scrollToCheckout();
+  }
+  function scrollToCheckout() {
+    requestAnimationFrame(() => {
+      const panel = checkoutForm.current?.closest<HTMLElement>('.panel');
+      const navigation = panel
+        ?.closest('.workspace-sections')
+        ?.querySelector('.section-navigation');
+      if (!panel || !navigation) return;
+      panel.style.scrollMarginTop = `${navigation.getBoundingClientRect().height + parseFloat(getComputedStyle(navigation).top) + 12}px`;
+      panel.scrollIntoView({
+        block: 'start',
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      });
+    });
   }
   useEffect(() => {
     if (!suggestions.data || handoffConsumed.current) return;
@@ -175,6 +192,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
           </Panel>
           <Panel title="Patient checkout">
             <div
+              ref={checkoutForm}
               onChange={() => {
                 checkoutDirty.current = true;
               }}

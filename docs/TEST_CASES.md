@@ -210,3 +210,5 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | Prefilled checkout / change visit | Authoritative patient and GP; suggested editable medicine prices; consent before discarding edited charges |
 | Phone prescription history | Bounded compact list, expandable filters, no page overflow |
 | Live refresh during editing | New reference/suggestion data; unsaved form inputs preserved |
+
+Checkout scroll: Prepare checkout positions the form below sticky navigation on desktop and phone; repeat selection preserves edits and scrolls again; reduced-motion uses immediate scrolling.
