@@ -179,3 +179,12 @@ After the nurse calls or starts the visit with the assigned GP, the GP opens Cli
 ## Add multiple medicines and send to dispensary
 
 Use Add prescription for each additional medicine. Give each row its own quantity, frequency, meal timing, instructions and supply days. Remove unwanted unsaved rows; blank rows are skipped. Save a draft while working. Choose SIGNED and confirm when complete: all eligible stock is reserved and the linked active visit moves to dispensary automatically. If any medicine lacks stock, neither signing nor handoff completes. Signed notes cannot be edited. A signed visit without medicines still reaches dispensary, but has nothing to dispense; staff can continue it to payment.
+
+
+## Compact history and draft removal
+
+History now shows concise previews. Expand Search, filter & sort history only when needed; scroll the bounded list or Load older for more records. Open consultation shows the full note. An attending GP can use Delete draft in history or the note header, then confirm. Cancellation preserves edits. Signed notes have no individual delete option.
+
+## Super Admin database reset
+
+Only an explicitly privileged Super Admin sees Administration → Danger zone. Review the scope and affected counts, then Reset database. Type RESET ALL CLINIC DATA exactly, enter your current password, acknowledge erasure, and choose Erase all clinic data. This permanently clears the entire database across all clinics, including signed notes, and restores one configured default administrator/main branch/three rooms. Back up before deliberately using it. Cancel/Escape clears the fields without resetting; pressing Enter while typing does not erase. After success every session ends; sign in using configured bootstrap credentials. IDs continue increasing. This control is the explicit exception to normal signed-record protection.

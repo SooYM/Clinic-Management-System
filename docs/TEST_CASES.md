@@ -181,3 +181,17 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | Zero medicines | Linked queue advances; no dispense work without medicine | Actual MySQL/demo |
 | Expired/advanced/unlinked | No queue resurrection, regression or unrelated visit change | Actual MySQL/demo |
 | Signed note | Row editing/addition disabled | Browser |
+
+
+## Draft and reset cases
+
+| Case | Expected | Evidence |
+| --- | --- | --- |
+| Compact history | Collapsed controls, bounded list; full note unchanged | Desktop/320px browser |
+| Draft removal | Author/version/scope/CSRF checks, retained row/audit; no queue/stock change | Actual MySQL/demo/browser |
+| Signed removal | No UI action; API refuses, dispensing remains valid | Actual MySQL/demo/browser |
+| Reset privilege | Ordinary Admin cannot reset/grant; live explicit capability required | Actual API/demo/browser |
+| Reset consent | Exact phrase+current password+ack; no Enter/cancel submission | Actual API/demo/browser |
+| Reset failure | Wrong credentials/unknown schema/non-InnoDB/failing defaults leave data | Guarded MySQL/demo |
+| Global reset | All tenants cleared; only defaults/audit restored; old sessions invalid | Disposable MySQL/demo only |
+| Identifier continuity | New entities use larger IDs; migrations retained | Actual MySQL/demo |

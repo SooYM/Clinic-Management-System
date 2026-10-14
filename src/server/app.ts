@@ -1,4 +1,5 @@
 import { readReceipt } from './receipt-service.js';
+import { databaseResetRouter } from './database-reset.js';
 import { renderReceiptPdf } from './receipt-renderer.js';
 import { idSchema } from '../shared/identifiers.js';
 import express, { type Request, type Response, type NextFunction } from 'express';
@@ -114,6 +115,7 @@ export function createApp(service = new ClinicService()) {
           email: u.email,
           role: u.role,
           license_number: u.license_number,
+          is_super_admin: Boolean(u.is_super_admin),
         }),
         csrfToken,
         branchId: u.branch_id,
@@ -142,6 +144,7 @@ export function createApp(service = new ClinicService()) {
   api.use(referenceRouter());
   api.use(recordRouter());
   api.use(administrationRouter());
+  api.use(databaseResetRouter());
   api.use(catalogRouter());
   api.get('/auth/me', (req, res) =>
     res.json({
@@ -267,6 +270,17 @@ export function createApp(service = new ClinicService()) {
     return result;
   });
   mutation('/encounters', schemas.encounter, (r, i) => service.saveEncounter(r.context, i));
+  api.delete(
+    '/encounters/:id',
+    roles('DOCTOR'),
+    asyncRoute(async (req, res) => {
+      const { version } = z
+        .object({ version: z.number().int().positive() })
+        .strict()
+        .parse(req.body);
+      res.json(await service.removeEncounter(req.context, idSchema.parse(req.params.id), version));
+    }),
+  );
   mutation(
     '/encounters/:id',
     schemas.encounter.refine((v) => !!v.version, 'Version is required.'),

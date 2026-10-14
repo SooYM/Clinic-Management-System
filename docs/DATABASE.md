@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `018_queue_expiry.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `020_super_admin.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -158,3 +158,8 @@ Migration 015 adds branch active/version/update time and nullable invoices.recei
 ## Migration 018 queue lifetime
 
 Queue check-ins last at most 12 hours from created_at, across Malaysia midnight. Before queue reads, check-in, room transitions and GP suggestions, scoped lifecycle cleanup marks old unfinished tickets expired_at, increments version and audits QUEUE_EXPIRED. Original status and chart references remain preserved. Active patient and occupied-room uniqueness excludes expired tickets. A fresh duplicate check-in returns a specific existing-ticket 409; an expired patient can check in again. Completed/skipped visits retain their existing terminal behavior. Estimates, room occupancy and queue-near notifications exclude expired visits. The expiry column is nullable to retain original data; generated active_patient_id and occupied_room_id include expired_at IS NULL. No patient, encounter or payment row is deleted. Existing applied migrations remain immutable.
+
+
+## Migrations 019 and 020
+
+019 adds nullable encounters.deleted_at and an active-history index; original rows and dependencies remain. 020 adds users.is_super_admin default FALSE with a constraint requiring ADMIN for elevated capability. Existing admins are not automatically elevated. Initial bootstrap/reset creates an explicit privileged default administrator; operator CLI can grant the configured existing bootstrap owner. No extra entity ID table is added. DatabaseResetService validates live capability/password and bootstrap configuration, verifies the reviewed schema and InnoDB storage, takes SERIALIZABLE tenant/user range locks, then executes child-first DELETE and reusable bootstrap creation in one transaction. Foreign-key checks remain enabled; no TRUNCATE, schema drop or sequence reset occurs. Failed recreation rolls back all data changes. Ordinary service transactions retain their prior isolation. Newly allocated IDs ensure requests holding old actor/tenant IDs cannot act as recreated accounts. Extra/unknown tables block reset until the reviewed table list is updated. Existing encrypted files/backups outside the database are outside this database-only operation.

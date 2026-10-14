@@ -12,6 +12,7 @@ export interface Actor {
   name: string;
   role: string;
   licenseNumber: string | null;
+  isSuperAdmin?: boolean;
 }
 export interface Context {
   actor: Actor;
@@ -87,6 +88,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
         name: u.name,
         role: u.role,
         licenseNumber: u.license_number,
+        isSuperAdmin: Boolean(u.is_super_admin),
       },
       branchId,
       requestId: String(_res.locals.requestId),

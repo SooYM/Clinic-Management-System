@@ -162,3 +162,8 @@ GET /api/clinical/queue-suggestions requires clinical module and DOCTOR role. Re
 ## Signing handoff and multiple prescriptions
 
 POST /api/encounters and PUT /api/encounters/:id retain prescriptions:[{itemId,quantity,durationDays,frequencyPerDay,mealTiming,dosage}] with a maximum of 50. SIGNED saves now atomically advance a scoped linked active visit to DISPENSARY_WAITING after all reservations succeed. Stored queue association is authoritative when draft updates omit queueTicketId. No new endpoint/schema or weaker permission rule is introduced.
+
+
+## Draft removal and privileged reset
+
+DELETE /api/encounters/:id requires clinical module, attending DOCTOR, {version}, CSRF and DRAFT status. Signed/protected dependencies reject 409; foreign/removed records return 404 and stale versions reject 409. GET /api/admin/database-reset/preview requires ADMIN with live is_super_admin; returns scope ENTIRE_DATABASE, confirmationPhrase, counts[{table,rowCount}], defaults and preserves metadata. POST /api/admin/database-reset strictly accepts {confirmationPhrase:"RESET ALL CLINIC DATA",currentPassword,acknowledge:true}; reauthentication, capability and schema guards are enforced server-side. Successful reset returns {requiresLogin:true,bootstrapEmail}, clears sessions and cookie, and never returns passwords/hashes. Incorrect current password is 403 PASSWORD_INCORRECT.

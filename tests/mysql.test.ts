@@ -4141,6 +4141,288 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ).toEqual(before);
     },
   );
+  it('soft-removes only an author-owned versioned draft with clinical permission and CSRF', async () => {
+    const p = await patient(),
+      draft = await service.saveEncounter(ctx, {
+        patientId: p.id,
+        assessment: 'QA Draft removal note',
+      });
+    const payload = { version: draft.version };
+    expect((await settingsAdminHttp(`/encounters/${draft.id}`, 'DELETE', payload)).status).toBe(
+      403,
+    );
+    expect(
+      (
+        await settingsHttp(`/encounters/${draft.id}`, 'DELETE', payload, {
+          Cookie: `cms_session=${doctorToken}`,
+          'X-CSRF-Token': 'wrong',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await settingsHttp(
+          `/encounters/${draft.id}`,
+          'DELETE',
+          { version: '1' },
+          { Cookie: `cms_session=${doctorToken}` },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await settingsHttp(
+          `/encounters/${draft.id}`,
+          'DELETE',
+          { ...payload, extra: true },
+          { Cookie: `cms_session=${doctorToken}` },
+        )
+      ).status,
+    ).toBe(400);
+    await sql.query(
+      "INSERT INTO role_module_permissions(tenant_id,role,modules) VALUES(?,'DOCTOR',?) ON DUPLICATE KEY UPDATE modules=VALUES(modules)",
+      [tenant, JSON.stringify(['queue'])],
+    );
+    try {
+      expect(
+        (
+          await settingsHttp(`/encounters/${draft.id}`, 'DELETE', payload, {
+            Cookie: `cms_session=${doctorToken}`,
+          })
+        ).status,
+      ).toBe(403);
+    } finally {
+      await sql.query("DELETE FROM role_module_permissions WHERE tenant_id=? AND role='DOCTOR'", [
+        tenant,
+      ]);
+    }
+    const foreignGp = fixtureId();
+    await sql.query(
+      'INSERT INTO users(id,tenant_id,branch_id,email,name,password_hash,role,license_number) VALUES(?,?,?,?,?,?,?,?)',
+      [
+        foreignGp,
+        tenant,
+        branch,
+        randomUUID() + '@example.invalid',
+        'QA Other GP',
+        'test-only',
+        'DOCTOR',
+        'QA-LICENSE',
+      ],
+    );
+    await expect(
+      service.removeEncounter({ ...ctx, actor: { ...ctx.actor, id: foreignGp } }, draft.id, 1),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    await expect(service.removeEncounter(otherCtx, draft.id, 1)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      status: 404,
+    });
+    const edited = await service.saveEncounter(
+      ctx,
+      { patientId: p.id, assessment: 'QA Kept original draft record', version: draft.version },
+      draft.id,
+    );
+    expect(
+      (
+        await settingsHttp(`/encounters/${draft.id}`, 'DELETE', payload, {
+          Cookie: `cms_session=${doctorToken}`,
+        })
+      ).status,
+    ).toBe(409);
+    const removed = await settingsHttp(
+      `/encounters/${draft.id}`,
+      'DELETE',
+      { version: edited.version },
+      { Cookie: `cms_session=${doctorToken}` },
+    );
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toMatchObject({
+      id: draft.id,
+      version: 3,
+      deletedAt: expect.any(String),
+    });
+    expect(
+      (
+        await rows(
+          'SELECT patient_id,assessment,status,version,deleted_at FROM encounters WHERE id=?',
+          [draft.id],
+        )
+      )[0],
+    ).toMatchObject({
+      patient_id: p.id,
+      assessment: 'QA Kept original draft record',
+      status: 'DRAFT',
+      version: 3,
+      deleted_at: expect.any(Date),
+    });
+    expect(
+      (
+        await settingsHttp(`/encounters/${draft.id}`, 'GET', undefined, {
+          Cookie: `cms_session=${doctorToken}`,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await settingsHttp(
+          `/encounters/${draft.id}`,
+          'DELETE',
+          { version: 3 },
+          { Cookie: `cms_session=${doctorToken}` },
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (await (await settingsAdminHttp(`/patients/${p.id}/encounters`)).json()).data,
+    ).toHaveLength(0);
+    expect(
+      (
+        await (
+          await settingsAdminHttp('/encounters?search=QA%20Kept%20original%20draft%20record')
+        ).json()
+      ).data,
+    ).toHaveLength(0);
+    expect(
+      await rows(
+        "SELECT id FROM audit_logs WHERE action='REMOVE' AND entity_type='encounter' AND entity_id=?",
+        [draft.id],
+      ),
+    ).toHaveLength(1);
+    await expect(
+      service.saveEncounter(
+        ctx,
+        { patientId: p.id, status: 'SIGNED', assessment: 'QA Invalid revive', version: 3 },
+        draft.id,
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      service.dispense(ctx, { encounterId: draft.id, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      service.issueDocument(ctx, {
+        encounterId: draft.id,
+        kind: 'MC',
+        startDate: '2030-01-01',
+        days: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(service.medicationDoses(ctx, draft.id)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    await expect(service.prescriptionLog(ctx, draft.id)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+  });
+  it('draft removal preserves queue and stock, hides the association and permits a replacement chart', async () => {
+    const p = await patient(),
+      i = await item(),
+      roomId = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Removed draft room',
+    ]);
+    const batch = await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: randomUUID(),
+      expiresOn: '2035-01-01',
+      quantity: 10,
+    });
+    const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    await service.transitionQueue(ctx, ticket.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    const input = {
+      patientId: p.id,
+      queueTicketId: ticket.id,
+      prescriptions: [rx(i.id, 2)],
+      assessment: 'QA Removable queued draft',
+      status: 'DRAFT',
+    };
+    const draft = await service.saveEncounter(ctx, input),
+      beforeQueue = (await rows('SELECT * FROM queue_tickets WHERE id=?', [ticket.id]))[0];
+    const history = (await (await settingsAdminHttp(`/patients/${p.id}/encounters`)).json()).data;
+    expect(history).toContainEqual(
+      expect.objectContaining({ id: draft.id, practitionerId: doctor, version: 1 }),
+    );
+    await service.removeEncounter(ctx, draft.id, 1);
+    expect((await rows('SELECT * FROM queue_tickets WHERE id=?', [ticket.id]))[0]).toEqual(
+      beforeQueue,
+    );
+    expect(
+      (await rows('SELECT quantity FROM inventory_batches WHERE id=?', [batch.id]))[0].quantity,
+    ).toBe(10);
+    expect(
+      await rows('SELECT id FROM prescription_reservations WHERE encounter_id=?', [draft.id]),
+    ).toHaveLength(0);
+    expect(
+      (await rows('SELECT queue_ticket_id FROM encounters WHERE id=?', [draft.id]))[0]
+        .queue_ticket_id,
+    ).toBe(ticket.id);
+    expect((await service.queueSuggestions(ctx)).data).toContainEqual(
+      expect.objectContaining({ queueTicketId: ticket.id, encounterId: null }),
+    );
+    const replacement = await service.saveEncounter(ctx, input);
+    expect(replacement.id).not.toBe(draft.id);
+    expect((await service.queueSuggestions(ctx)).data).toContainEqual(
+      expect.objectContaining({ queueTicketId: ticket.id, encounterId: replacement.id }),
+    );
+  });
+  it('never removes signed encounters and keeps their dispensing workflow intact', async () => {
+    const p = await patient(),
+      i = await item();
+    const batch = await service.receiveBatch(ctx, {
+      itemId: i.id,
+      batchNumber: randomUUID(),
+      expiresOn: '2035-01-01',
+      quantity: 10,
+    });
+    const signed = await encounter(p.id, [rx(i.id, 2)]),
+      reserves = await rows('SELECT * FROM prescription_reservations WHERE encounter_id=?', [
+        signed.id,
+      ]);
+    const response = await settingsHttp(
+      `/encounters/${signed.id}`,
+      'DELETE',
+      { version: signed.version },
+      { Cookie: `cms_session=${doctorToken}` },
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe('ENCOUNTER_SIGNED');
+    expect(
+      (await rows('SELECT status,deleted_at FROM encounters WHERE id=?', [signed.id]))[0],
+    ).toMatchObject({ status: 'SIGNED', deleted_at: null });
+    expect(
+      await rows('SELECT * FROM prescription_reservations WHERE encounter_id=?', [signed.id]),
+    ).toEqual(reserves);
+    await service.dispense(ctx, { encounterId: signed.id, idempotencyKey: randomUUID() });
+    expect(
+      (await rows('SELECT quantity FROM inventory_batches WHERE id=?', [batch.id]))[0].quantity,
+    ).toBe(8);
+  });
+  it('protects unexpected persisted clinical dependencies on legacy drafts', async () => {
+    const p = await patient(),
+      draft = await service.saveEncounter(ctx, {
+        patientId: p.id,
+        assessment: 'QA Legacy dependency draft',
+      });
+    await sql.query(
+      'INSERT INTO dispenses(tenant_id,branch_id,patient_id,encounter_id,actor_id,idempotency_key) VALUES(?,?,?,?,?,?)',
+      [tenant, branch, p.id, draft.id, doctor, randomUUID()],
+    );
+    await expect(service.removeEncounter(ctx, draft.id, draft.version)).rejects.toMatchObject({
+      code: 'DRAFT_HAS_HISTORY',
+      status: 409,
+    });
+    expect(
+      (await rows('SELECT deleted_at,version FROM encounters WHERE id=?', [draft.id]))[0],
+    ).toMatchObject({ deleted_at: null, version: 1 });
+    expect(await rows('SELECT id FROM dispenses WHERE encounter_id=?', [draft.id])).toHaveLength(1);
+  });
   it('renders receipt PDF inline or explicit attachment with actual receipt text', async () => {
     const p = await patient({ name: 'QA PDF Receipt Patient', nationalId: 'QA-PASSPORT' }),
       bill = await service.createInvoice(ctx, invoice(p.id));

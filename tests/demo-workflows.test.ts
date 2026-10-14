@@ -34,6 +34,150 @@ async function calledPatient(clinic: DemoClinic, patientId = 4) {
     roomId: 1,
   });
 }
+describe('demo draft consultation removal', () => {
+  it('retains removed drafts and audit history without changing queue or stock, and permits a fresh linked chart', async () => {
+    const { clinic, storage } = await ready();
+    const ticket = await calledPatient(clinic);
+    const draft = await clinic.request('/encounters', 'POST', {
+      patientId: 4,
+      queueTicketId: ticket.id,
+      assessment: 'Fictional discarded draft',
+      prescriptions: [rx(2)],
+    });
+    const queueBefore = (await clinic.request('/queue')).data.find(
+      (row: any) => row.id === ticket.id,
+    );
+    const stockBefore = await clinic.request('/inventory');
+    const auditBefore = JSON.parse([...storage.entries.values()][0]).rows.audit.length;
+    const result = await clinic.request(`/encounters/${draft.id}`, 'DELETE', {
+      version: draft.version,
+    });
+    expect(result).toMatchObject({ id: draft.id, version: draft.version + 1 });
+    expect(result.deletedAt).toBeTruthy();
+    expect((await clinic.request('/encounters')).data.some((row: any) => row.id === draft.id)).toBe(
+      false,
+    );
+    expect(
+      (await clinic.request('/patients/4/encounters')).data.some((row: any) => row.id === draft.id),
+    ).toBe(false);
+    expect(
+      (await clinic.request('/dispensary/history')).data.some((row: any) => row.id === draft.id),
+    ).toBe(false);
+    expect((await clinic.request('/clinical/queue-suggestions')).data[0].encounterId).toBeNull();
+    expect((await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id)).toEqual(
+      queueBefore,
+    );
+    expect(await clinic.request('/inventory')).toEqual(stockBefore);
+    for (const path of [
+      `/encounters/${draft.id}`,
+      `/encounters/${draft.id}/prescription-log`,
+      `/encounters/${draft.id}/medication-doses`,
+    ])
+      await expect(clinic.request(path)).rejects.toMatchObject({ status: 404 });
+    await expect(
+      clinic.request(`/encounters/${draft.id}`, 'PUT', {
+        patientId: 4,
+        queueTicketId: ticket.id,
+        status: 'SIGNED',
+        assessment: 'Fictional removed draft must remain unavailable',
+        prescriptions: [],
+        version: result.version,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      clinic.request(`/encounters/${draft.id}`, 'DELETE', { version: result.version }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      clinic.request('/dispenses', 'POST', {
+        encounterId: draft.id,
+        idempotencyKey: 'removed-demo-draft',
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      clinic.request('/documents', 'POST', {
+        encounterId: draft.id,
+        kind: 'MC',
+        startDate: '2026-10-14',
+        days: 1,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    const state = JSON.parse([...storage.entries.values()][0]);
+    expect(state.rows.encounters.find((row: any) => row.id === draft.id)).toMatchObject({
+      deletedAt: result.deletedAt,
+      status: 'DRAFT',
+      prescriptions: draft.prescriptions,
+    });
+    expect(state.rows.audit.slice(auditBefore)).toHaveLength(1);
+    expect(state.rows.audit.at(-1)).toMatchObject({ action: 'REMOVE', entityId: draft.id });
+    const replacement = await clinic.request('/encounters', 'POST', {
+      patientId: 4,
+      queueTicketId: ticket.id,
+      assessment: 'Fictional replacement draft',
+      prescriptions: [],
+    });
+    expect(replacement.id).not.toBe(draft.id);
+    expect((await clinic.request('/clinical/queue-suggestions')).data[0].encounterId).toBe(
+      replacement.id,
+    );
+  });
+  it('requires the attending doctor, current version, clinical permission and scoped branch', async () => {
+    const { clinic, storage } = await ready();
+    const draft = await clinic.request('/encounters', 'POST', { patientId: 4, prescriptions: [] });
+    const before = [...storage.entries.values()][0];
+    await expect(
+      clinic.request(`/encounters/${draft.id}`, 'DELETE', { version: draft.version + 1 }),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      clinic.request(`/encounters/${draft.id}`, 'DELETE', { version: draft.version }, 2),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      clinic.request(`/encounters/${draft.id}`, 'DELETE', { version: draft.version, extra: true }),
+    ).rejects.toThrow();
+    expect([...storage.entries.values()][0]).toBe(before);
+    const [storageKey, raw] = [...storage.entries.entries()][0];
+    const state = JSON.parse(raw);
+    state.rows.encounters.find((row: any) => row.id === draft.id).practitionerId = 5;
+    storage.setItem(storageKey, JSON.stringify(state));
+    const changedOwner = new DemoClinic(storage);
+    await expect(
+      changedOwner.request(`/encounters/${draft.id}`, 'DELETE', { version: draft.version }),
+    ).rejects.toMatchObject({ status: 403 });
+    await changedOwner.request('/auth/logout', 'POST');
+    await changedOwner.request('/auth/login', 'POST', {
+      email: 'admin@example.test',
+      password: 'demo',
+    });
+    await expect(
+      changedOwner.request(`/encounters/${draft.id}`, 'DELETE', { version: draft.version }),
+    ).rejects.toMatchObject({ status: 403 });
+    await changedOwner.request('/auth/logout', 'POST');
+    await changedOwner.request('/auth/login', 'POST', {
+      email: 'reception@example.test',
+      password: 'demo',
+    });
+    await expect(
+      changedOwner.request(`/encounters/${draft.id}`, 'DELETE', { version: draft.version }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('never removes signed consultations or drafts with unexpected recorded stock history', async () => {
+    const { clinic, storage } = await ready();
+    const before = [...storage.entries.values()][0];
+    await expect(clinic.request('/encounters/1', 'DELETE', { version: 1 })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect([...storage.entries.values()][0]).toBe(before);
+    const draft = await clinic.request('/encounters', 'POST', { patientId: 4, prescriptions: [] });
+    const [storageKey, raw] = [...storage.entries.entries()][0];
+    const state = JSON.parse(raw);
+    state.rows.reservations[0].encounterId = draft.id;
+    storage.setItem(storageKey, JSON.stringify(state));
+    const withHistory = new DemoClinic(storage);
+    await expect(
+      withHistory.request(`/encounters/${draft.id}`, 'DELETE', { version: draft.version }),
+    ).rejects.toThrow('recorded clinical or stock history');
+    expect([...storage.entries.values()][0]).toBe(JSON.stringify(state));
+  });
+});
 describe('demo signed consultation queue handoff', () => {
   it('moves a linked signed consultation with no medicines to dispensary waiting', async () => {
     const { clinic } = await ready();

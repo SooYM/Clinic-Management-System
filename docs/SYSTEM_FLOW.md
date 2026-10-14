@@ -183,3 +183,8 @@ Check in → active visit for 12 hours → nurse calls assigned doctor/room → 
 ## Signed consultation to dispensary
 
 Assigned patient → Start consultation → SOAP and one or more medicine rows → draft save or SIGNED → popup consent → validate all medicines → reserve all stock → linked active visit DISPENSARY_WAITING → pharmacist pending prescription. Any failure rolls back the complete signed handoff. Existing draft → append rows → save → no duplicates on unchanged resave.
+
+
+## Draft and reset workflows
+
+Patient → compact history → Open full note, or own Delete draft → consent → versioned soft removal → history/suggestions refresh; selected record tools lock. Signed record → no individual delete. Super Admin → Danger zone → affected-count preview → Reset database → exact phrase + current password + acknowledgment → final erase → transactional reset/default recreation → session ends → sign in with configured bootstrap credentials. Ordinary Admin → no reset controls and server denial.

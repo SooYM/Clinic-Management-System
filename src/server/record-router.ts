@@ -33,8 +33,8 @@ export function recordRouter() {
       if (!patient.rows[0])
         throw new DomainError('NOT_FOUND', 'Patient not found in this branch.', 404);
       const { rows } = await pool.query(
-        `SELECT e.id,e.patient_id,e.practitioner_id,e.specialty,e.assessment,e.status,e.created_at,u.name practitioner_name FROM encounters e JOIN users u ON u.id=e.practitioner_id
-      WHERE e.patient_id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 ${cursor.before ? 'AND (e.created_at<$4 OR (e.created_at=$4 AND e.id<$5))' : ''} ORDER BY e.created_at DESC,e.id DESC LIMIT 51`,
+        `SELECT e.id,e.patient_id,e.practitioner_id,e.version,e.specialty,e.assessment,e.status,e.created_at,u.name practitioner_name FROM encounters e JOIN users u ON u.id=e.practitioner_id
+      WHERE e.patient_id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL ${cursor.before ? 'AND (e.created_at<$4 OR (e.created_at=$4 AND e.id<$5))' : ''} ORDER BY e.created_at DESC,e.id DESC LIMIT 51`,
         [
           patientId,
           req.context.actor.tenantId,

@@ -52,7 +52,7 @@ export class ClinicService {
     const queries: Record<string, string> = {
       patients: `SELECT p.*,p.id patient_number FROM patients p WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.id LIMIT 200`,
       appointments: `SELECT a.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM appointments a JOIN patients p ON p.id=a.patient_id JOIN users u ON u.id=a.practitioner_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.tenant_id=$1 AND a.branch_id=$2 AND a.deleted_at IS NULL ORDER BY a.starts_at DESC LIMIT 200`,
-      encounters: `SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.tenant_id=$1 AND e.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR e.assessment LIKE $3 OR u.name LIKE $3) ORDER BY e.created_at DESC LIMIT 200`,
+      encounters: `SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.deleted_at IS NULL AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR e.assessment LIKE $3 OR u.name LIKE $3) ORDER BY e.created_at DESC LIMIT 200`,
       inventory: `SELECT i.*,
         (SELECT COALESCE(SUM(b.quantity),0) FROM inventory_batches b
           WHERE b.item_id=i.id AND b.tenant_id=i.tenant_id AND b.branch_id=i.branch_id
@@ -142,7 +142,7 @@ export class ClinicService {
       const rows = (
         await db.query(
           `SELECT q.id queue_ticket_id,q.patient_id,p.id patient_number,p.name patient_name,q.ticket_number,q.room_id,r.name room_name,q.status,q.version,q.created_at,q.called_at,DATE_ADD(q.created_at,INTERVAL 12 HOUR) expires_at,
-        (SELECT e.id FROM encounters e WHERE e.tenant_id=q.tenant_id AND e.branch_id=q.branch_id AND e.queue_ticket_id=q.id ORDER BY e.id LIMIT 1) encounter_id
+        (SELECT e.id FROM encounters e WHERE e.tenant_id=q.tenant_id AND e.branch_id=q.branch_id AND e.queue_ticket_id=q.id AND e.deleted_at IS NULL ORDER BY e.id LIMIT 1) encounter_id
         FROM queue_tickets q JOIN patients p ON p.id=q.patient_id LEFT JOIN rooms r ON r.id=q.room_id
         WHERE q.tenant_id=$1 AND q.branch_id=$2 AND q.practitioner_id=$3 AND q.expired_at IS NULL AND q.created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND q.status IN ('CALLED_TO_ROOM','IN_CONSULTATION') ORDER BY q.called_at,q.id LIMIT 200`,
           [ctx.actor.tenantId, ctx.branchId, ctx.actor.id],
@@ -154,7 +154,7 @@ export class ClinicService {
   async dashboard(ctx: Context) {
     await this.transact((db) => expireQueue(db, ctx));
     const { rows } = await this.db.query(
-      `SELECT (SELECT count(*) FROM patients WHERE tenant_id=$1 AND branch_id=$2) patients,(SELECT count(*) FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status NOT IN ('COMPLETED','SKIPPED')) waiting,(SELECT count(*) FROM encounters WHERE tenant_id=$1 AND branch_id=$2 AND created_at>DATE(UTC_TIMESTAMP())) encounters_today,(SELECT coalesce(sum(total_cents),0) FROM invoices WHERE tenant_id=$1 AND branch_id=$2 AND status='PAID' AND created_at>DATE(UTC_TIMESTAMP())) revenue_cents`,
+      `SELECT (SELECT count(*) FROM patients WHERE tenant_id=$1 AND branch_id=$2) patients,(SELECT count(*) FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status NOT IN ('COMPLETED','SKIPPED')) waiting,(SELECT count(*) FROM encounters WHERE tenant_id=$1 AND branch_id=$2 AND deleted_at IS NULL AND created_at>DATE(UTC_TIMESTAMP())) encounters_today,(SELECT coalesce(sum(total_cents),0) FROM invoices WHERE tenant_id=$1 AND branch_id=$2 AND status='PAID' AND created_at>DATE(UTC_TIMESTAMP())) revenue_cents`,
       [ctx.actor.tenantId, ctx.branchId],
     );
     return { ...camel(rows[0]), revenueCents: Number(rows[0].revenue_cents) };
@@ -543,12 +543,64 @@ export class ClinicService {
   }
   async getEncounter(ctx: Context, id: number) {
     const { rows } = await this.db.query(
-      'SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3',
+      'SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL',
       [id, ctx.actor.tenantId, ctx.branchId],
     );
     if (!rows[0]) throw missing();
     await this.audit(this.db, ctx, 'READ_ENCOUNTER', 'encounter', id);
     return camel(rows[0]);
+  }
+  async removeEncounter(ctx: Context, id: number, version: number) {
+    if (ctx.actor.role !== 'DOCTOR')
+      throw new DomainError(
+        'DOCTOR_REQUIRED',
+        'Only attending GP can remove an unsigned draft.',
+        403,
+      );
+    return this.transact(async (db) => {
+      await lock(db, [`queue-lifecycle:${ctx.actor.tenantId}:${ctx.branchId}`]);
+      const existing = (
+        await db.query(
+          'SELECT id,practitioner_id,status,version FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE',
+          [id, ctx.actor.tenantId, ctx.branchId],
+        )
+      ).rows[0];
+      if (!existing) throw missing();
+      if (existing.practitioner_id !== ctx.actor.id)
+        throw new DomainError('FORBIDDEN', 'Only attending GP can remove this draft.', 403);
+      if (existing.status !== 'DRAFT')
+        throw new DomainError(
+          'ENCOUNTER_SIGNED',
+          'Signed clinical encounters are permanent and cannot be removed.',
+          409,
+        );
+      if (existing.version !== version)
+        throw new DomainError(
+          'VERSION_CONFLICT',
+          'Encounter changed. Reload before removing.',
+          409,
+        );
+      const history = (
+        await db.query(
+          `SELECT EXISTS(SELECT 1 FROM dispenses WHERE encounter_id=$1) OR EXISTS(SELECT 1 FROM prescription_reservations WHERE encounter_id=$1) OR EXISTS(SELECT 1 FROM clinical_documents WHERE encounter_id=$1) OR EXISTS(SELECT 1 FROM prescription_dose_logs WHERE encounter_id=$1) OR EXISTS(SELECT 1 FROM package_redemptions WHERE encounter_id=$1) OR EXISTS(SELECT 1 FROM clinical_photos WHERE encounter_id=$1) protected`,
+          [id],
+        )
+      ).rows[0];
+      if (history.protected)
+        throw new DomainError(
+          'DRAFT_HAS_HISTORY',
+          'Draft has protected clinical or stock history and cannot be removed.',
+          409,
+        );
+      const result = (
+        await db.query(
+          'UPDATE encounters SET deleted_at=UTC_TIMESTAMP(3),updated_at=UTC_TIMESTAMP(3),version=version+1 WHERE id=$1 RETURNING *',
+          [id],
+        )
+      ).rows[0];
+      await this.audit(db, ctx, 'REMOVE', 'encounter', id, { status: 'DRAFT', version });
+      return { id, deletedAt: camel(result).deletedAt, version: result.version };
+    });
   }
   async saveEncounter(ctx: Context, input: any, id?: number) {
     if (ctx.actor.role !== 'DOCTOR')
@@ -565,7 +617,7 @@ export class ClinicService {
       let existingQueueId: number | null = null;
       if (id) {
         const existing = await db.query(
-          'SELECT status,queue_ticket_id FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+          'SELECT status,queue_ticket_id FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE',
           [id, ctx.actor.tenantId, ctx.branchId],
         );
         if (!existing.rows[0]) throw missing();
@@ -606,7 +658,7 @@ export class ClinicService {
       let rows;
       if (id) {
         const existing = await db.query(
-          `SELECT * FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE`,
+          `SELECT * FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE`,
           [id, ctx.actor.tenantId, ctx.branchId],
         );
         if (!existing.rows[0]) throw missing();
@@ -650,7 +702,7 @@ export class ClinicService {
             );
           const associated = (
             await db.query(
-              'SELECT id FROM encounters WHERE tenant_id=$1 AND branch_id=$2 AND queue_ticket_id=$3 LIMIT 1',
+              'SELECT id FROM encounters WHERE tenant_id=$1 AND branch_id=$2 AND queue_ticket_id=$3 AND deleted_at IS NULL LIMIT 1',
               [ctx.actor.tenantId, ctx.branchId, input.queueTicketId],
             )
           ).rows[0];
@@ -950,7 +1002,7 @@ export class ClinicService {
         return camel(prior.rows[0]);
       }
       const { rows } = await db.query(
-        `SELECT * FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE`,
+        `SELECT * FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE`,
         [input.encounterId, ctx.actor.tenantId, ctx.branchId],
       );
       const e = rows[0];
@@ -1070,7 +1122,7 @@ export class ClinicService {
           'Package expired or has no sessions remaining.',
         );
       const encounter = await db.query(
-        `SELECT * FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND patient_id=$4 AND status='SIGNED'`,
+        `SELECT * FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND patient_id=$4 AND status='SIGNED' AND deleted_at IS NULL`,
         [input.encounterId, ctx.actor.tenantId, ctx.branchId, p.patient_id],
       );
       if (!encounter.rows[0])
@@ -1214,7 +1266,7 @@ export class ClinicService {
       );
     return this.transact(async (db) => {
       const { rows } = await db.query(
-        `SELECT e.*,p.name patient_name,p.national_id,p.allergies,p.conditions,u.name practitioner_name,u.license_number,b.name branch_name,b.address FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id JOIN branches b ON b.id=e.branch_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 FOR UPDATE`,
+        `SELECT e.*,p.name patient_name,p.national_id,p.allergies,p.conditions,u.name practitioner_name,u.license_number,b.name branch_name,b.address FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id JOIN branches b ON b.id=e.branch_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL FOR UPDATE`,
         [input.encounterId, ctx.actor.tenantId, ctx.branchId],
       );
       const e = rows[0];
@@ -1360,7 +1412,7 @@ export class ClinicService {
       );
     const e = (
       await this.db.query(
-        'SELECT e.id,e.patient_id,p.name patient_name FROM encounters e JOIN patients p ON p.id=e.patient_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3',
+        'SELECT e.id,e.patient_id,p.name patient_name FROM encounters e JOIN patients p ON p.id=e.patient_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL',
         [id, ctx.actor.tenantId, ctx.branchId],
       )
     ).rows[0];
@@ -1417,7 +1469,7 @@ export class ClinicService {
       }
       const e = (
         await db.query(
-          'SELECT status,prescriptions FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+          'SELECT status,prescriptions FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE',
           [id, ctx.actor.tenantId, ctx.branchId],
         )
       ).rows[0];
@@ -1474,7 +1526,7 @@ export class ClinicService {
   async prescriptionLog(ctx: Context, id: number): Promise<PrescriptionLog> {
     const e = (
       await this.db.query(
-        'SELECT e.id,e.patient_id,e.prescriptions,e.status,e.signed_at,e.created_at,u.name practitioner_name,p.name patient_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3',
+        'SELECT e.id,e.patient_id,e.prescriptions,e.status,e.signed_at,e.created_at,u.name practitioner_name,p.name patient_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL',
         [id, ctx.actor.tenantId, ctx.branchId],
       )
     ).rows[0];

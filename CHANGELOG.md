@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Compact clinical history and add audited attending-GP draft removal; signed records remain individually protected.
+- Add separate Super Admin capability and typed/password-verified transactional entire-database reset with default restoration.
+
 - Add repeatable prescription rows with independent medicine instructions and safe draft resaves.
 - Advance linked active visits to dispensary atomically when GP consultations are signed.
 
@@ -63,3 +66,5 @@ Administrator catalogs support branch-scoped editing, archival and restoration f
 Long operational pages now use named task sections with persistent section navigation. Patients, appointments, queue, clinical care, inventory, billing, administration and help show one task area at a time. Section switches preserve draft fields; guided walkthroughs reveal the relevant section automatically.
 
 Administrators can rename staff and branches, remove/restore settings, and show removed entries. Unused rooms delete; historical rooms archive and upcoming/busy rooms remain protected. Branch archival is versioned and protected. Stock unit guidance explains tablet/bottle/piece choices. Receipts now preview before download using the supplied official-receipt structure, with immutable new identity/cashier snapshots and actual tender breakdown.
+
+- Consultation history action columns remain aligned across draft and signed records, including phone layouts.

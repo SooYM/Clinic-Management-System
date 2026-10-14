@@ -71,7 +71,14 @@ interface Document {
 }
 type HistoryEncounter = Pick<
   Encounter,
-  'id' | 'patientId' | 'assessment' | 'specialty' | 'status' | 'createdAt'
+  | 'id'
+  | 'patientId'
+  | 'practitionerId'
+  | 'assessment'
+  | 'specialty'
+  | 'status'
+  | 'createdAt'
+  | 'version'
 > & { practitionerName?: string };
 interface HistoryPage {
   data: HistoryEncounter[];
@@ -79,11 +86,18 @@ interface HistoryPage {
 }
 function ConsultationHistory({
   patientId,
+  practitionerId,
+  deletingId,
+  onDelete,
   onOpen,
 }: {
   patientId: number;
+  practitionerId: number;
+  deletingId?: number;
+  onDelete: (encounter: HistoryEncounter) => Promise<void>;
   onOpen: (encounter: Encounter) => void;
 }) {
+  const role = useRole();
   const [rows, setRows] = useState<HistoryEncounter[]>([]);
   const [cursor, setCursor] = useState<HistoryPage['nextCursor']>(null);
   const [loading, setLoading] = useState(false);
@@ -157,7 +171,10 @@ function ConsultationHistory({
   }
   return (
     <>
-      {list.controls}
+      <details className="consultation-history-controls">
+        <summary>Search, filter &amp; sort history</summary>
+        {list.controls}
+      </details>
       {error && (
         <>
           <ErrorNotice>{error}</ErrorNotice>
@@ -167,23 +184,62 @@ function ConsultationHistory({
         </>
       )}
       {loading && <Loading />}
-      {list.items.map((row) => (
-        <div className="list-row" key={row.id}>
-          <strong>{row.assessment || 'Consultation'}</strong>
-          <p>
-            Encounter #{row.id} · {dateTime(row.createdAt)} · {row.specialty} · {row.status}
-          </p>
-          {row.practitionerName && <p className="form-help">GP: {row.practitionerName}</p>}
-          <button className="secondary" disabled={loading} onClick={() => void open(row.id)}>
-            Open consultation
-          </button>
+      {!!list.items.length && (
+        <div
+          className="consultation-history-list"
+          role="list"
+          aria-label="Patient consultation records"
+        >
+          {list.items.map((row) => {
+            const assessment = (row.assessment || '').replace(/\s+/g, ' ').trim();
+            return (
+              <div className="consultation-history-row" role="listitem" key={row.id}>
+                <div className="consultation-history-summary">
+                  <strong>
+                    {assessment.length > 140
+                      ? `${assessment.slice(0, 137)}…`
+                      : assessment || 'Consultation'}
+                  </strong>
+                  <p>
+                    #{row.id} · {dateTime(row.createdAt)} · {row.specialty} · {humanize(row.status)}
+                    {row.practitionerName && ` · GP: ${row.practitionerName}`}
+                  </p>
+                </div>
+                <div className="consultation-history-actions">
+                  <button
+                    className="secondary"
+                    disabled={loading || deletingId !== undefined}
+                    onClick={() => void open(row.id)}
+                  >
+                    Open consultation
+                  </button>
+                  {role === 'DOCTOR' &&
+                    row.status === 'DRAFT' &&
+                    row.practitionerId === practitionerId && (
+                      <button
+                        className="text-button"
+                        disabled={loading || deletingId !== undefined}
+                        onClick={() => void onDelete(row)}
+                      >
+                        {deletingId === row.id ? 'Deleting…' : 'Delete draft'}
+                      </button>
+                    )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      ))}
+      )}
       {!loading && !error && !rows.length && (
         <Empty
-          title="No consultations recorded"
-          description="Create a consultation for this patient to start their history."
+          title="No consultations yet"
+          description="Use New consultation to record this visit."
         />
+      )}
+      {!loading && !error && !!rows.length && !list.items.length && (
+        <p className="form-help" role="status">
+          No consultations match the history filters.
+        </p>
       )}
       {cursor && (
         <button className="secondary" disabled={loading} onClick={() => void older()}>
@@ -473,6 +529,11 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     '/references/catalogs?kind=REFERRAL_DESTINATION',
   );
   const [selected, setSelected] = useState<Encounter>();
+  const activeEncounterId = useRef(selected?.id);
+  activeEncounterId.current = selected?.id;
+  const [deletingId, setDeletingId] = useState<number>();
+  const [deletionError, setDeletionError] = useState('');
+  const [deletionSuccess, setDeletionSuccess] = useState('');
   const [chosenPatient, setChosenPatient] = useState<Patient>();
   const [assignedQueue, setAssignedQueue] = useState<QueueSuggestion>();
   const [openingSuggestion, setOpeningSuggestion] = useState<number>();
@@ -515,6 +576,47 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         'Changing the patient or consultation will discard your unsaved note and prescription changes.',
       confirmLabel: 'Discard changes',
     });
+  }
+  async function deleteDraft(
+    encounter: Pick<Encounter, 'id' | 'patientId' | 'practitionerId' | 'status' | 'version'>,
+  ) {
+    if (
+      deletingId !== undefined ||
+      role !== 'DOCTOR' ||
+      encounter.status !== 'DRAFT' ||
+      encounter.practitionerId !== practitionerId
+    )
+      return;
+    if (
+      !(await confirm({
+        title: `Delete draft consultation #${encounter.id}?`,
+        message: `This draft will be removed from the patient's active history. Signed consultations cannot be deleted.${activeEncounterId.current === encounter.id && noteDirty.current ? ' Unsaved note and prescription changes will also be discarded.' : ''}`,
+        confirmLabel: 'Delete draft',
+      }))
+    )
+      return;
+    setDeletingId(encounter.id);
+    setDeletionError('');
+    setDeletionSuccess('');
+    try {
+      await api.request(`/encounters/${encounter.id}`, 'DELETE', { version: encounter.version });
+      if (activeEncounterId.current === encounter.id) {
+        suggestionRequest.current++;
+        noteDirty.current = false;
+        setSelected(undefined);
+        setDoc(undefined);
+        setAssignedQueue(undefined);
+        setPrescriptionSearch('');
+        setSection('consultations');
+      }
+      setHistoryRevision((value) => value + 1);
+      assignedPatients.refresh();
+      setDeletionSuccess(`Draft consultation #${encounter.id} deleted.`);
+    } catch (failure) {
+      setDeletionError((failure as Error).message);
+    } finally {
+      setDeletingId(undefined);
+    }
   }
   async function openSuggestion(suggestion: QueueSuggestion) {
     if (
@@ -599,7 +701,23 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         }
       }}
     >
-      <Panel title={selected ? 'Consultation note' : 'New consultation'}>
+      <Panel
+        title={selected ? 'Consultation note' : 'New consultation'}
+        action={
+          selected?.status === 'DRAFT' &&
+          role === 'DOCTOR' &&
+          selected.practitionerId === practitionerId ? (
+            <button
+              type="button"
+              className="text-button"
+              disabled={deletingId !== undefined}
+              onClick={() => void deleteDraft(selected)}
+            >
+              {deletingId === selected.id ? 'Deleting…' : 'Delete draft'}
+            </button>
+          ) : undefined
+        }
+      >
         <MutationForm
           key={
             selected
@@ -783,6 +901,12 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         title="Clinical workspace"
         description="Record the consultation, prescribe safely, and issue clinical documents."
       />
+      {deletionError && <ErrorNotice>{deletionError}</ErrorNotice>}
+      {deletionSuccess && (
+        <p className="notice success" role="status">
+          {deletionSuccess}
+        </p>
+      )}
       {role === 'DOCTOR' && (
         <Panel
           title="Assigned patients"
@@ -931,6 +1055,9 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               <ConsultationHistory
                 key={`${selectedPatientId}:${historyRevision}`}
                 patientId={selectedPatientId}
+                practitionerId={practitionerId}
+                deletingId={deletingId}
+                onDelete={deleteDraft}
                 onOpen={async (encounter) => {
                   if (selected?.id === encounter.id) {
                     setSection('notes');

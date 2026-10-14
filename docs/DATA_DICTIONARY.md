@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–018. No records or credentials are included.
+Schema-only reference after migrations001–020. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -153,6 +153,7 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | signed_at       | datetime(3)     | YES      | NULL                 |                              |
 | created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 | updated_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| deleted_at      | datetime(3)     | YES      | NULL                 |                              |
 
 ## inventory_batches
 
@@ -482,3 +483,4 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | license_number | varchar(100)    | YES      | NULL                 |                              |
 | active         | tinyint(1)      | NO       | 1                    |                              |
 | created_at     | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| is_super_admin | tinyint(1)      | NO       | 0                    |                              |

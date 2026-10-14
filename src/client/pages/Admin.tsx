@@ -17,6 +17,7 @@ import {
 import { type Reference, type User, dateTime } from '../types';
 import AdminCatalogs from '../AdminCatalogs';
 import RoleModules from './RoleModules';
+import DatabaseReset from './DatabaseReset';
 import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
 import { useListControls } from '../ListControls';
 import { useConfirm } from '../Confirmation';
@@ -39,9 +40,11 @@ interface Audit {
 export default function Admin({
   branches,
   onBranchCreated,
+  isSuperAdmin = false,
 }: {
   branches: Reference[];
   onBranchCreated: () => void;
+  isSuperAdmin?: boolean;
 }) {
   const confirm = useConfirm();
   const users = useResource<Staff[]>('/admin/users');
@@ -653,6 +656,15 @@ export default function Admin({
             </ResourceState>
           </Panel>
         </WorkspaceSection>
+        {isSuperAdmin && (
+          <WorkspaceSection
+            id="danger"
+            label="Danger zone"
+            description="Super administrator actions that affect the entire database."
+          >
+            <DatabaseReset />
+          </WorkspaceSection>
+        )}
       </WorkspaceSections>
     </>
   );

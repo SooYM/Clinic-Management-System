@@ -103,7 +103,7 @@ export function referenceRouter() {
       const { rows } = await pool.query(
         `SELECT e.id,e.patient_id,p.id patient_number,p.name patient_name,p.national_id,p.allergies,e.practitioner_id,u.name practitioner_name,e.created_at,e.prescriptions
    FROM encounters e JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id
-   WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.status='SIGNED' AND JSON_LENGTH(e.prescriptions)>0 AND NOT EXISTS(SELECT 1 FROM dispenses d WHERE d.encounter_id=e.id)
+   WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.deleted_at IS NULL AND e.status='SIGNED' AND JSON_LENGTH(e.prescriptions)>0 AND NOT EXISTS(SELECT 1 FROM dispenses d WHERE d.encounter_id=e.id)
    AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR u.name LIKE $3 OR EXISTS (
      SELECT 1 FROM JSON_TABLE(e.prescriptions, '$[*]' COLUMNS(item_id BIGINT PATH '$.itemId')) rx JOIN inventory_items i ON i.id=rx.item_id AND i.tenant_id=e.tenant_id AND i.branch_id=e.branch_id WHERE i.name LIKE $3
    )) ORDER BY e.created_at LIMIT 200`,
@@ -142,7 +142,7 @@ export function referenceRouter() {
       EXISTS(SELECT 1 FROM dispenses d WHERE d.encounter_id=e.id) dispensed
       FROM encounters e JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id
       JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id
-      WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.status='SIGNED' AND JSON_LENGTH(e.prescriptions)>0
+      WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.deleted_at IS NULL AND e.status='SIGNED' AND JSON_LENGTH(e.prescriptions)>0
       AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR u.name LIKE $3 OR EXISTS (
         SELECT 1 FROM JSON_TABLE(e.prescriptions,'$[*]' COLUMNS(item_id BIGINT PATH '$.itemId')) rx JOIN inventory_items i ON i.id=rx.item_id AND i.tenant_id=e.tenant_id AND i.branch_id=e.branch_id WHERE i.name LIKE $3))
       ORDER BY e.created_at DESC LIMIT 200`,

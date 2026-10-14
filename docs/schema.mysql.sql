@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-018, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-020, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -204,11 +204,13 @@ CREATE TABLE `encounters` (
   `signed_at` datetime(3) DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `deleted_at` datetime(3) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
   KEY `encounters_history` (`tenant_id`,`patient_id`,`created_at` DESC),
   KEY `encounters_ibfk_3` (`tenant_id`,`practitioner_id`),
   KEY `encounters_ibfk_4` (`tenant_id`,`branch_id`,`queue_ticket_id`),
+  KEY `encounters_active_history` (`tenant_id`,`branch_id`,`deleted_at`,`patient_id`,`created_at`),
   CONSTRAINT `encounters_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `encounters_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
   CONSTRAINT `encounters_ibfk_3` FOREIGN KEY (`tenant_id`, `practitioner_id`) REFERENCES `users` (`tenant_id`, `id`),
@@ -655,13 +657,15 @@ CREATE TABLE `users` (
   `license_number` varchar(100) DEFAULT NULL,
   `active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `is_super_admin` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`id`),
   KEY `users_ibfk_1` (`tenant_id`,`branch_id`),
   CONSTRAINT `users_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `users_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
-  CONSTRAINT `users_chk_1` CHECK ((`role` in (_utf8mb4'ADMIN',_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST')))
+  CONSTRAINT `users_chk_1` CHECK ((`role` in (_utf8mb4'ADMIN',_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST'))),
+  CONSTRAINT `users_super_admin_role` CHECK (((`is_super_admin` = false) or (`role` = _utf8mb4'ADMIN')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 SET FOREIGN_KEY_CHECKS=1;

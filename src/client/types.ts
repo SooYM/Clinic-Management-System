@@ -1,4 +1,5 @@
 export interface User {
+  isSuperAdmin?: boolean;
   id: number;
   name: string;
   role: string;

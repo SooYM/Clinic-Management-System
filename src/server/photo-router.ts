@@ -35,7 +35,7 @@ function encryptionKey() {
 }
 async function encounter(db: Database, req: Request, id: number) {
   const { rows } = await db.query(
-    'SELECT id,patient_id,practitioner_id FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3',
+    'SELECT id,patient_id,practitioner_id FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL',
     [id, req.context.actor.tenantId, req.context.branchId],
   );
   if (!rows[0]) throw new DomainError('NOT_FOUND', 'Consultation not found.', 404);

@@ -341,6 +341,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                     <Account />
                   ) : page === 'admin' && user.role === 'ADMIN' ? (
                     <Admin
+                      isSuperAdmin={bootstrap.data?.user.isSuperAdmin === true}
                       branches={bootstrap.data?.branches || []}
                       onBranchCreated={bootstrap.refresh}
                     />

@@ -115,6 +115,7 @@ function seed(): State {
       index
     ],
     role,
+    isSuperAdmin: role === 'ADMIN',
     licenseNumber: role === 'DOCTOR' ? 'DEMO-NOT-A-LICENSE' : null,
     password: defaultDemoPassword,
     active: true,
@@ -502,6 +503,12 @@ export class DemoClinic {
       item.version ??= 1;
     }
     for (const ticket of this.state.rows.queue) ticket.expiredAt ??= null;
+    for (const encounter of this.state.rows.encounters) encounter.deletedAt ??= null;
+    for (const user of this.state.rows.users)
+      user.isSuperAdmin ??=
+        user.role === 'ADMIN' &&
+        user.id === 1 &&
+        user.email.toLowerCase().replace('@demo.clinic', '@example.test') === 'admin@example.test';
     // Upgrade only unchanged original demo accounts; retain records and user-changed passwords.
     for (const [index, alias] of ['admin', 'gp', 'reception', 'nurse', 'therapist'].entries()) {
       const user = this.state.rows.users.find(
@@ -518,10 +525,78 @@ export class DemoClinic {
     this.storage.removeItem(key);
     this.state = seed();
   }
+  private databaseResetDefaults() {
+    return {
+      clinicName: 'Klinik Seri Harmoni',
+      branchName: 'Main Branch',
+      clinicAddress: 'Kuala Lumpur, Malaysia',
+      administratorEmail: 'admin@example.test',
+      administratorName: 'Clinic Administrator',
+      rooms: ['Room 01', 'Room 02', 'Treatment Room'],
+      catalogs: { LAB_PANEL: [], SPECIMEN_TYPE: [], INVENTORY_UNIT: [], REFERRAL_DESTINATION: [] },
+    };
+  }
+  private resetEntireDatabase(actor: Row) {
+    const defaults = this.databaseResetDefaults();
+    const counters = { ...this.state.counters };
+    const rows: Record<string, Row[]> = Object.fromEntries(
+      Object.keys(this.state.rows).map((table) => [table, []]),
+    );
+    const tenantId = (counters.tenants || 0) + 1;
+    counters.tenants = tenantId;
+    rows.tenants = [{ id: tenantId, tenantNumber: tenantId, name: defaults.clinicName }];
+    this.state = { version: 1, counters, rows, userId: null, grants: {} };
+    const branch = this.add(
+      'branches',
+      { name: defaults.branchName, address: defaults.clinicAddress, active: true },
+      0,
+    );
+    branch.branchId = branch.id;
+    branch.branchNumber = branch.id;
+    const admin = this.add(
+      'users',
+      {
+        name: defaults.administratorName,
+        email: defaults.administratorEmail,
+        password: defaultDemoPassword,
+        role: 'ADMIN',
+        isSuperAdmin: true,
+        active: true,
+        licenseNumber: null,
+        branchIds: [branch.id],
+      },
+      branch.id,
+    );
+    for (const name of defaults.rooms) this.add('rooms', { name, active: true }, branch.id);
+    this.add(
+      'audit',
+      {
+        actorId: admin.id,
+        actorName: admin.name,
+        action: 'DATABASE_RESET',
+        entityType: 'database',
+        entityId: null,
+        requestId: 'browser-demo',
+        metadata: {
+          scope: 'ENTIRE_DATABASE',
+          resetActor: { id: actor.id, name: actor.name, email: actor.email },
+        },
+      },
+      branch.id,
+    );
+    return { requiresLogin: true, bootstrapEmail: defaults.administratorEmail };
+  }
   private add(table: string, body: Row, branchId: number): Row {
     const id = (this.state.counters[table] || 0) + 1;
     this.state.counters[table] = id;
-    const row = { ...body, id, tenantId: 1, branchId, createdAt: now(), version: 1 };
+    const row = {
+      ...body,
+      id,
+      tenantId: this.state.rows.tenants[0].id,
+      branchId,
+      createdAt: now(),
+      version: 1,
+    };
     this.state.rows[table].push(row);
     return row;
   }
@@ -537,10 +612,12 @@ export class DemoClinic {
   }
   private publicUser(user: Row) {
     const { password, branchIds, ...safe } = user;
-    return safe;
+    return { ...safe, isSuperAdmin: user.isSuperAdmin === true };
   }
   private scoped(table: string, branch: number) {
-    return this.state.rows[table].filter((r) => r.tenantId === 1 && r.branchId === branch);
+    return this.state.rows[table].filter(
+      (r) => r.tenantId === this.state.rows.tenants[0].id && r.branchId === branch,
+    );
   }
   private expireQueue() {
     let changed = false;
@@ -590,8 +667,9 @@ export class DemoClinic {
   }
   private record(table: string, id: number, branch: number) {
     return (
-      this.scoped(table, branch).find((r) => r.id === id) ||
-      fail('Record not found in this demo branch.', 404)
+      this.scoped(table, branch).find(
+        (r) => r.id === id && (table !== 'encounters' || !r.deletedAt),
+      ) || fail('Record not found in this demo branch.', 404)
     );
   }
   private enrich(row: Row) {
@@ -787,7 +865,12 @@ export class DemoClinic {
       fail('This demo role has no access to that module.', 403);
     const foundId = route.match(/^\/(?:admin\/)?[^/]+\/(\d+)(?:\/|$)/),
       id = foundId ? idSchema.parse(foundId[1]) : undefined;
-    if (method !== 'GET' && !route.startsWith('/auth/'))
+    if (
+      method !== 'GET' &&
+      !route.startsWith('/auth/') &&
+      route !== '/admin/database-reset' &&
+      !(method === 'DELETE' && /^\/encounters\/\d+$/.test(route))
+    )
       this.add(
         'audit',
         {
@@ -806,6 +889,35 @@ export class DemoClinic {
         csrfToken: 'demo-no-real-session',
         modules,
       };
+    if (route === '/admin/database-reset/preview' && method === 'GET') {
+      if (user.isSuperAdmin !== true)
+        fail('SuperAdmin privilege is required to reset the entire database.', 403);
+      return {
+        scope: 'ENTIRE_DATABASE',
+        confirmationPhrase: 'RESET ALL CLINIC DATA',
+        counts: Object.entries(this.state.rows).map(([table, rows]) => ({
+          table,
+          rowCount: rows.length,
+        })),
+        defaults: this.databaseResetDefaults(),
+        preserves: ['schema_migrations', 'auto_increment_sequences'],
+        requiresPassword: true,
+      };
+    }
+    if (route === '/admin/database-reset' && method === 'POST') {
+      if (user.isSuperAdmin !== true)
+        fail('SuperAdmin privilege is required to reset the entire database.', 403);
+      const input = z
+        .object({
+          confirmationPhrase: z.literal('RESET ALL CLINIC DATA'),
+          currentPassword: z.string().min(1),
+          acknowledge: z.literal(true),
+        })
+        .strict()
+        .parse(body);
+      if (input.currentPassword !== user.password) fail('Current password is incorrect.', 403);
+      return this.resetEntireDatabase(user);
+    }
     if (route === '/bootstrap')
       return {
         tenant: this.state.rows.tenants[0],
@@ -834,7 +946,9 @@ export class DemoClinic {
       return {
         patients: this.scoped('patients', branch).length,
         waiting: this.scoped('queue', branch).filter(activeQueue).length,
-        encountersToday: this.scoped('encounters', branch).length,
+        encountersToday: this.scoped('encounters', branch).filter(
+          (encounter) => !encounter.deletedAt,
+        ).length,
         revenueCents: this.scoped('invoices', branch).reduce((sum, i) => sum + i.totalCents, 0),
       };
     if (route === '/references/patients') {
@@ -1034,7 +1148,7 @@ export class DemoClinic {
       this.record('patients', id!, branch);
       return {
         data: this.scoped('encounters', branch)
-          .filter((e) => e.patientId === id)
+          .filter((e) => e.patientId === id && !e.deletedAt)
           .map((e) => this.enrich(e)),
         nextCursor: null,
       };
@@ -1090,6 +1204,43 @@ export class DemoClinic {
     }
     if (/^\/encounters\/\d+$/.test(route) && method === 'GET')
       return this.enrich(this.record('encounters', id!, branch));
+    if (/^\/encounters\/\d+$/.test(route) && method === 'DELETE') {
+      if (user.role !== 'DOCTOR')
+        fail('Only the attending GP can remove a draft consultation.', 403);
+      const value = z.object({ version: z.number().int().positive() }).strict().parse(body);
+      const encounter = this.record('encounters', id!, branch);
+      if (encounter.practitionerId !== user.id)
+        fail('Only the attending GP can remove this draft.', 403);
+      if (encounter.status !== 'DRAFT') fail('Signed consultations cannot be removed.', 409);
+      if (encounter.version !== value.version)
+        fail('Consultation changed; refresh before removing.', 409);
+      if (
+        ['reservations', 'dispenses', 'documents', 'medicationDoses', 'packages', 'photos'].some(
+          (table) =>
+            (this.state.rows[table] || []).some(
+              (row) =>
+                row.tenantId === user.tenantId &&
+                row.branchId === branch &&
+                row.encounterId === encounter.id,
+            ),
+        )
+      )
+        fail('Draft has recorded clinical or stock history and cannot be removed.', 409);
+      encounter.deletedAt = now();
+      encounter.version++;
+      this.add(
+        'audit',
+        {
+          actorName: user.name,
+          action: 'REMOVE',
+          entityType: 'encounters',
+          entityId: encounter.id,
+          requestId: 'browser-demo',
+        },
+        branch,
+      );
+      return { id: encounter.id, deletedAt: encounter.deletedAt, version: encounter.version };
+    }
     if (route === '/appointments' && method === 'POST') {
       const v = schemas.appointment.parse(body);
       this.record('patients', v.patientId, branch);
@@ -1225,7 +1376,7 @@ export class DemoClinic {
             ).toISOString(),
             encounterId:
               this.scoped('encounters', branch).find(
-                (encounter) => encounter.queueTicketId === ticket.id,
+                (encounter) => !encounter.deletedAt && encounter.queueTicketId === ticket.id,
               )?.id || null,
           })),
       };
@@ -1248,7 +1399,9 @@ export class DemoClinic {
       if (
         !id &&
         ticket &&
-        this.scoped('encounters', branch).some((encounter) => encounter.queueTicketId === ticket.id)
+        this.scoped('encounters', branch).some(
+          (encounter) => !encounter.deletedAt && encounter.queueTicketId === ticket.id,
+        )
       )
         fail(
           'A consultation already exists for this queue ticket. Open the existing consultation.',
@@ -1319,7 +1472,12 @@ export class DemoClinic {
       }
       const e = this.add(
         'encounters',
-        { ...v, practitionerId: user.id, signedAt: v.status === 'SIGNED' ? now() : null },
+        {
+          ...v,
+          practitionerId: user.id,
+          signedAt: v.status === 'SIGNED' ? now() : null,
+          deletedAt: null,
+        },
         branch,
       );
       if (v.status === 'SIGNED') {
@@ -1380,6 +1538,7 @@ export class DemoClinic {
         data: this.scoped('encounters', branch)
           .filter(
             (e) =>
+              !e.deletedAt &&
               e.status === 'SIGNED' &&
               e.prescriptions.length &&
               [
@@ -1472,7 +1631,7 @@ export class DemoClinic {
       const search = (url.searchParams.get('search') || '').toLowerCase();
       return {
         data: this.scoped('encounters', branch)
-          .filter((e) => e.status === 'SIGNED' && e.prescriptions.length)
+          .filter((e) => !e.deletedAt && e.status === 'SIGNED' && e.prescriptions.length)
           .map((e) => ({
             id: e.id,
             patientId: e.patientId,
@@ -1587,6 +1746,7 @@ export class DemoClinic {
     if (route === '/dispenses' && method === 'POST') {
       const v = schemas.dispense.parse(body),
         prior = this.scoped('dispenses', branch).find((d) => d.idempotencyKey === v.idempotencyKey);
+      this.record('encounters', v.encounterId, branch);
       if (prior) {
         if (prior.encounterId !== v.encounterId) fail('Key belongs to another prescription.', 409);
         return prior;
@@ -1814,6 +1974,8 @@ export class DemoClinic {
       return { role: body.role, modules: this.state.grants[body.role] };
     }
     if (route === '/admin/users' && method === 'POST') {
+      if (Object.hasOwn(body || {}, 'isSuperAdmin'))
+        fail('SuperAdmin privilege cannot be granted through account management.', 403);
       if (
         !roleIds.includes(body.role) ||
         typeof body.password !== 'string' ||
@@ -1836,7 +1998,7 @@ export class DemoClinic {
         fail('Email already registered.', 409);
       const u = this.add(
         'users',
-        { ...body, branchIds: [body.branchId], active: true },
+        { ...body, branchIds: [body.branchId], active: true, isSuperAdmin: false },
         body.branchId,
       );
       return this.publicUser(u);
@@ -1894,7 +2056,7 @@ export class DemoClinic {
         .strict()
         .parse(body);
       const target =
-        this.state.rows.branches.find((b) => b.id === id && b.tenantId === 1) ||
+        this.state.rows.branches.find((b) => b.id === id && b.tenantId === user.tenantId) ||
         fail('Branch not found.', 404);
       if (target.version !== input.version) fail('Branch changed. Reload before saving.', 409);
       if (!input.active) {
@@ -1963,7 +2125,7 @@ export class DemoClinic {
     if (route === '/admin/users')
       return { data: this.state.rows.users.map((u) => this.publicUser(u)) };
     if (route === '/admin/branches')
-      return { data: this.state.rows.branches.filter((b) => b.tenantId === 1) };
+      return { data: this.state.rows.branches.filter((b) => b.tenantId === user.tenantId) };
     if (route === '/admin/rooms')
       return {
         data: this.scoped('rooms', branch).map((r) => ({
@@ -1989,6 +2151,7 @@ export class DemoClinic {
     )
       return {
         data: this.scoped(route.slice(1), branch)
+          .filter((r) => route !== '/encounters' || !r.deletedAt)
           .filter(
             (r) =>
               route !== '/queue' || this.visibleQueue(branch).some((ticket) => ticket.id === r.id),

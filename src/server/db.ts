@@ -127,10 +127,17 @@ export const pool = Object.assign(new MysqlDatabase(rawPool), {
   end: () => rawPool.end(),
   connect: () => rawPool.getConnection(),
 });
-export async function transaction<T>(work: (db: Database) => Promise<T>): Promise<T> {
+export async function transaction<T>(
+  work: (db: Database) => Promise<T>,
+  options?: { isolation: 'SERIALIZABLE' },
+): Promise<T> {
   const connection = await rawPool.getConnection();
   try {
-    await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+    await connection.query(
+      options?.isolation === 'SERIALIZABLE'
+        ? 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
+        : 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED',
+    );
     await connection.beginTransaction();
     const result = await work(new MysqlDatabase(connection));
     await connection.commit();
