@@ -154,3 +154,17 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | Permission-limited receptionist | No appointment navigation/help; direct route restricted | Fictional browser |
 | Section switching | Single visible area; no forced scrolling; drafts mounted | Browser/source |
 | Phone call form | No page overflow; available/occupied options explicit | 320px browser |
+
+
+## Queue expiry and handoff cases
+
+| Case | Expected | Proof |
+| --- | --- | --- |
+| Exact 12h boundary | At cutoff mark/audit once; 1ms before still active | Guarded MySQL/demo fake clocks |
+| Recheck-in | Active duplicate clear 409; stale visit permits new ticket; concurrent one winner | Actual MySQL/demo |
+| Expired occupancy | Old room released; other branch untouched; old status/chart retained | Actual MySQL/demo |
+| Midnight | Recent prior-date visit remains active until cutoff | Actual MySQL/demo |
+| GP suggestions | Assigned branch/doctor only; clinical-only GP permitted | Actual API/demo |
+| Linked save | Patient/GP/expiry checks; failed save does not start; concurrent one encounter | Actual MySQL/demo |
+| Existing draft | Resume linked encounter; edits after operational expiry; association immutable | Actual MySQL/demo |
+| Nurse handoff UI | GP prefilled suggestion, no manual reentry; popup consent; context cancel preserves SOAP | Fictional desktop/320px browser |

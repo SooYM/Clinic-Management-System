@@ -12,6 +12,7 @@ import {
   type ModuleId,
 } from '../shared/module-permissions.js';
 import { effectiveModules } from './module-access.js';
+import { expireQueue } from './queue-lifecycle.js';
 
 const route =
   (fn: (req: Request, res: Response) => Promise<unknown>) =>
@@ -163,6 +164,7 @@ export function administrationRouter() {
   router.get(
     '/queue/estimate',
     route(async (req, res) => {
+      await transaction((db) => expireQueue(db, req.context));
       const history = await pool.query(
         `SELECT COUNT(*) sample_count,AVG(TIMESTAMPDIFF(SECOND,created_at,signed_at))/60 average_minutes FROM encounters
       WHERE tenant_id=$1 AND branch_id=$2 AND status='SIGNED' AND signed_at>created_at AND TIMESTAMPDIFF(MINUTE,created_at,signed_at) BETWEEN 1 AND 120 AND created_at>DATE_SUB(UTC_TIMESTAMP(),INTERVAL 30 DAY)`,
@@ -173,7 +175,7 @@ export function administrationRouter() {
         [req.context.actor.tenantId, req.context.branchId],
       );
       const waiting = await pool.query(
-        "SELECT COUNT(*) count FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND status IN ('REGISTERED','TRIAGE_WAITING') AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))",
+        "SELECT COUNT(*) count FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status IN ('REGISTERED','TRIAGE_WAITING')",
         [req.context.actor.tenantId, req.context.branchId],
       );
       const sampleCount = Number(history.rows[0].sample_count),
@@ -531,7 +533,7 @@ export function administrationRouter() {
         ).rows[0];
         if (!room) throw new DomainError('NOT_FOUND', 'Room not found in selected branch.', 404);
         const busy = await db.query(
-          "SELECT id FROM queue_tickets WHERE room_id=$1 AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
+          "SELECT id FROM queue_tickets WHERE room_id=$1 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
           [id],
         );
         if (busy.rowCount)
@@ -594,7 +596,7 @@ export function administrationRouter() {
         if (
           (
             await db.query(
-              "SELECT id FROM queue_tickets WHERE room_id=$1 AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
+              "SELECT id FROM queue_tickets WHERE room_id=$1 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
               [id],
             )
           ).rowCount

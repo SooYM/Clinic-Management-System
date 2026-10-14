@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–017. No records or credentials are included.
+Schema-only reference after migrations001–018. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -343,24 +343,25 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## queue_tickets
 
-| Column            | Type            | Nullable | Default              | Extra / generated expression                                                                                                      |
-| ----------------- | --------------- | -------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| id                | bigint unsigned | NO       | NULL                 | auto_increment                                                                                                                    |
-| tenant_id         | bigint unsigned | NO       | NULL                 |                                                                                                                                   |
-| branch_id         | bigint unsigned | NO       | NULL                 |                                                                                                                                   |
-| patient_id        | bigint unsigned | NO       | NULL                 |                                                                                                                                   |
-| ticket_number     | varchar(20)     | NO       | NULL                 |                                                                                                                                   |
-| service_date      | date            | NO       | NULL                 |                                                                                                                                   |
-| status            | varchar(30)     | NO       | REGISTERED           |                                                                                                                                   |
-| room_id           | bigint unsigned | YES      | NULL                 |                                                                                                                                   |
-| practitioner_id   | bigint unsigned | YES      | NULL                 |                                                                                                                                   |
-| priority          | varchar(10)     | NO       | NORMAL               |                                                                                                                                   |
-| version           | int             | NO       | 1                    |                                                                                                                                   |
-| called_at         | datetime(3)     | YES      | NULL                 |                                                                                                                                   |
-| completed_at      | datetime(3)     | YES      | NULL                 |                                                                                                                                   |
-| created_at        | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED                                                                                                                 |
-| active_patient_id | bigint unsigned | YES      | NULL                 | STORED GENERATED; (case when (`status` not in (_utf8mb4\'COMPLETED\',_utf8mb4\'SKIPPED\')) then `patient_id` else NULL end)       |
-| occupied_room_id  | bigint unsigned | YES      | NULL                 | STORED GENERATED; (case when (`status` in (_utf8mb4\'CALLED_TO_ROOM\',_utf8mb4\'IN_CONSULTATION\')) then `room_id` else NULL end) |
+| Column            | Type            | Nullable | Default              | Extra / generated expression                                                                                                                                   |
+| ----------------- | --------------- | -------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                | bigint unsigned | NO       | NULL                 | auto_increment                                                                                                                                                 |
+| tenant_id         | bigint unsigned | NO       | NULL                 |                                                                                                                                                                |
+| branch_id         | bigint unsigned | NO       | NULL                 |                                                                                                                                                                |
+| patient_id        | bigint unsigned | NO       | NULL                 |                                                                                                                                                                |
+| ticket_number     | varchar(20)     | NO       | NULL                 |                                                                                                                                                                |
+| service_date      | date            | NO       | NULL                 |                                                                                                                                                                |
+| status            | varchar(30)     | NO       | REGISTERED           |                                                                                                                                                                |
+| room_id           | bigint unsigned | YES      | NULL                 |                                                                                                                                                                |
+| practitioner_id   | bigint unsigned | YES      | NULL                 |                                                                                                                                                                |
+| priority          | varchar(10)     | NO       | NORMAL               |                                                                                                                                                                |
+| version           | int             | NO       | 1                    |                                                                                                                                                                |
+| called_at         | datetime(3)     | YES      | NULL                 |                                                                                                                                                                |
+| completed_at      | datetime(3)     | YES      | NULL                 |                                                                                                                                                                |
+| created_at        | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED                                                                                                                                              |
+| expired_at        | datetime(3)     | YES      | NULL                 |                                                                                                                                                                |
+| active_patient_id | bigint unsigned | YES      | NULL                 | STORED GENERATED; (case when ((`expired_at` is null) and (`status` not in (_utf8mb4\'COMPLETED\',_utf8mb4\'SKIPPED\'))) then `patient_id` else NULL end)       |
+| occupied_room_id  | bigint unsigned | YES      | NULL                 | STORED GENERATED; (case when ((`expired_at` is null) and (`status` in (_utf8mb4\'CALLED_TO_ROOM\',_utf8mb4\'IN_CONSULTATION\'))) then `room_id` else NULL end) |
 
 ## reference_catalogs
 

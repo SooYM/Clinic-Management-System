@@ -1936,3 +1936,13 @@ dd {
   cursor: pointer;
   font-weight: 600;
 }
+.assigned-patient-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.assigned-patient-row > div {
+  flex: 1 1 16rem;
+}

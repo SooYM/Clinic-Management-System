@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–017.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–018.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -270,3 +270,8 @@ Tasks use one section-tab entry point: Clinic overview → Check in patient; Pat
 ## Queue and navigation interaction revision
 
 Check in patient → Waiting for doctor → Call to room beside that patient → choose available room and doctor → Confirm call → popup consent → Called to room. The previous Ready for triage step is no longer required. Historical TRIAGE_WAITING tickets remain supported. Missing room/doctor configuration and occupied rooms explain why final confirmation is unavailable; the entry action stays available. Patient search is available at check-in, and advanced queue filters are collapsed. Shared section switches retain mounted drafts and no longer force scrollIntoView; overflow anchoring is disabled within the changing task area. Guided tours still scroll deliberately to their targets. Navigation uses current module grants; bootstrap access refreshes every 15 seconds while visible and on focus/visibility return. Unpermitted appointment navigation and written help topics are hidden, and direct routes remain access restricted. Server access checks remain authoritative.
+
+
+## Twelve-hour check-in and practitioner handoff
+
+Queue check-ins last at most 12 hours from created_at, across Malaysia midnight. Before queue reads, check-in, room transitions and GP suggestions, scoped lifecycle cleanup marks old unfinished tickets expired_at, increments version and audits QUEUE_EXPIRED. Original status and chart references remain preserved. Active patient and occupied-room uniqueness excludes expired tickets. A fresh duplicate check-in returns a specific existing-ticket 409; an expired patient can check in again. Completed/skipped visits retain their existing terminal behavior. Estimates, room occupancy and queue-near notifications exclude expired visits. Clinical workspace offers Assigned patients to GPs for unexpired CALLED_TO_ROOM or IN_CONSULTATION visits assigned to that GP in the selected branch. Suggestions refresh every 15 seconds while visible and on focus. Start consultation prefills patient and queue reference without writing; Open consultation resumes an associated encounter. Saving a new queue-linked note validates patient, GP, branch and expiry, prevents duplicate encounters, and atomically starts a called visit. Failed saves roll back the start. Existing linked drafts remain editable after queue expiry under ordinary author/version rules. Clinical-only GP grants suffice; queue module access is not required. Manual patient choice remains available. Edited drafts require consent before switching contexts.

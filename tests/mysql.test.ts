@@ -3655,10 +3655,246 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       );
     }
   });
+  it('expires queue locks at the exact 12-hour cutoff while preserving clinical status and one audit', async () => {
+    const a = await patient(),
+      b = await patient(),
+      first = await service.checkIn(ctx, { patientId: a.id, priority: 'NORMAL' }),
+      second = await service.checkIn(ctx, { patientId: b.id, priority: 'NORMAL' });
+    const { expireQueue } = await import('../src/server/queue-lifecycle');
+    const db: any = {
+      query: async (query: string, values: any[] = []) => {
+        const bound: any[] = [];
+        const statement = query.replace(/\$(\d+)/g, (_, index) => {
+          bound.push(values[Number(index) - 1]);
+          return '?';
+        });
+        const [result]: any = await sql.query(statement, bound);
+        return {
+          rows: Array.isArray(result) ? result : [],
+          rowCount: Array.isArray(result) ? result.length : result.affectedRows,
+        };
+      },
+    };
+    await sql.query('SET timestamp=?', [Math.floor(Date.now() / 1000)]);
+    try {
+      await sql.query(
+        'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) WHERE id=?',
+        [first.id],
+      );
+      await sql.query(
+        'UPDATE queue_tickets SET created_at=DATE_ADD(DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR),INTERVAL 1000 MICROSECOND) WHERE id=?',
+        [second.id],
+      );
+      await sql.beginTransaction();
+      await expireQueue(db, ctx);
+      await sql.commit();
+      expect(
+        (
+          await rows(
+            'SELECT status,expired_at,active_patient_id,version FROM queue_tickets WHERE id=?',
+            [first.id],
+          )
+        )[0],
+      ).toMatchObject({
+        status: 'REGISTERED',
+        active_patient_id: null,
+        version: 2,
+        expired_at: expect.any(Date),
+      });
+      expect(
+        (
+          await rows('SELECT expired_at,active_patient_id,version FROM queue_tickets WHERE id=?', [
+            second.id,
+          ])
+        )[0],
+      ).toMatchObject({ expired_at: null, active_patient_id: b.id, version: 1 });
+      await sql.beginTransaction();
+      await expireQueue(db, ctx);
+      await sql.commit();
+      expect(
+        await rows(
+          "SELECT id FROM audit_logs WHERE entity_id=? AND entity_type='queue' AND action='QUEUE_EXPIRED'",
+          [first.id],
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await sql.rollback();
+      await sql.query('SET timestamp=0');
+    }
+    await expect(
+      service.transitionQueue(ctx, first.id, { status: 'TRIAGE_WAITING', version: 1 }),
+    ).rejects.toMatchObject({ code: 'QUEUE_EXPIRED', status: 409 });
+    const replacements = await Promise.allSettled([
+      service.checkIn(ctx, { patientId: a.id, priority: 'NORMAL' }),
+      service.checkIn(ctx, { patientId: a.id, priority: 'NORMAL' }),
+    ]);
+    expect(replacements.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(
+      (replacements.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason,
+    ).toMatchObject({ code: 'PATIENT_ALREADY_CHECKED_IN', status: 409 });
+  });
+  it('keeps recent prior-date visits visible and frees expired rooms without expiring another branch', async () => {
+    const roomId = fixtureId(),
+      foreignRoom = fixtureId(),
+      a = await patient(),
+      b = await patient();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?),(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Expiring Room',
+      foreignRoom,
+      tenant,
+      otherBranch,
+      'QA Foreign Expiry',
+    ]);
+    const old = await service.checkIn(ctx, { patientId: a.id, priority: 'NORMAL' }),
+      recent = await service.checkIn(ctx, { patientId: b.id, priority: 'NORMAL' });
+    await service.transitionQueue(ctx, old.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    await sql.query(
+      'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR) WHERE id=?',
+      [old.id],
+    );
+    await sql.query(
+      'UPDATE queue_tickets SET service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY) WHERE id=?',
+      [recent.id],
+    );
+    const foreignPatient = await service.savePatient(otherCtx, {
+      name: 'QA Other Queue',
+      nationalId: randomUUID(),
+      dateOfBirth: '1990-01-01',
+      sex: 'OTHER',
+      phone: '',
+      email: '',
+      bloodGroup: '',
+      allergies: [],
+      conditions: [],
+      notificationConsent: false,
+    });
+    const foreign = await service.checkIn(otherCtx, {
+      patientId: foreignPatient.id,
+      priority: 'NORMAL',
+    });
+    await sql.query(
+      'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR) WHERE id=?',
+      [foreign.id],
+    );
+    const list = await service.list(ctx, 'queue');
+    expect(list.some((q: any) => q.id === recent.id)).toBe(true);
+    expect(list.some((q: any) => q.id === old.id)).toBe(false);
+    expect(
+      (await rows('SELECT expired_at FROM queue_tickets WHERE id=?', [foreign.id]))[0].expired_at,
+    ).toBeNull();
+    const called = await service.transitionQueue(ctx, recent.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    expect(called.roomId).toBe(roomId);
+    expect(
+      (await rows('SELECT occupied_room_id,status FROM queue_tickets WHERE id=?', [old.id]))[0],
+    ).toMatchObject({ occupied_room_id: null, status: 'CALLED_TO_ROOM' });
+  });
+  it('suggests assigned visits for clinical-only GPs and atomically starts one consultation', async () => {
+    const p = await patient(),
+      roomId = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Clinical Handoff',
+    ]);
+    const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    await service.transitionQueue(ctx, ticket.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    await sql.query(
+      "INSERT INTO role_module_permissions(tenant_id,role,modules) VALUES(?,'DOCTOR',?) ON DUPLICATE KEY UPDATE modules=VALUES(modules)",
+      [tenant, JSON.stringify(['clinical'])],
+    );
+    try {
+      const response = await settingsHttp('/clinical/queue-suggestions', 'GET', undefined, {
+        Cookie: `cms_session=${doctorToken}`,
+      });
+      expect(response.status).toBe(200);
+      expect((await response.json()).data).toContainEqual(
+        expect.objectContaining({
+          queueTicketId: ticket.id,
+          patientId: p.id,
+          patientName: p.name,
+          roomId,
+          encounterId: null,
+          expiresAt: expect.any(String),
+        }),
+      );
+      expect((await settingsAdminHttp('/clinical/queue-suggestions')).status).toBe(403);
+      const i = await item();
+      await expect(encounter(p.id, [rx(i.id)], { queueTicketId: ticket.id })).rejects.toMatchObject(
+        { code: 'INSUFFICIENT_STOCK' },
+      );
+      expect(
+        (await rows('SELECT status,version FROM queue_tickets WHERE id=?', [ticket.id]))[0],
+      ).toMatchObject({ status: 'CALLED_TO_ROOM', version: 2 });
+      const input = {
+        patientId: p.id,
+        queueTicketId: ticket.id,
+        prescriptions: [],
+        status: 'DRAFT',
+      };
+      const results = await Promise.allSettled([
+        service.saveEncounter(ctx, input),
+        service.saveEncounter(ctx, input),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(
+        (results.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason,
+      ).toMatchObject({ code: 'ENCOUNTER_EXISTS' });
+      const chart = (results.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<any>)
+        .value;
+      expect(
+        (await rows('SELECT status,version FROM queue_tickets WHERE id=?', [ticket.id]))[0],
+      ).toMatchObject({ status: 'IN_CONSULTATION', version: 3 });
+      expect((await service.queueSuggestions(ctx)).data).toContainEqual(
+        expect.objectContaining({ queueTicketId: ticket.id, encounterId: chart.id }),
+      );
+      await sql.query(
+        'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR) WHERE id=?',
+        [ticket.id],
+      );
+      expect(
+        (await service.queueSuggestions(ctx)).data.some((v: any) => v.queueTicketId === ticket.id),
+      ).toBe(false);
+      expect(
+        (
+          await service.saveEncounter(
+            ctx,
+            { ...input, assessment: 'QA Continued clinical work', version: chart.version },
+            chart.id,
+          )
+        ).assessment,
+      ).toBe('QA Continued clinical work');
+      await expect(service.saveEncounter(ctx, input)).rejects.toMatchObject({
+        code: 'QUEUE_EXPIRED',
+      });
+    } finally {
+      await sql.query("DELETE FROM role_module_permissions WHERE tenant_id=? AND role='DOCTOR'", [
+        tenant,
+      ]);
+    }
+  });
   it('renders receipt PDF inline or explicit attachment with actual receipt text', async () => {
     const p = await patient({ name: 'QA PDF Receipt Patient', nationalId: 'QA-PASSPORT' }),
       bill = await service.createInvoice(ctx, invoice(p.id));
-    const response = await http(`/invoices/${bill.id}/receipt`, 'GET', undefined, {
+    const response = await settingsHttp(`/invoices/${bill.id}/receipt`, 'GET', undefined, {
       Cookie: `cms_session=${adminToken}`,
       'X-CSRF-Token': '',
     });
@@ -3670,7 +3906,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(text).toContain('QA PDF Receipt Patient');
     expect(text).toContain('QA-PASSPORT');
     expect(text).toContain('RM');
-    const download = await adminHttp(`/invoices/${bill.id}/receipt?download=1`);
+    const download = await settingsAdminHttp(`/invoices/${bill.id}/receipt?download=1`);
     expect(download.status).toBe(200);
     expect(download.headers.get('content-disposition')).toContain('attachment;');
     await download.arrayBuffer();

@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-017, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-018, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -489,17 +489,19 @@ CREATE TABLE `queue_tickets` (
   `called_at` datetime(3) DEFAULT NULL,
   `completed_at` datetime(3) DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `active_patient_id` bigint unsigned GENERATED ALWAYS AS ((case when (`status` not in (_utf8mb4'COMPLETED',_utf8mb4'SKIPPED')) then `patient_id` else NULL end)) STORED,
-  `occupied_room_id` bigint unsigned GENERATED ALWAYS AS ((case when (`status` in (_utf8mb4'CALLED_TO_ROOM',_utf8mb4'IN_CONSULTATION')) then `room_id` else NULL end)) STORED,
+  `expired_at` datetime(3) DEFAULT NULL,
+  `active_patient_id` bigint unsigned GENERATED ALWAYS AS ((case when ((`expired_at` is null) and (`status` not in (_utf8mb4'COMPLETED',_utf8mb4'SKIPPED'))) then `patient_id` else NULL end)) STORED,
+  `occupied_room_id` bigint unsigned GENERATED ALWAYS AS ((case when ((`expired_at` is null) and (`status` in (_utf8mb4'CALLED_TO_ROOM',_utf8mb4'IN_CONSULTATION'))) then `room_id` else NULL end)) STORED,
   PRIMARY KEY (`id`),
   UNIQUE KEY `branch_id_2` (`branch_id`,`service_date`,`ticket_number`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
-  UNIQUE KEY `branch_id` (`branch_id`,`active_patient_id`),
-  UNIQUE KEY `occupied_room_id` (`occupied_room_id`),
+  UNIQUE KEY `queue_active_patient` (`branch_id`,`active_patient_id`),
+  UNIQUE KEY `queue_occupied_room` (`occupied_room_id`),
   KEY `queue_live` (`branch_id`,`service_date`,`status`,`created_at`),
   KEY `queue_tickets_ibfk_2` (`tenant_id`,`patient_id`),
   KEY `queue_tickets_ibfk_3` (`tenant_id`,`practitioner_id`),
   KEY `queue_tickets_ibfk_4` (`tenant_id`,`branch_id`,`room_id`),
+  KEY `queue_expiry` (`tenant_id`,`branch_id`,`expired_at`,`created_at`),
   CONSTRAINT `queue_tickets_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `queue_tickets_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
   CONSTRAINT `queue_tickets_ibfk_3` FOREIGN KEY (`tenant_id`, `practitioner_id`) REFERENCES `users` (`tenant_id`, `id`),

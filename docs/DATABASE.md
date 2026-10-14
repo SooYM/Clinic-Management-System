@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `017_appointment_removal.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `018_queue_expiry.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -153,3 +153,8 @@ Migration 014 adds numeric-ID reference_catalogs with tenant/branch scope, kind,
 Administrator edits are audited. Archival preserves history. New prescription writes capture database-authoritative item names, ingredients and units; signed clinical JSON remains immutable. Category/unit/ingredient changes are rejected after item history. Legacy prescriptions without metadata use catalog fallback.
 
 Migration 015 adds branch active/version/update time and nullable invoices.receipt_snapshot. Existing branches stay active and existing invoice snapshots remain null; no user rows or samples are rewritten. New checkout snapshots capture clinic/branch/address, patient name/identity and receiving cashier atomically. Financial lines and payment ledgers remain unchanged.
+
+
+## Migration 018 queue lifetime
+
+Queue check-ins last at most 12 hours from created_at, across Malaysia midnight. Before queue reads, check-in, room transitions and GP suggestions, scoped lifecycle cleanup marks old unfinished tickets expired_at, increments version and audits QUEUE_EXPIRED. Original status and chart references remain preserved. Active patient and occupied-room uniqueness excludes expired tickets. A fresh duplicate check-in returns a specific existing-ticket 409; an expired patient can check in again. Completed/skipped visits retain their existing terminal behavior. Estimates, room occupancy and queue-near notifications exclude expired visits. The expiry column is nullable to retain original data; generated active_patient_id and occupied_room_id include expired_at IS NULL. No patient, encounter or payment row is deleted. Existing applied migrations remain immutable.

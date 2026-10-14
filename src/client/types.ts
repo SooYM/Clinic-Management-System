@@ -49,6 +49,7 @@ export interface Ticket {
   roomName?: string;
   practitionerId?: number;
   createdAt: string;
+  expiredAt?: string | null;
   version: number;
 }
 export interface Appointment {

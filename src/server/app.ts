@@ -274,6 +274,11 @@ export function createApp(service = new ClinicService()) {
     'put',
   );
   mutation('/inventory', schemas.item, (r, i) => service.addItem(r.context, i));
+  api.get(
+    '/clinical/queue-suggestions',
+    roles('DOCTOR'),
+    asyncRoute(async (req, res) => res.json(await service.queueSuggestions(req.context))),
+  );
   mutation('/inventory/batches', schemas.batch, (r, i) => service.receiveBatch(r.context, i));
   mutation('/inventory/usage', schemas.inventoryUsage, (r, i) =>
     service.useInventory(r.context, i),

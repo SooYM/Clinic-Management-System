@@ -38,6 +38,9 @@ interface State {
 const key = 'clinic-session-demo-v1';
 const defaultDemoPassword = 'demo';
 const now = () => new Date().toISOString();
+const queueLifetimeMs = 12 * 60 * 60 * 1000;
+const activeQueue = (ticket: Row) =>
+  !ticket.expiredAt && !['COMPLETED', 'SKIPPED'].includes(ticket.status);
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kuala_Lumpur',
@@ -288,6 +291,7 @@ function seed(): State {
         serviceDate: today(),
         priority: 'NORMAL',
         status: 'REGISTERED',
+        expiredAt: null,
         version: 1,
         createdAt: timestamp,
       },
@@ -497,6 +501,7 @@ export class DemoClinic {
       item.active ??= true;
       item.version ??= 1;
     }
+    for (const ticket of this.state.rows.queue) ticket.expiredAt ??= null;
     // Upgrade only unchanged original demo accounts; retain records and user-changed passwords.
     for (const [index, alias] of ['admin', 'gp', 'reception', 'nurse', 'therapist'].entries()) {
       const user = this.state.rows.users.find(
@@ -536,6 +541,52 @@ export class DemoClinic {
   }
   private scoped(table: string, branch: number) {
     return this.state.rows[table].filter((r) => r.tenantId === 1 && r.branchId === branch);
+  }
+  private expireQueue() {
+    let changed = false;
+    for (const ticket of this.state.rows.queue) {
+      if (
+        activeQueue(ticket) &&
+        new Date(ticket.createdAt).getTime() + queueLifetimeMs <= Date.now()
+      ) {
+        ticket.expiredAt = now();
+        ticket.version++;
+        this.add(
+          'audit',
+          {
+            actorName: 'Automatic queue expiry',
+            action: 'EXPIRE',
+            entityType: 'queue',
+            entityId: ticket.id,
+            requestId: 'browser-demo',
+            status: ticket.status,
+          },
+          ticket.branchId,
+        );
+        changed = true;
+      }
+    }
+    return changed;
+  }
+  private visibleQueue(branch: number) {
+    return this.scoped('queue', branch).filter(
+      (ticket) => !ticket.expiredAt && (activeQueue(ticket) || ticket.serviceDate === today()),
+    );
+  }
+  private consultationTicket(
+    ticketId: number,
+    patientId: number,
+    doctorId: number,
+    branch: number,
+  ) {
+    const ticket = this.record('queue', ticketId, branch);
+    if (ticket.expiredAt)
+      fail('Queue ticket expired after 12 hours. Check the patient in again.', 409);
+    if (ticket.patientId !== patientId) fail('Queue ticket belongs to a different patient.', 409);
+    if (ticket.practitionerId !== doctorId) fail('Queue ticket is assigned to another GP.', 403);
+    if (!['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(ticket.status))
+      fail('Choose an active patient called to your room.', 409);
+    return ticket;
   }
   private record(table: string, id: number, branch: number) {
     return (
@@ -630,6 +681,8 @@ export class DemoClinic {
     body: any = undefined,
     branchId?: number,
   ): Promise<any> {
+    // Expiry is a lifecycle change, retained even when the requested action fails.
+    if (this.expireQueue()) this.storage.setItem(key, JSON.stringify(this.state));
     const previous = structuredClone(this.state);
     try {
       const response = this.dispatch(path, method.toUpperCase(), body, branchId);
@@ -752,9 +805,7 @@ export class DemoClinic {
     if (route === '/dashboard')
       return {
         patients: this.scoped('patients', branch).length,
-        waiting: this.scoped('queue', branch).filter(
-          (q) => !['COMPLETED', 'SKIPPED'].includes(q.status),
-        ).length,
+        waiting: this.scoped('queue', branch).filter(activeQueue).length,
         encountersToday: this.scoped('encounters', branch).length,
         revenueCents: this.scoped('invoices', branch).reduce((sum, i) => sum + i.totalCents, 0),
       };
@@ -1052,19 +1103,24 @@ export class DemoClinic {
     if (route === '/queue' && method === 'POST') {
       const v = schemas.queue.parse(body);
       this.record('patients', v.patientId, branch);
-      if (
-        this.scoped('queue', branch).some(
-          (q) => q.patientId === v.patientId && !['COMPLETED', 'SKIPPED'].includes(q.status),
-        )
-      )
-        fail('Patient already has an active ticket.', 409);
-      const q = this.add('queue', { ...v, status: 'REGISTERED', serviceDate: today() }, branch);
+      if (this.scoped('queue', branch).some((q) => q.patientId === v.patientId && activeQueue(q)))
+        fail(
+          'Patient is already checked in with an active ticket. Use the existing ticket or wait until it expires after 12 hours.',
+          409,
+        );
+      const q = this.add(
+        'queue',
+        { ...v, status: 'REGISTERED', serviceDate: today(), expiredAt: null },
+        branch,
+      );
       q.ticketNumber = 'Q-' + String(q.id).padStart(3, '0');
       return this.enrich(q);
     }
     if (/^\/queue\/\d+\/transition$/.test(route)) {
       const v = schemas.transition.parse(body),
         q = this.record('queue', id!, branch);
+      if (q.expiredAt)
+        fail('Queue ticket expired after 12 hours. Check the patient in again.', 409);
       if (q.version !== v.version) fail('Ticket changed.', 409);
       if (user.role === 'DOCTOR' && q.practitionerId && q.practitionerId !== user.id)
         fail('GP can only manage own consultations.', 403);
@@ -1080,6 +1136,7 @@ export class DemoClinic {
           this.scoped('queue', branch).some(
             (t) =>
               t.id !== q.id &&
+              !t.expiredAt &&
               t.roomId === v.roomId &&
               ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status),
           )
@@ -1087,6 +1144,7 @@ export class DemoClinic {
           fail('Room is occupied.', 409);
         q.roomId = v.roomId;
         q.practitionerId = v.practitionerId;
+        q.calledAt = now();
       }
       if (v.status === 'TRIAGE_WAITING') q.roomId = null;
       q.status = v.status;
@@ -1095,7 +1153,7 @@ export class DemoClinic {
     }
     if (route === '/queue/display')
       return {
-        data: this.scoped('queue', branch).map((q) => ({
+        data: this.visibleQueue(branch).map((q) => ({
           ticketNumber: q.ticketNumber,
           status: q.status,
           roomName: this.state.rows.rooms.find((r) => r.id === q.roomId)?.name,
@@ -1107,10 +1165,43 @@ export class DemoClinic {
         practitionerCount: this.state.rows.users.filter(
           (u) => u.role === 'DOCTOR' && u.active && u.branchIds.includes(branch),
         ).length,
-        waiting: this.scoped('queue', branch).length,
+        waiting: this.scoped('queue', branch).filter(activeQueue).length,
         estimatedMinutes: null,
         basis: 'Demo has no measured consultation history.',
       };
+    if (route === '/clinical/queue-suggestions' && method === 'GET') {
+      if (user.role !== 'DOCTOR') fail('Only GP can view assigned consultation suggestions.', 403);
+      return {
+        data: this.scoped('queue', branch)
+          .filter(
+            (ticket) =>
+              activeQueue(ticket) &&
+              ticket.practitionerId === user.id &&
+              ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(ticket.status),
+          )
+          .sort((left, right) => left.id - right.id)
+          .map((ticket) => ({
+            queueTicketId: ticket.id,
+            patientId: ticket.patientId,
+            patientNumber: ticket.patientId,
+            patientName: this.record('patients', ticket.patientId, branch).name,
+            ticketNumber: ticket.ticketNumber,
+            roomId: ticket.roomId,
+            roomName: this.record('rooms', ticket.roomId, branch).name,
+            status: ticket.status,
+            version: ticket.version,
+            createdAt: ticket.createdAt,
+            calledAt: ticket.calledAt || null,
+            expiresAt: new Date(
+              new Date(ticket.createdAt).getTime() + queueLifetimeMs,
+            ).toISOString(),
+            encounterId:
+              this.scoped('encounters', branch).find(
+                (encounter) => encounter.queueTicketId === ticket.id,
+              )?.id || null,
+          })),
+      };
+    }
     if (
       (route === '/encounters' && method === 'POST') ||
       (/^\/encounters\/\d+$/.test(route) && method === 'PUT')
@@ -1118,6 +1209,22 @@ export class DemoClinic {
       if (user.role !== 'DOCTOR') fail('Only GP can save or sign consultations.', 403);
       const v = schemas.encounter.parse(body),
         p = this.record('patients', v.patientId, branch);
+      const existing = id ? this.record('encounters', id, branch) : undefined;
+      if (existing && (v.queueTicketId || null) !== (existing.queueTicketId || null))
+        fail('The consultation queue ticket cannot change.', 409);
+      const ticket =
+        !id && v.queueTicketId
+          ? this.consultationTicket(v.queueTicketId, v.patientId, user.id, branch)
+          : undefined;
+      if (
+        !id &&
+        ticket &&
+        this.scoped('encounters', branch).some((encounter) => encounter.queueTicketId === ticket.id)
+      )
+        fail(
+          'A consultation already exists for this queue ticket. Open the existing consultation.',
+          409,
+        );
       this.checkPrescription(v.prescriptions, p, branch);
       const priorPrescriptions = id ? this.record('encounters', id, branch).prescriptions : [];
       v.prescriptions = v.prescriptions.map((rx) => {
@@ -1161,7 +1268,23 @@ export class DemoClinic {
         if (v.status === 'SIGNED') this.reserve(e, branch);
         return this.enrich(e);
       }
-      if (v.queueTicketId) this.record('queue', v.queueTicketId, branch);
+      if (ticket?.status === 'CALLED_TO_ROOM') {
+        ticket.status = 'IN_CONSULTATION';
+        ticket.version++;
+        this.add(
+          'audit',
+          {
+            actorName: user.name,
+            action: 'START_CONSULTATION',
+            entityType: 'queue',
+            entityId: ticket.id,
+            requestId: 'browser-demo',
+            from: 'CALLED_TO_ROOM',
+            to: 'IN_CONSULTATION',
+          },
+          branch,
+        );
+      }
       const e = this.add(
         'encounters',
         { ...v, practitionerId: user.id, signedAt: v.status === 'SIGNED' ? now() : null },
@@ -1779,7 +1902,10 @@ export class DemoClinic {
           : { active: false };
       if (
         this.scoped('queue', branch).some(
-          (q) => q.roomId === room.id && ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(q.status),
+          (q) =>
+            !q.expiredAt &&
+            q.roomId === room.id &&
+            ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(q.status),
         )
       )
         fail('Room occupied.', 409);
@@ -1830,6 +1956,10 @@ export class DemoClinic {
     )
       return {
         data: this.scoped(route.slice(1), branch)
+          .filter(
+            (r) =>
+              route !== '/queue' || this.visibleQueue(branch).some((ticket) => ticket.id === r.id),
+          )
           .filter((r) => route !== '/appointments' || !r.deletedAt)
           .map((r) => this.enrich(r))
           .filter(

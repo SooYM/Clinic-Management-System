@@ -425,6 +425,15 @@ export function GuidedTour({
           )
         : tours[module] || [];
   const steps: Step[] = [
+    ...(module === 'clinical' && role === 'DOCTOR'
+      ? [
+          {
+            target: panel('assigned-patients'),
+            title: 'Patients assigned to you',
+            text: 'Patients sent to your room appear here. Start consultation fills the patient and visit details; Open consultation resumes an existing note. Saving still requires your confirmation.',
+          },
+        ]
+      : []),
     ...(sectionGuides[module] || []).map(([id, title, text]) => ({
       target: anchor(`section-${id}`),
       title,

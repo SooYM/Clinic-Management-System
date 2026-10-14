@@ -73,8 +73,12 @@ export default function Queue({
       { key: 'id', label: 'Ticket ID', value: (row) => row.id },
     ],
   });
-  const waiting = tickets.filter((t) => ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status));
-  const active = tickets.filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status));
+  const waiting = tickets.filter(
+    (t) => !t.expiredAt && ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status),
+  );
+  const active = tickets.filter(
+    (t) => !t.expiredAt && ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status),
+  );
   const canCall =
     rooms.some((entry) => entry.id === Number(room)) &&
     !active.some((ticket) => ticket.roomId === Number(room)) &&
@@ -171,8 +175,10 @@ export default function Queue({
           <strong>
             {resource.loading
               ? '—'
-              : tickets.filter((t) => ['DISPENSARY_WAITING', 'PAYMENT_WAITING'].includes(t.status))
-                  .length}
+              : tickets.filter(
+                  (t) =>
+                    !t.expiredAt && ['DISPENSARY_WAITING', 'PAYMENT_WAITING'].includes(t.status),
+                ).length}
           </strong>
         </div>
         <div>
@@ -266,15 +272,17 @@ export default function Queue({
                                 'Patient record'}
                             </td>
                             <td>
-                              <span className={`status ${t.status.toLowerCase()}`}>
-                                {stageLabel(t.status)}
+                              <span
+                                className={`status ${t.expiredAt ? 'skipped' : t.status.toLowerCase()}`}
+                              >
+                                {t.expiredAt ? 'Check-in expired' : stageLabel(t.status)}
                               </span>
                             </td>
                             <td>
                               {t.roomName || rooms.find((r) => r.id === t.roomId)?.name || '—'}
                             </td>
                             <td>
-                              {!['COMPLETED', 'SKIPPED'].includes(t.status) && (
+                              {!t.expiredAt && !['COMPLETED', 'SKIPPED'].includes(t.status) && (
                                 <button
                                   className="secondary"
                                   disabled={busy !== undefined}
@@ -304,25 +312,29 @@ export default function Queue({
                                   <ArrowRight size={14} />
                                 </button>
                               )}
-                              {['REGISTERED', 'TRIAGE_WAITING'].includes(t.status) && (
-                                <button
-                                  className="text-button"
-                                  disabled={busy === t.id}
-                                  onClick={() => transition(t, 'SKIPPED')}
-                                >
-                                  Skip
-                                </button>
-                              )}
-                              {t.status === 'SKIPPED' && (
-                                <button
-                                  className="secondary"
-                                  disabled={busy === t.id}
-                                  onClick={() => transition(t, 'TRIAGE_WAITING')}
-                                >
-                                  Undo skip
-                                </button>
-                              )}
-                              {t.status === 'CALLED_TO_ROOM' && (
+                              {!t.expiredAt &&
+                                ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status) && (
+                                  <button
+                                    className="text-button"
+                                    disabled={busy === t.id}
+                                    onClick={() => transition(t, 'SKIPPED')}
+                                  >
+                                    Skip
+                                  </button>
+                                )}
+                              {!t.expiredAt &&
+                                t.status === 'SKIPPED' &&
+                                new Date(t.createdAt).getTime() + 12 * 60 * 60 * 1000 >
+                                  Date.now() && (
+                                  <button
+                                    className="secondary"
+                                    disabled={busy === t.id}
+                                    onClick={() => transition(t, 'TRIAGE_WAITING')}
+                                  >
+                                    Undo skip
+                                  </button>
+                                )}
+                              {!t.expiredAt && t.status === 'CALLED_TO_ROOM' && (
                                 <button
                                   className="text-button"
                                   disabled={busy === t.id}
@@ -333,7 +345,8 @@ export default function Queue({
                               )}
                             </td>
                           </tr>
-                          {callingTicket === t.id &&
+                          {!t.expiredAt &&
+                            callingTicket === t.id &&
                             ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status) && (
                               <tr>
                                 <td colSpan={5}>
@@ -454,6 +467,10 @@ export default function Queue({
           description="Add a registered patient to today's queue."
         >
           <Panel title="Check in">
+            <p className="form-help">
+              A check-in stays active for 12 hours. If the patient already has an active visit,
+              continue that ticket in Live queue. Expiry keeps their clinical records.
+            </p>
             <ResourceState {...patients}>
               <MutationForm
                 key={checkInRevision}

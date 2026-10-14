@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expire queue check-ins after 12 hours without deleting history; provide clear active-ticket errors.
+- Suggest assigned patients to GPs; prefill linked consultations and resume existing encounters with atomic handoff.
+
 - Simplify waiting-patient room calls with per-patient choices and direct registered-to-room transition.
 - Remove forced section scrolling and refresh module navigation; filter restricted written help.
 

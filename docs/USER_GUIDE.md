@@ -167,3 +167,10 @@ Tasks use one section-tab entry point: Clinic overview → Check in patient; Pat
 
 
 Section buttons change the task without forcing a jump to the top. Appointment navigation and help appear only when your role has access. Role access refreshes while the workspace is visible and when you return to it.
+
+
+## Twelve-hour check-in and assigned patients
+
+A check-in expires 12 hours after it was created. If already active, use the existing Live queue ticket; the error now explains this. Expiry releases patient/room assignments and keeps clinical history. It does not delete medical notes.
+
+After the nurse calls or starts the visit with the assigned GP, the GP opens Clinical workspace → Assigned patients. Start consultation fills the patient and queue reference automatically; confirm the completed note to save. Open consultation resumes an existing note. Suggestions refresh automatically or with Refresh assignments. If none appear, verify branch, assigned GP, visit state and the 12-hour lifetime. Manual patient selection remains available.

@@ -173,3 +173,8 @@ Tasks use one section-tab entry point: Clinic overview → Check in patient; Pat
 ## Simplified arrivals and room calls
 
 Check in patient → Waiting for doctor → Call to room beside that patient → choose available room and doctor → Confirm call → popup consent → Called to room. The previous Ready for triage step is no longer required. Historical TRIAGE_WAITING tickets remain supported. Missing room/doctor configuration and occupied rooms explain why final confirmation is unavailable; the entry action stays available. Patient search is available at check-in, and advanced queue filters are collapsed. Shared section switches retain mounted drafts and no longer force scrollIntoView; overflow anchoring is disabled within the changing task area. Guided tours still scroll deliberately to their targets. Navigation uses current module grants; bootstrap access refreshes every 15 seconds while visible and on focus/visibility return. Unpermitted appointment navigation and written help topics are hidden, and direct routes remain access restricted. Server access checks remain authoritative.
+
+
+## Check-in expiry and nurse-to-GP flow
+
+Check in → active visit for 12 hours → nurse calls assigned doctor/room → GP Assigned patients → Start consultation → prefilled SOAP form → consented save, linked encounter and atomic start. If nurse already started consultation, suggestion is still shown. Existing encounter → Open consultation. Exact 12-hour cutoff → mark expired/release operational locks → new check-in; prior clinical history retained. Duplicate before cutoff → clear existing-ticket error.

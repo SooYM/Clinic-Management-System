@@ -19,6 +19,7 @@ import {
 } from '../shared/document-view.js';
 import type { MedicationDose, MedicationDoseLog } from '../shared/medication-doses.js';
 import { validateCatalogChoices } from './catalog-service.js';
+import { expireQueue } from './queue-lifecycle.js';
 
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -34,12 +35,23 @@ export class ClinicService {
     private readonly transact: typeof transaction = transaction,
   ) {}
   async list(ctx: Context, kind: string, search = '', category = '') {
+    if (kind === 'queue')
+      return this.transact(async (db) => {
+        await expireQueue(db, ctx);
+        return camel(
+          (
+            await db.query(
+              `SELECT q.*,DATE_ADD(q.created_at,INTERVAL 12 HOUR) expires_at,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM queue_tickets q JOIN patients p ON p.id=q.patient_id LEFT JOIN users u ON u.id=q.practitioner_id LEFT JOIN rooms r ON r.id=q.room_id WHERE q.tenant_id=$1 AND q.branch_id=$2 AND q.expired_at IS NULL AND (q.status NOT IN ('COMPLETED','SKIPPED') OR q.service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))) ORDER BY CASE WHEN q.priority='URGENT' THEN 0 ELSE 1 END,q.created_at LIMIT 200`,
+              [ctx.actor.tenantId, ctx.branchId],
+            )
+          ).rows,
+        );
+      });
     const t = ctx.actor.tenantId,
       b = ctx.branchId;
     const queries: Record<string, string> = {
       patients: `SELECT p.*,p.id patient_number FROM patients p WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.id LIMIT 200`,
       appointments: `SELECT a.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM appointments a JOIN patients p ON p.id=a.patient_id JOIN users u ON u.id=a.practitioner_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.tenant_id=$1 AND a.branch_id=$2 AND a.deleted_at IS NULL ORDER BY a.starts_at DESC LIMIT 200`,
-      queue: `SELECT q.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM queue_tickets q JOIN patients p ON p.id=q.patient_id LEFT JOIN users u ON u.id=q.practitioner_id LEFT JOIN rooms r ON r.id=q.room_id WHERE q.tenant_id=$1 AND q.branch_id=$2 AND q.service_date=DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) ORDER BY CASE WHEN q.priority='URGENT' THEN 0 ELSE 1 END,q.created_at LIMIT 200`,
       encounters: `SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.tenant_id=$1 AND e.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR e.assessment LIKE $3 OR u.name LIKE $3) ORDER BY e.created_at DESC LIMIT 200`,
       inventory: `SELECT i.*,
         (SELECT COALESCE(SUM(b.quantity),0) FROM inventory_batches b
@@ -122,9 +134,27 @@ export class ClinicService {
       modules: ctx.modules || (await effectiveModules(this.db, ctx.actor.tenantId, ctx.actor.role)),
     });
   }
+  async queueSuggestions(ctx: Context) {
+    if (ctx.actor.role !== 'DOCTOR')
+      throw new DomainError('DOCTOR_REQUIRED', 'Assigned queue suggestions require a GP.', 403);
+    return this.transact(async (db) => {
+      await expireQueue(db, ctx);
+      const rows = (
+        await db.query(
+          `SELECT q.id queue_ticket_id,q.patient_id,p.id patient_number,p.name patient_name,q.ticket_number,q.room_id,r.name room_name,q.status,q.version,q.created_at,q.called_at,DATE_ADD(q.created_at,INTERVAL 12 HOUR) expires_at,
+        (SELECT e.id FROM encounters e WHERE e.tenant_id=q.tenant_id AND e.branch_id=q.branch_id AND e.queue_ticket_id=q.id ORDER BY e.id LIMIT 1) encounter_id
+        FROM queue_tickets q JOIN patients p ON p.id=q.patient_id LEFT JOIN rooms r ON r.id=q.room_id
+        WHERE q.tenant_id=$1 AND q.branch_id=$2 AND q.practitioner_id=$3 AND q.expired_at IS NULL AND q.created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND q.status IN ('CALLED_TO_ROOM','IN_CONSULTATION') ORDER BY q.called_at,q.id LIMIT 200`,
+          [ctx.actor.tenantId, ctx.branchId, ctx.actor.id],
+        )
+      ).rows;
+      return { data: camel(rows) };
+    });
+  }
   async dashboard(ctx: Context) {
+    await this.transact((db) => expireQueue(db, ctx));
     const { rows } = await this.db.query(
-      `SELECT (SELECT count(*) FROM patients WHERE tenant_id=$1 AND branch_id=$2) patients,(SELECT count(*) FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) AND status NOT IN ('COMPLETED','SKIPPED')) waiting,(SELECT count(*) FROM encounters WHERE tenant_id=$1 AND branch_id=$2 AND created_at>DATE(UTC_TIMESTAMP())) encounters_today,(SELECT coalesce(sum(total_cents),0) FROM invoices WHERE tenant_id=$1 AND branch_id=$2 AND status='PAID' AND created_at>DATE(UTC_TIMESTAMP())) revenue_cents`,
+      `SELECT (SELECT count(*) FROM patients WHERE tenant_id=$1 AND branch_id=$2) patients,(SELECT count(*) FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status NOT IN ('COMPLETED','SKIPPED')) waiting,(SELECT count(*) FROM encounters WHERE tenant_id=$1 AND branch_id=$2 AND created_at>DATE(UTC_TIMESTAMP())) encounters_today,(SELECT coalesce(sum(total_cents),0) FROM invoices WHERE tenant_id=$1 AND branch_id=$2 AND status='PAID' AND created_at>DATE(UTC_TIMESTAMP())) revenue_cents`,
       [ctx.actor.tenantId, ctx.branchId],
     );
     return { ...camel(rows[0]), revenueCents: Number(rows[0].revenue_cents) };
@@ -362,7 +392,20 @@ export class ClinicService {
   }
   async checkIn(ctx: Context, input: any) {
     return this.transact(async (db) => {
+      await expireQueue(db, ctx);
       await this.patient(db, ctx, input.patientId);
+      const active = (
+        await db.query(
+          "SELECT id,ticket_number FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND patient_id=$3 AND expired_at IS NULL AND status NOT IN ('COMPLETED','SKIPPED') FOR UPDATE",
+          [ctx.actor.tenantId, ctx.branchId, input.patientId],
+        )
+      ).rows[0];
+      if (active)
+        throw new DomainError(
+          'PATIENT_ALREADY_CHECKED_IN',
+          `Patient already checked in. Use existing ticket ${active.ticket_number} (ID ${active.id}).`,
+          409,
+        );
       await lock(db, [`queue:${ctx.branchId}:${today()}`]);
       const { rows: counts } = await db.query(
         `SELECT count(*) n FROM queue_tickets WHERE branch_id=$1 AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))`,
@@ -383,13 +426,22 @@ export class ClinicService {
     });
   }
   async transitionQueue(ctx: Context, id: number, input: any) {
+    // Commit expired markers even when an attempt to operate on an old ticket is rejected.
+    await this.transact((db) => expireQueue(db, ctx));
     return this.transact(async (db) => {
+      await expireQueue(db, ctx);
       const { rows } = await db.query(
-        `SELECT * FROM queue_tickets WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE`,
+        `SELECT *,created_at<=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) lifetime_elapsed FROM queue_tickets WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE`,
         [id, ctx.actor.tenantId, ctx.branchId],
       );
       const ticket = rows[0];
       if (!ticket) throw missing();
+      if (ticket.expired_at || ticket.lifetime_elapsed)
+        throw new DomainError(
+          'QUEUE_EXPIRED',
+          'Queue ticket expired after 12 hours. Check in a new visit.',
+          409,
+        );
       if (ticket.version !== input.version)
         throw new DomainError('VERSION_CONFLICT', 'Queue changed. Refresh before retrying.', 409);
       if (
@@ -418,7 +470,7 @@ export class ClinicService {
         if (!room.rowCount)
           throw new DomainError('INVALID_ROOM', 'Choose a room from this branch.');
         const occupied = await db.query(
-          "SELECT id FROM queue_tickets WHERE room_id=$1 AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') AND id<>$2 FOR UPDATE",
+          "SELECT id FROM queue_tickets WHERE room_id=$1 AND expired_at IS NULL AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') AND id<>$2 FOR UPDATE",
           [roomId, id],
         );
         if (occupied.rowCount)
@@ -505,17 +557,23 @@ export class ClinicService {
         'Only a GP can write or sign a clinical encounter.',
         403,
       );
+    if (!id && input.queueTicketId) await this.transact((db) => expireQueue(db, ctx));
     return this.transact(async (db) => {
+      if (!id && input.queueTicketId) await expireQueue(db, ctx);
+      let existingQueueId: number | null = null;
       if (id) {
         const existing = await db.query(
-          'SELECT status FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+          'SELECT status,queue_ticket_id FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
           [id, ctx.actor.tenantId, ctx.branchId],
         );
         if (!existing.rows[0]) throw missing();
         if (existing.rows[0].status === 'SIGNED')
           throw new DomainError('ENCOUNTER_SIGNED', 'Signed encounters are immutable.', 409);
+        existingQueueId = existing.rows[0].queue_ticket_id;
       }
       input = schemas.encounter.parse(input);
+      if (id && input.queueTicketId && input.queueTicketId !== existingQueueId)
+        throw new DomainError('QUEUE_IMMUTABLE', 'Encounter queue association cannot change.', 409);
       const patient = await this.patient(db, ctx, input.patientId);
       const medicationItems = await this.validatePrescriptions(
         db,
@@ -569,7 +627,7 @@ export class ClinicService {
       } else {
         if (input.queueTicketId) {
           const q = await db.query(
-            `SELECT 1 FROM queue_tickets WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND patient_id=$4 AND practitioner_id=$5 AND status='IN_CONSULTATION'`,
+            `SELECT id,status,expired_at,created_at,created_at<=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) lifetime_elapsed FROM queue_tickets WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND patient_id=$4 AND practitioner_id=$5 FOR UPDATE`,
             [input.queueTicketId, ctx.actor.tenantId, ctx.branchId, input.patientId, ctx.actor.id],
           );
           if (!q.rowCount)
@@ -577,6 +635,39 @@ export class ClinicService {
               'INVALID_QUEUE',
               'Encounter requires this doctor’s active consultation ticket.',
             );
+          if (q.rows[0].expired_at || q.rows[0].lifetime_elapsed)
+            throw new DomainError(
+              'QUEUE_EXPIRED',
+              'Queue ticket expired after 12 hours. Check in a new visit.',
+              409,
+            );
+          if (!['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(q.rows[0].status))
+            throw new DomainError(
+              'INVALID_QUEUE',
+              'Encounter requires this doctor’s active consultation ticket.',
+            );
+          const associated = (
+            await db.query(
+              'SELECT id FROM encounters WHERE tenant_id=$1 AND branch_id=$2 AND queue_ticket_id=$3 LIMIT 1',
+              [ctx.actor.tenantId, ctx.branchId, input.queueTicketId],
+            )
+          ).rows[0];
+          if (associated)
+            throw new DomainError(
+              'ENCOUNTER_EXISTS',
+              `Consultation already exists for this queue ticket. Open encounter ${associated.id}.`,
+              409,
+            );
+          if (q.rows[0].status === 'CALLED_TO_ROOM') {
+            await db.query(
+              "UPDATE queue_tickets SET status='IN_CONSULTATION',version=version+1 WHERE id=$1",
+              [input.queueTicketId],
+            );
+            await this.audit(db, ctx, 'TRANSITION', 'queue', input.queueTicketId, {
+              from: 'CALLED_TO_ROOM',
+              to: 'IN_CONSULTATION',
+            });
+          }
         }
         ({ rows } = await db.query(
           `INSERT INTO encounters(tenant_id,branch_id,patient_id,practitioner_id,queue_ticket_id,specialty,subjective,objective,assessment,plan,vitals,prescriptions,procedure_notes,status,signed_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CASE WHEN $14='SIGNED' THEN now() ELSE NULL END) RETURNING *`,

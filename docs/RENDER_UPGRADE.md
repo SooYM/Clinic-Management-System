@@ -55,3 +55,8 @@ The demo includes profile row navigation, fixed nationality controls, prefixed p
 ## HCI demo revision
 
 Rebuild demo assets to include single-entry task tabs, patient-first consultation selection, catalogue disclosures, default-ID direction selection and popup consent. Header User guide remains available. No Blueprint environment or persistent migration change is needed for this revision. Confirm actual Render health and browser assets separately after Git publication.
+
+
+## Demo expiry and handoff
+
+Demo mirrors 12-hour queue expiry, clear duplicate errors, assigned GP suggestions and linked-note creation/resume. Fictional data remains session-scoped. Rebuild demo assets; no persistent database is added. Git publication does not establish successful Render deployment.

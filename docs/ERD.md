@@ -1,6 +1,6 @@
 # Entity relationship diagrams
 
-These diagrams describe the final MySQL 8.4 schema after migrations 001–017, including numeric conversion, general supplies and prescription reservations.
+These diagrams describe the final MySQL 8.4 schema after migrations 001–018, including numeric conversion, general supplies and prescription reservations.
 Every displayed entity `id` is `BIGINT UNSIGNED AUTO_INCREMENT`; referenced IDs are unsigned BIGINT.
 Mermaid `bigint` labels omit unsigned/auto-increment syntax for readability. Exact SQL remains authoritative.
 Letter previews reuse `clinical_documents.payload`; prescription activity joins encounters, reservations, dispenses and stock movements. Neither read projection adds an entity.
@@ -124,6 +124,7 @@ erDiagram
     varchar ticket_number
     date service_date
     varchar status
+    datetime expired_at "nullable; history retained"
     bigint active_patient_id "generated"
     bigint occupied_room_id "generated"
     int version
@@ -443,3 +444,5 @@ erDiagram
 Inventory items also carry active status, optimistic version and update time after migration 014.
 
 Migration 015 adds branches.active/version/updated_at and invoices.receipt_snapshot (nullable JSON). Entity IDs, table counts and FK relationships stay unchanged. The snapshot copies issued receipt metadata; it creates no new live relationship or entity ID.
+
+Queue tickets now retain nullable expired_at. Generated active-patient and occupied-room uniqueness ignore expired rows; linked encounter foreign keys remain intact.

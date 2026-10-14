@@ -168,7 +168,7 @@ export class NotificationDispatcher {
     for (let index = 0; index < limit; index++) {
       const message = await transaction(async (db) => {
         const { rows } = await db.query(
-          "SELECT o.*,p.email current_email,p.phone current_phone FROM notification_outbox o JOIN patients p ON p.id=o.patient_id AND p.tenant_id=o.tenant_id WHERE o.status IN ('PENDING','FAILED') AND o.attempts<5 AND o.available_at<=UTC_TIMESTAMP(6) AND p.notification_consent=1 ORDER BY o.created_at LIMIT 1 FOR UPDATE SKIP LOCKED",
+          "SELECT o.*,p.email current_email,p.phone current_phone FROM notification_outbox o JOIN patients p ON p.id=o.patient_id AND p.tenant_id=o.tenant_id WHERE o.status IN ('PENDING','FAILED') AND o.attempts<5 AND o.available_at<=UTC_TIMESTAMP(6) AND p.notification_consent=1 AND (o.template NOT IN ('ROOM_CALL','QUEUE_NEAR') OR EXISTS(SELECT 1 FROM queue_tickets q WHERE q.id=CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(o.deduplication_key,':',2),':',-1) AS UNSIGNED) AND q.tenant_id=o.tenant_id AND q.branch_id=o.branch_id AND q.expired_at IS NULL AND q.created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND q.status NOT IN ('COMPLETED','SKIPPED'))) ORDER BY o.created_at LIMIT 1 FOR UPDATE SKIP LOCKED",
         );
         if (!rows[0]) return null;
         await db.query(
@@ -223,7 +223,7 @@ export class NotificationDispatcher {
     // Rank each branch independently. Notify the next three tickets once; deduplication survives restarts.
     const { rows } = await pool.query(`SELECT ranked.*,p.email,p.phone FROM (
       SELECT q.id,q.tenant_id,q.branch_id,q.patient_id,ROW_NUMBER() OVER (PARTITION BY q.branch_id ORDER BY CASE WHEN q.priority='URGENT' THEN 0 ELSE 1 END,q.created_at,q.id) position
-      FROM queue_tickets q WHERE q.status='TRIAGE_WAITING' AND q.service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))
+      FROM queue_tickets q WHERE q.status IN ('REGISTERED','TRIAGE_WAITING') AND q.expired_at IS NULL AND q.created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR)
     ) ranked JOIN patients p ON p.id=ranked.patient_id AND p.tenant_id=ranked.tenant_id WHERE ranked.position<=3 AND p.notification_consent=1`);
     for (const ticket of rows)
       for (const [channel, recipient] of [

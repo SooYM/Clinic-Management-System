@@ -152,3 +152,8 @@ Billing-module GET /api/invoices/:id/receipt-view returns safe ReceiptView metad
 ## Direct registered patient call
 
 POST /api/queue/:id/transition accepts status CALLED_TO_ROOM directly from REGISTERED, with version, roomId and practitionerId. Existing room scope/active/occupancy, practitioner, concurrency and audit rules remain. TRIAGE_WAITING paths remain compatible. No new endpoint or schema.
+
+
+## Queue expiry and assigned suggestions
+
+GET /api/clinical/queue-suggestions requires clinical module and DOCTOR role. Returns {data:[queueTicketId,patientId,patientNumber,patientName,ticketNumber,roomId,roomName,status,version,createdAt,calledAt,expiresAt,encounterId]}; encounterId is nullable. Scope is current tenant/branch and assigned GP. POST /api/queue returns PATIENT_ALREADY_CHECKED_IN 409 for an active duplicate. Expired transitions return QUEUE_EXPIRED 409. POST /api/encounters may link an assigned CALLED_TO_ROOM or IN_CONSULTATION ticket; creates/starts atomically and returns ENCOUNTER_EXISTS 409 if already linked. Existing clinical edits keep their original association and are permitted after operational expiry.
