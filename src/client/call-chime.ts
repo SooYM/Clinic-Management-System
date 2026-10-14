@@ -15,10 +15,15 @@ export function hasNewCall(
   previous: ReadonlyMap<string, string> | null,
   next: ReadonlyMap<string, string>,
 ): boolean {
-  return (
-    previous !== null &&
-    [...next].some(([ticket, room]) => !previous.has(ticket) || previous.get(ticket) !== room)
-  );
+  return newCalledTickets(previous, next).length > 0;
+}
+export function newCalledTickets(
+  previous: ReadonlyMap<string, string> | null,
+  next: ReadonlyMap<string, string>,
+): [string, string][] {
+  return previous === null
+    ? []
+    : [...next].filter(([ticket, room]) => !previous.has(ticket) || previous.get(ticket) !== room);
 }
 /** Create and resume inside the user's click, then reuse this context for polling updates. */
 export class CallChime {

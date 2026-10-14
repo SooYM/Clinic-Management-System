@@ -288,3 +288,12 @@ Full payment: disabled for zero invoice; exact cent total filled; chosen method/
 - Enabling sound resumes a persistent context and schedules a sample; the first called ticket after an empty queue schedules another chime.
 - Reorder, removal, existing consultation status and initial/branch snapshots stay silent. New tickets and changed rooms sound.
 - Blocked audio shows retry guidance; disabling/unmount closes the context and pending enable cannot play after closure.
+
+## Spoken public-call regressions
+
+- Q-001 keeps zero zero one; numeric/custom room names produce clear destinations.
+- A batch and successive pending batches retain all ticket/room utterances after the chime delay.
+- Unchanged, reordered, removed, consultation-stage and initial/branch snapshots remain silent.
+- Branch switch, disable and unmount cancel timers and queued/active speech.
+- Unsupported or failed synthesis provides recovery guidance without breaking the visual queue or available chime.
+- Public announcements contain ticket and room only; no patient names or clinical fields.

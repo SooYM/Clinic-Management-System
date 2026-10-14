@@ -90,3 +90,5 @@ Prominent patient-registration entry points and shared matching-result dropdowns
 Daily live queue resets at Malaysia midnight while retaining all clinical/history data; today's visit count includes terminal and expired rows. Temperature input and API validation now enforce28°C–40°C inclusive.
 
 Search suggestions now autofill the selected full label. Fixed waiting-room first-call sound and browser audio activation; added a sample chime, persistent audio context, silent branch baselines and recoverable sound errors.
+
+Waiting-room calls now speak ticket digits and room destinations after the chime. Added sample speech, native utterance queuing, branch/disable cleanup and voice-failure recovery.

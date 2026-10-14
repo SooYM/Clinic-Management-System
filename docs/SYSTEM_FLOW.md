@@ -221,4 +221,6 @@ Today’s ten visits remain ten after completion or expiry → Malaysia midnight
 
 Non-Malaysian patient → Country of nationality → Others → enter country name → validate and confirm save → profile shows custom country. Choose an ISO country or Malaysian nationality → custom field clears → subsequent profile uses selected country. Legacy edits omitting country fields retain the saved custom label.
 
-Search text → matching suggestion → click or Arrow/Enter → full label in input and matching record selected, without saving. Unsaved clinical patient switch → Cancel → original patient, query and note preserved. Public display → Enable call chime → sample sound → new call/room → chime; disable/close → release audio context.
+Search text → matching suggestion → click or Arrow/Enter → full label in input and matching record selected, without saving. Unsaved clinical patient switch → Cancel → original patient, query and note preserved. Public display → Enable announcements → sample sound → new call/room → chime; disable/close → release audio context.
+
+Enable announcements → spoken sample and chime → newly called ticket or changed room → chime → read ticket digits and room destination. Multiple new calls → queued spoken sentences. Branch change/off/close → cancel pending speech; unsupported voice → recovery notice with chime retained.

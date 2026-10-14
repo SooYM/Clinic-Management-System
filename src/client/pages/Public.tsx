@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { CallChime, calledTickets, hasNewCall } from '../call-chime';
+import { CallChime, calledTickets, newCalledTickets } from '../call-chime';
+import { CallAnnouncements } from '../call-announcements';
 import { Volume2, ShieldCheck } from 'lucide-react';
 import { api } from '../api';
 import {
@@ -33,26 +34,46 @@ export function QueueDisplay() {
   );
   const [audio, setAudio] = useState(false);
   const [audioError, setAudioError] = useState('');
+  const [speechError, setSpeechError] = useState('');
+  const [speechEnabled, setSpeechEnabled] = useState(false);
   const [enablingAudio, setEnablingAudio] = useState(false);
   const chime = useRef<CallChime>();
   if (!chime.current) chime.current = new CallChime();
+  const announcements = useRef<CallAnnouncements>();
+  if (!announcements.current)
+    announcements.current = new CallAnnouncements((message) => {
+      setSpeechError(message);
+      setSpeechEnabled(false);
+    });
   const lastCalls = useRef<Map<string, string> | null>(null);
-  useEffect(() => () => chime.current?.disable(), []);
+  useEffect(
+    () => () => {
+      chime.current?.disable();
+      announcements.current?.disable();
+    },
+    [],
+  );
   async function toggleAudio() {
     setAudioError('');
+    setSpeechError('');
     if (audio) {
       chime.current!.disable();
+      announcements.current!.disable();
+      setSpeechEnabled(false);
       setAudio(false);
       return;
     }
     setEnablingAudio(true);
+    setSpeechEnabled(announcements.current!.enable());
     try {
       setAudio(await chime.current!.enable());
     } catch {
       chime.current!.disable();
+      announcements.current!.disable();
+      setSpeechEnabled(false);
       setAudio(false);
       setAudioError(
-        'Call sound could not start. Check browser sound permissions and enable the chime again.',
+        'Call sound could not start. Check browser sound permissions and enable announcements again.',
       );
     } finally {
       setEnablingAudio(false);
@@ -74,6 +95,7 @@ export function QueueDisplay() {
   function chooseBranch(id: number) {
     setDisplayBranch(id);
     lastCalls.current = null;
+    announcements.current?.cancelPending();
     const url = new URL(location.href);
     url.searchParams.set('branchId', String(id));
     history.replaceState(null, '', url);
@@ -81,16 +103,19 @@ export function QueueDisplay() {
   useEffect(() => {
     if (ticketBranch !== displayBranch || !resource.data || resource.error) return;
     const calls = calledTickets(resource.data);
-    const announce = hasNewCall(lastCalls.current, calls);
+    const announce = newCalledTickets(lastCalls.current, calls);
     lastCalls.current = calls;
-    if (audio && announce) {
+    if (audio && announce.length) {
       try {
         chime.current!.play();
+        announcements.current!.announce(announce);
       } catch {
         chime.current!.disable();
+        announcements.current!.disable();
+        setSpeechEnabled(false);
         setAudio(false);
         setAudioError(
-          'Call sound was interrupted. Enable the chime again and check this device’s volume.',
+          'Call sound was interrupted. Enable announcements again and check this device’s volume.',
         );
       }
     }
@@ -125,13 +150,19 @@ export function QueueDisplay() {
           aria-pressed={audio}
         >
           <Volume2 size={20} />
-          {enablingAudio ? 'Starting sound…' : audio ? 'Sound on · Disable' : 'Enable call chime'}
+          {enablingAudio
+            ? 'Starting announcements…'
+            : audio
+              ? 'Announcements on · Disable'
+              : 'Enable announcements'}
         </button>
       </header>
       {audioError && <ErrorNotice>{audioError}</ErrorNotice>}
+      {speechError && <ErrorNotice>{speechError}</ErrorNotice>}
       {audio && (
         <p className="form-help" role="status">
-          Call sound enabled. A sample chime played; check this device’s volume.
+          {speechEnabled ? 'Chime and spoken ticket announcements enabled.' : 'Call chime enabled.'}{' '}
+          A sample played; check this device’s volume.
         </p>
       )}
       {branches.error && <ErrorNotice>{branches.error}</ErrorNotice>}

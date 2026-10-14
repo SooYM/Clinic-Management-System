@@ -93,6 +93,6 @@ Synchronized handoffs include real MySQL stock/queue/invoice transactions and a 
 
 ### Waiting room call sound
 
-On `/display`, choose **Enable call chime** to unlock browser audio and play a short sample. Check the display device’s volume. The same audio context announces newly called ticket numbers and room changes after each 15-second refresh. Initial loading and branch switches establish a silent baseline. Removing tickets, sorting them, or moving the same call into consultation does not repeat the sound. **Sound on · Disable** stops audio; page closure releases the audio context. If browser sound is blocked or interrupted, the display shows a retry notice.
+On `/display`, choose **Enable announcements** to unlock browser audio and play a short sample. Check the display device’s volume. New calls chime, then speak the ticket and room after each 15-second refresh. Initial loading and branch switches establish a silent baseline. Removing tickets, sorting them, or moving the same call into consultation does not repeat the sound. **Announcements on · Disable** stops audio; page closure releases the audio context. If browser sound is blocked or interrupted, the display shows a retry notice.
 
 Audio validation checks first-call detection, room changes, silent removals and branch baselines, persistent context resume, oscillator scheduling, cancellation and cleanup. Scheduling confirms browser playback requests, not physical speaker audibility.

@@ -226,9 +226,13 @@ For a non-Malaysian patient, choose Others in Country of nationality and enter t
 
 ### Waiting room call sound
 
-On `/display`, choose **Enable call chime** to unlock browser audio and play a short sample. Check the display device’s volume. The same audio context announces newly called ticket numbers and room changes after each 15-second refresh. Initial loading and branch switches establish a silent baseline. Removing tickets, sorting them, or moving the same call into consultation does not repeat the sound. **Sound on · Disable** stops audio; page closure releases the audio context. If browser sound is blocked or interrupted, the display shows a retry notice.
+On `/display`, choose **Enable announcements** to unlock browser audio and play a short sample. Check the display device’s volume. New calls chime, then speak the ticket and room after each 15-second refresh. Initial loading and branch switches establish a silent baseline. Removing tickets, sorting them, or moving the same call into consultation does not repeat the sound. **Announcements on · Disable** stops audio; page closure releases the audio context. If browser sound is blocked or interrupted, the display shows a retry notice.
 
 
 ### Search suggestions
 
 Type part of a name, then click a matching result or use the arrow keys and Enter. The search box fills the selected full name and selects that record. Selecting a result does not save or submit the form.
+
+### Spoken ticket and room announcements
+
+Choose **Enable announcements** on the waiting-room display and check the spoken sample. Each new call chimes, then reads its ticket and destination room. For Q-001 and Room 2, it says “Ticket Q zero zero one, please proceed to Room 2.” Voice availability depends on the browser/device. If speech fails, turn announcements off and on to retry; the chime remains available. Changing branches or disabling announcements stops queued speech.
