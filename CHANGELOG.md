@@ -88,3 +88,5 @@ Removed deposit controls/APIs/new tender while preserving historical receipts. B
 Prominent patient-registration entry points and shared matching-result dropdowns added across patient, clinical, stock, prescription and loaded-list searches. Malaysian country fields show a greyed-out Malaysia box; foreign choices remain editable.
 
 Daily live queue resets at Malaysia midnight while retaining all clinical/history data; today's visit count includes terminal and expired rows. Temperature input and API validation now enforce28°C–40°C inclusive.
+
+Search suggestions now autofill the selected full label. Fixed waiting-room first-call sound and browser audio activation; added a sample chime, persistent audio context, silent branch baselines and recoverable sound errors.

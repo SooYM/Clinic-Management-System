@@ -314,3 +314,7 @@ New/edited consultation temperature entries must be finite numeric values betwee
 ## Custom nationality country
 
 Non-Malaysian Country of nationality includes Others. Choosing it requires a user-entered country name of 1–100 characters after trimming. Store countryCode=OTHER and countryName together; preserve the label when opening/editing a profile. A standard ISO country or Malaysian nationality clears the custom label. Omitted country fields in legacy updates retain an existing custom country; no missing historical nationality is guessed.
+
+## Search selection and display sound
+
+Selecting a search suggestion fills its full visible label and retains the chosen entity ID. Pointer and keyboard selection do not submit the form. Cancelling an unsaved clinical patient switch restores the prior search and preserves the draft. The public waiting-room display unlocks and resumes one reusable audio context from Enable call chime, plays a sample, and sounds for newly called tickets or changed rooms, including the first call after an empty queue. Initial/branch snapshots, reordering, removals and consultation-stage changes remain silent. Audio failures provide retry guidance.

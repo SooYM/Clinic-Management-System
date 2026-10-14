@@ -1031,6 +1031,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               onSelect={async (suggestion) => {
                 const nextPatient = patients.data?.find((row) => row.id === suggestion.id);
                 if (nextPatient && (await keepOrDiscardNote())) choosePatient(nextPatient);
+                else setPatientSearch(patientSearch);
               }}
               loading={patientSearch.trim() !== patientTerm || patients.refreshing}
               error={patients.error}

@@ -58,6 +58,7 @@ export function SearchBox({
   function choose(suggestion: SearchSuggestion) {
     setOpen(false);
     setActive(-1);
+    onChange(suggestion.label);
     onSelect(suggestion);
   }
   return (

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { CallChime, calledTickets, hasNewCall } from '../call-chime';
 import { Volume2, ShieldCheck } from 'lucide-react';
 import { api } from '../api';
 import {
@@ -31,7 +32,32 @@ export function QueueDisplay() {
     15000,
   );
   const [audio, setAudio] = useState(false);
-  const [lastCalls, setLastCalls] = useState('');
+  const [audioError, setAudioError] = useState('');
+  const [enablingAudio, setEnablingAudio] = useState(false);
+  const chime = useRef<CallChime>();
+  if (!chime.current) chime.current = new CallChime();
+  const lastCalls = useRef<Map<string, string> | null>(null);
+  useEffect(() => () => chime.current?.disable(), []);
+  async function toggleAudio() {
+    setAudioError('');
+    if (audio) {
+      chime.current!.disable();
+      setAudio(false);
+      return;
+    }
+    setEnablingAudio(true);
+    try {
+      setAudio(await chime.current!.enable());
+    } catch {
+      chime.current!.disable();
+      setAudio(false);
+      setAudioError(
+        'Call sound could not start. Check browser sound permissions and enable the chime again.',
+      );
+    } finally {
+      setEnablingAudio(false);
+    }
+  }
   const [ticketBranch, setTicketBranch] = useState<number>();
   useEffect(() => {
     if (resource.data) setTicketBranch(displayBranch);
@@ -47,33 +73,28 @@ export function QueueDisplay() {
   }, [branches.data, displayBranch]);
   function chooseBranch(id: number) {
     setDisplayBranch(id);
-    setLastCalls('');
+    lastCalls.current = null;
     const url = new URL(location.href);
     url.searchParams.set('branchId', String(id));
     history.replaceState(null, '', url);
   }
   useEffect(() => {
-    if (ticketBranch !== displayBranch) return;
-    const calls =
-      resource.data
-        ?.filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status))
-        ?.map((t) => t.ticketNumber)
-        .join(',') || '';
-    if (audio && calls && lastCalls && calls !== lastCalls) {
-      const audioContext = new AudioContext();
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      oscillator.connect(gain);
-      gain.connect(audioContext.destination);
-      oscillator.frequency.value = 660;
-      gain.gain.setValueAtTime(0.12, audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.7);
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.7);
-      oscillator.onended = () => void audioContext.close();
+    if (ticketBranch !== displayBranch || !resource.data || resource.error) return;
+    const calls = calledTickets(resource.data);
+    const announce = hasNewCall(lastCalls.current, calls);
+    lastCalls.current = calls;
+    if (audio && announce) {
+      try {
+        chime.current!.play();
+      } catch {
+        chime.current!.disable();
+        setAudio(false);
+        setAudioError(
+          'Call sound was interrupted. Enable the chime again and check this device’s volume.',
+        );
+      }
     }
-    setLastCalls(calls);
-  }, [resource.data, audio, ticketBranch, displayBranch]);
+  }, [resource.data, resource.error, audio, ticketBranch, displayBranch]);
   return (
     <main className="public-display">
       <header>
@@ -97,11 +118,22 @@ export function QueueDisplay() {
               ))}
           </select>
         </Field>
-        <button className="secondary" onClick={() => setAudio(!audio)}>
+        <button
+          className="secondary"
+          onClick={toggleAudio}
+          disabled={enablingAudio}
+          aria-pressed={audio}
+        >
           <Volume2 size={20} />
-          {audio ? 'Sound on' : 'Enable call chime'}
+          {enablingAudio ? 'Starting sound…' : audio ? 'Sound on · Disable' : 'Enable call chime'}
         </button>
       </header>
+      {audioError && <ErrorNotice>{audioError}</ErrorNotice>}
+      {audio && (
+        <p className="form-help" role="status">
+          Call sound enabled. A sample chime played; check this device’s volume.
+        </p>
+      )}
       {branches.error && <ErrorNotice>{branches.error}</ErrorNotice>}
       {branches.loading && <Loading />}
       {!branches.loading && !branches.error && !branches.data?.length && (

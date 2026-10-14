@@ -280,3 +280,11 @@ Full payment: disabled for zero invoice; exact cent total filled; chosen method/
 | Replace Others with ISO country or Malaysian/MY | countryName becomes NULL | Shared/demo + MySQL/HTTP |
 | Set SQL NULL country with nonnull name | Database consistency check rejects | Guarded MySQL |
 | Existing foreign record without country | Unknown remains supported for legacy input; no inferred country | Shared/MySQL regression |
+
+## Search autofill and call sound regressions
+
+- Patient/drug/loaded-list suggestion selection fills the full label, retains its ID and never submits surrounding forms.
+- Cancelled unsaved clinical selection preserves previous patient, query and note.
+- Enabling sound resumes a persistent context and schedules a sample; the first called ticket after an empty queue schedules another chime.
+- Reorder, removal, existing consultation status and initial/branch snapshots stay silent. New tickets and changed rooms sound.
+- Blocked audio shows retry guidance; disabling/unmount closes the context and pending enable cannot play after closure.

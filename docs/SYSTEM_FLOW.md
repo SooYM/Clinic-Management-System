@@ -220,3 +220,5 @@ Open `/display` → load active branches without sign-in → choose branch → l
 Today’s ten visits remain ten after completion or expiry → Malaysia midnight → previous-day rows leave the live queue/count → unfinished visits expire → fresh check-in starts Q-001 with a new numeric ID. Stored clinical, prescription and payment history remains available. Temperature entry → optional blank or numeric 28°C–40°C inclusive → save; outside range → reject before mutation.
 
 Non-Malaysian patient → Country of nationality → Others → enter country name → validate and confirm save → profile shows custom country. Choose an ISO country or Malaysian nationality → custom field clears → subsequent profile uses selected country. Legacy edits omitting country fields retain the saved custom label.
+
+Search text → matching suggestion → click or Arrow/Enter → full label in input and matching record selected, without saving. Unsaved clinical patient switch → Cancel → original patient, query and note preserved. Public display → Enable call chime → sample sound → new call/room → chime; disable/close → release audio context.

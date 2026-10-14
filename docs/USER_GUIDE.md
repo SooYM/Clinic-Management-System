@@ -222,3 +222,13 @@ Open `/display` on the clinic website; locally use `http://127.0.0.1:5173/displa
 ## Country not in the nationality list
 
 For a non-Malaysian patient, choose Others in Country of nationality and enter the country name. The name is required and supports up to100 characters. Profiles and later edits retain it. Choosing a listed country clears the custom name; Malaysian records use Malaysia internally. Nationality country remains separate from the phone calling code and postal address.
+
+
+### Waiting room call sound
+
+On `/display`, choose **Enable call chime** to unlock browser audio and play a short sample. Check the display device’s volume. The same audio context announces newly called ticket numbers and room changes after each 15-second refresh. Initial loading and branch switches establish a silent baseline. Removing tickets, sorting them, or moving the same call into consultation does not repeat the sound. **Sound on · Disable** stops audio; page closure releases the audio context. If browser sound is blocked or interrupted, the display shows a retry notice.
+
+
+### Search suggestions
+
+Type part of a name, then click a matching result or use the arrow keys and Enter. The search box fills the selected full name and selects that record. Selecting a result does not save or submit the form.
