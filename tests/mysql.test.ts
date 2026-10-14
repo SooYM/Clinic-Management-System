@@ -1986,7 +1986,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       expect((await http('/inventory')).status).toBe(403);
       const refs = (await (await http('/references/medications')).json()).data;
       expect(refs).toEqual(expect.arrayContaining([expect.objectContaining({ id: i.id })]));
-      expect(refs.find((r: any) => r.id === i.id)).not.toHaveProperty('stockQuantity');
+      expect(refs.find((r: any) => r.id === i.id)).toMatchObject({
+        stockQuantity: 3,
+        onHandQuantity: 3,
+        reservedQuantity: 0,
+      });
       expect(refs.find((r: any) => r.id === i.id)).not.toHaveProperty('batches');
       const banner = await (await http('/clinical/patients/' + p.id)).json();
       expect(banner.allergies).toEqual(['penicillin']);
@@ -4057,7 +4061,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ),
     ).toEqual([{ quantity: 2 }, { quantity: 3 }]);
   });
-  it('signs a no-prescription consultation into dispensary without auto-linking other manual charts', async () => {
+  it('signs a no-prescription consultation into payment without auto-linking other manual charts', async () => {
     const p = await patient(),
       roomId = fixtureId();
     await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
@@ -4082,7 +4086,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(signed.status).toBe('SIGNED');
     expect(
       (await rows('SELECT status,version FROM queue_tickets WHERE id=?', [ticket.id]))[0],
-    ).toMatchObject({ status: 'DISPENSARY_WAITING', version: 4 });
+    ).toMatchObject({ status: 'PAYMENT_WAITING', version: 4 });
   });
   it.each(['DISPENSARY_WAITING', 'PAYMENT_WAITING', 'COMPLETED', 'EXPIRED'])(
     'does not regress or resurrect %s linked visits when signing an existing draft',
@@ -4442,5 +4446,209 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(download.status).toBe(200);
     expect(download.headers.get('content-disposition')).toContain('attachment;');
     await download.arrayBuffer();
+  });
+
+  it('synchronizes medication stock references and automatic dispensing/payment handoffs with scoped permissions', async () => {
+    const p = await patient({ name: 'QA Handoff Patient' }),
+      drug = await item(),
+      roomId = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Automatic Handoff',
+    ]);
+    await service.receiveBatch(ctx, {
+      itemId: drug.id,
+      batchNumber: randomUUID(),
+      quantity: 20,
+      expiresOn: '2035-01-01',
+    });
+    await sql.query(
+      'INSERT INTO inventory_batches(tenant_id,branch_id,item_id,batch_number,quantity,expires_on) VALUES(?,?,?,?,?,?)',
+      [tenant, branch, drug.id, 'QA Expired', 50, '2020-01-01'],
+    );
+    await sql.query(
+      "INSERT INTO role_module_permissions(tenant_id,role,modules) VALUES(?,'DOCTOR',?) ON DUPLICATE KEY UPDATE modules=VALUES(modules)",
+      [tenant, JSON.stringify(['clinical'])],
+    );
+    const references = async () =>
+      (
+        await (
+          await settingsHttp('/references/medications?search=' + drug.sku, 'GET', undefined, {
+            Cookie: 'cms_session=' + doctorToken,
+          })
+        ).json()
+      ).data;
+    const suggestions = async () =>
+      (await (await settingsAdminHttp('/billing/suggestions')).json()).data;
+    try {
+      expect(await references()).toContainEqual(
+        expect.objectContaining({
+          id: drug.id,
+          onHandQuantity: 20,
+          reservedQuantity: 0,
+          stockQuantity: 20,
+        }),
+      );
+      expect(
+        (
+          await settingsHttp('/inventory', 'GET', undefined, {
+            Cookie: 'cms_session=' + doctorToken,
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await settingsHttp('/billing/suggestions', 'GET', undefined, {
+            Cookie: 'cms_session=' + doctorToken,
+          })
+        ).status,
+      ).toBe(403);
+      const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+      await service.transitionQueue(ctx, ticket.id, {
+        version: 1,
+        status: 'CALLED_TO_ROOM',
+        roomId,
+        practitionerId: doctor,
+      });
+      const signed = await encounter(p.id, [rx(drug.id, 3)], { queueTicketId: ticket.id });
+      expect(await references()).toContainEqual(
+        expect.objectContaining({
+          id: drug.id,
+          onHandQuantity: 20,
+          reservedQuantity: 3,
+          stockQuantity: 17,
+        }),
+      );
+      expect((await suggestions()).some((s: any) => s.encounterId === signed.id)).toBe(false);
+      await expect(
+        service.createInvoice(ctx, invoice(p.id, randomUUID(), { encounterId: signed.id })),
+      ).rejects.toMatchObject({ code: 'CHECKOUT_NOT_READY' });
+      const key = randomUUID();
+      await service.dispense(ctx, { encounterId: signed.id, idempotencyKey: key });
+      await service.dispense(ctx, { encounterId: signed.id, idempotencyKey: key });
+      expect(
+        (await rows('SELECT status,version FROM queue_tickets WHERE id=?', [ticket.id]))[0],
+      ).toMatchObject({ status: 'PAYMENT_WAITING', version: 5 });
+      expect(await references()).toContainEqual(
+        expect.objectContaining({
+          id: drug.id,
+          onHandQuantity: 17,
+          reservedQuantity: 0,
+          stockQuantity: 17,
+        }),
+      );
+      expect(await suggestions()).toContainEqual(
+        expect.objectContaining({
+          encounterId: signed.id,
+          patientId: p.id,
+          patientName: p.name,
+          prescriptions: [
+            expect.objectContaining({ itemId: drug.id, itemName: drug.name, unitPriceCents: 100 }),
+          ],
+        }),
+      );
+      expect(
+        (await (await settingsAdminHttp('/dispensary/encounters')).json()).data.some(
+          (s: any) => s.id === signed.id,
+        ),
+      ).toBe(false);
+      const bill = invoice(p.id, randomUUID(), { encounterId: signed.id });
+      const results = await Promise.all([
+        service.createInvoice(ctx, bill),
+        service.createInvoice(ctx, bill),
+      ]);
+      expect(results[0].id).toBe(results[1].id);
+      expect(results[0].encounterId).toBe(signed.id);
+      expect(
+        (
+          await rows('SELECT status,version,completed_at FROM queue_tickets WHERE id=?', [
+            ticket.id,
+          ])
+        )[0],
+      ).toMatchObject({ status: 'COMPLETED', version: 6, completed_at: expect.any(Date) });
+      expect((await suggestions()).some((s: any) => s.encounterId === signed.id)).toBe(false);
+      await expect(
+        service.createInvoice(ctx, invoice(p.id, randomUUID(), { encounterId: signed.id })),
+      ).rejects.toMatchObject({ code: 'ALREADY_BILLED' });
+    } finally {
+      await sql.query("DELETE FROM role_module_permissions WHERE tenant_id=? AND role='DOCTOR'", [
+        tenant,
+      ]);
+    }
+  });
+  it('offers signed no-medicine checkout, rejects mismatched/foreign/draft charts and serializes competing receipts', async () => {
+    const p = await patient(),
+      other = await patient(),
+      chart = await encounter(p.id),
+      draft = await encounter(p.id, [], { status: 'DRAFT' });
+    const suggestions = (await (await settingsAdminHttp('/billing/suggestions')).json()).data;
+    expect(suggestions).toContainEqual(
+      expect.objectContaining({
+        encounterId: chart.id,
+        patientId: p.id,
+        prescriptions: [],
+        dispensedAt: null,
+      }),
+    );
+    expect(suggestions.some((s: any) => s.encounterId === draft.id)).toBe(false);
+    await expect(
+      service.createInvoice(ctx, invoice(other.id, randomUUID(), { encounterId: chart.id })),
+    ).rejects.toMatchObject({ code: 'CHECKOUT_PATIENT_MISMATCH' });
+    await expect(
+      service.createInvoice(otherCtx, invoice(p.id, randomUUID(), { encounterId: chart.id })),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      service.createInvoice(ctx, invoice(p.id, randomUUID(), { encounterId: draft.id })),
+    ).rejects.toMatchObject({ code: 'CHECKOUT_NOT_READY' });
+    const outcomes = await Promise.allSettled([
+      service.createInvoice(ctx, invoice(p.id, randomUUID(), { encounterId: chart.id })),
+      service.createInvoice(ctx, invoice(p.id, randomUUID(), { encounterId: chart.id })),
+    ]);
+    expect(outcomes.filter((s) => s.status === 'fulfilled')).toHaveLength(1);
+    expect(
+      (outcomes.find((s) => s.status === 'rejected') as PromiseRejectedResult).reason,
+    ).toMatchObject({ code: 'ALREADY_BILLED' });
+  });
+  it('keeps expired queue tickets expired while dispensing and checking out a signed consultation', async () => {
+    const p = await patient(),
+      drug = await item(),
+      roomId = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Expired Payment',
+    ]);
+    await service.receiveBatch(ctx, {
+      itemId: drug.id,
+      batchNumber: randomUUID(),
+      quantity: 10,
+      expiresOn: '2035-01-01',
+    });
+    const ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    await service.transitionQueue(ctx, ticket.id, {
+      version: 1,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    });
+    const chart = await encounter(p.id, [rx(drug.id)], { queueTicketId: ticket.id });
+    await sql.query(
+      'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR) WHERE id=?',
+      [ticket.id],
+    );
+    await service.list(ctx, 'queue');
+    const before = (
+      await rows('SELECT status,version,expired_at FROM queue_tickets WHERE id=?', [ticket.id])
+    )[0];
+    await service.dispense(ctx, { encounterId: chart.id, idempotencyKey: randomUUID() });
+    await service.createInvoice(ctx, invoice(p.id, randomUUID(), { encounterId: chart.id }));
+    expect(
+      (
+        await rows('SELECT status,version,expired_at FROM queue_tickets WHERE id=?', [ticket.id])
+      )[0],
+    ).toEqual(before);
   });
 });

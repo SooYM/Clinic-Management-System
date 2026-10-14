@@ -94,7 +94,7 @@ const sectionGuides: Record<string, [string, string, string][]> = {
     [
       'dispense',
       'Dispense medicines',
-      'Review a signed prescription and patient allergies before dispensing eligible batches. Display filters never change the entire prescription being dispensed.',
+      'This default section suggests patients after their GP signs. Review medicines and allergies, then confirm dispensing to send the visit to billing.',
     ],
     [
       'history',
@@ -111,7 +111,7 @@ const sectionGuides: Record<string, [string, string, string][]> = {
     [
       'checkout',
       'Patient checkout',
-      'Select patient and GP, add itemised charges, and record payment methods. Split payments must exactly equal the total.',
+      'This default section suggests patients after dispensing, or signing without medicines. Prepare checkout fills patient, GP and medicine charges. Review charges and confirm payment.',
     ],
     [
       'deposits',
@@ -307,7 +307,7 @@ const tours: Record<string, Step[]> = {
       text: 'Choose a consumable or retail item, quantity and reason to record physical usage. Medication must use signed-prescription dispensing; the guide never submits usage.',
     },
     {
-      target: panel('dispense-a-signed-prescription'),
+      target: panel('patients-ready-for-dispensing'),
       title: 'Review pending prescriptions',
       text: 'Only signed prescriptions not already dispensed appear here. Prescription history and activity below includes completed work and clinic stock events. The clinical medication-taking log separately records patient reports or staff observations without changing stock. Empty work is legitimate.',
     },

@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-020, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-021, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -294,13 +294,17 @@ CREATE TABLE `invoices` (
   `request_hash` varchar(2000) NOT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `receipt_snapshot` json DEFAULT NULL,
+  `encounter_id` bigint unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `invoice_number` (`invoice_number`),
   UNIQUE KEY `branch_id` (`branch_id`,`idempotency_key`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
+  UNIQUE KEY `invoices_encounter_unique` (`encounter_id`),
   KEY `invoices_branch_history` (`tenant_id`,`branch_id`,`created_at`),
   KEY `invoices_ibfk_2` (`tenant_id`,`patient_id`),
   KEY `invoices_ibfk_3` (`tenant_id`,`practitioner_id`),
+  KEY `invoices_encounter_scope` (`tenant_id`,`branch_id`,`encounter_id`),
+  CONSTRAINT `invoices_encounter_scope` FOREIGN KEY (`tenant_id`, `branch_id`, `encounter_id`) REFERENCES `encounters` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `invoices_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `invoices_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
   CONSTRAINT `invoices_ibfk_3` FOREIGN KEY (`tenant_id`, `practitioner_id`) REFERENCES `users` (`tenant_id`, `id`),

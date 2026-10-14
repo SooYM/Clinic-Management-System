@@ -260,11 +260,22 @@ function MedicinePicker({
   const term = useDebouncedValue(search.trim());
   const resource = useResource<InventoryItem[]>(
     '/references/medications?search=' + encodeURIComponent(term),
+    15000,
   );
   const [selected, setSelected] = useState<InventoryItem>();
   const choices = (resource.data || []).filter((item) => item.active !== false);
+  const visibleSelection = choices.find((item) => item.id === selected?.id);
+  const selectedStock = useResource<InventoryItem[]>(
+    selected && !visibleSelection
+      ? '/references/medications?search=' + encodeURIComponent(selected.name)
+      : '',
+    15000,
+  );
+  const currentSelection =
+    visibleSelection || selectedStock.data?.find((item) => item.id === selected?.id);
+  const stockError = visibleSelection ? resource.error : selectedStock.error;
   const options =
-    selected && !choices.some((item) => item.id === selected.id) ? [selected, ...choices] : choices;
+    selected && !visibleSelection ? [currentSelection || selected, ...choices] : choices;
   return (
     <>
       <Field label="Search drug catalog">
@@ -289,10 +300,20 @@ function MedicinePicker({
           {options.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
+              {!resource.error && typeof item.stockQuantity === 'number'
+                ? ` · ${item.stockQuantity} ${item.unit} available`
+                : ''}
             </option>
           ))}
         </select>
       </Field>
+      {selected && (
+        <p className="form-help" role="status">
+          {stockError || typeof currentSelection?.stockQuantity !== 'number'
+            ? 'Current stock unavailable. Refresh medicines before signing.'
+            : `${currentSelection.stockQuantity} ${currentSelection.unit} available · ${currentSelection.reservedQuantity ?? 0} reserved · ${currentSelection.onHandQuantity ?? 0} eligible in stock. Stock refreshes automatically; signing checks and reserves it.`}
+        </p>
+      )}
       {resource.loading && (
         <p className="form-help" role="status">
           Loading medicines…
@@ -503,26 +524,15 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
   const confirm = useConfirm();
   const assignedPatients = useResource<QueueSuggestion[]>(
     role === 'DOCTOR' ? '/clinical/queue-suggestions' : '',
+    15000,
   );
-  useEffect(() => {
-    if (role !== 'DOCTOR') return;
-    const refresh = () => {
-      if (document.visibilityState === 'visible') assignedPatients.refresh();
-    };
-    const timer = window.setInterval(refresh, 15000);
-    window.addEventListener('focus', refresh);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-    };
-  }, [role]);
   const [section, setSection] = useState('consultations');
   const [patientSearch, setPatientSearch] = useState('');
   const patientTerm = useDebouncedValue(patientSearch.trim());
   const patients = useResource<Patient[]>(
     `/references/patients?search=${encodeURIComponent(patientTerm)}`,
   );
-  const items = useResource<InventoryItem[]>('/references/medications?includeInactive=1');
+  const items = useResource<InventoryItem[]>('/references/medications?includeInactive=1', 15000);
   const labPanels = useResource<CatalogEntry[]>('/references/catalogs?kind=LAB_PANEL');
   const specimenTypes = useResource<CatalogEntry[]>('/references/catalogs?kind=SPECIMEN_TYPE');
   const destinations = useResource<CatalogEntry[]>(
@@ -822,10 +832,13 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 <option>AESTHETIC</option>
               </select>
             </Field>
-            <Field label="Note status">
+            <Field
+              label="Note status"
+              hint="Signing reserves medicines and sends this patient to dispensary, or directly to billing when no medicines are prescribed."
+            >
               <select name="status" defaultValue={selected?.status || 'DRAFT'}>
-                <option>DRAFT</option>
-                <option>SIGNED</option>
+                <option value="DRAFT">Draft · keep editing</option>
+                <option value="SIGNED">Signed · complete consultation</option>
               </select>
             </Field>
             <BloodPressureField initial={selected?.vitals?.bloodPressure} />
@@ -871,14 +884,20 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 No recorded medicines match this search. The saved prescription remains unchanged.
               </p>
             )}
-            {matchingRecordedPrescriptions.map((rx, index) => (
-              <p key={index} className="form-help">
-                Existing:{' '}
-                {rx.itemName || items.data?.find((i) => i.id === rx.itemId)?.name || rx.itemId} ·{' '}
-                {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
-                {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.dosage} · {rx.durationDays} days
-              </p>
-            ))}
+            {matchingRecordedPrescriptions.map((rx, index) => {
+              const medicine = items.data?.find((item) => item.id === rx.itemId);
+              return (
+                <p key={index} className="form-help">
+                  Existing: {rx.itemName || medicine?.name || rx.itemId} · {rx.quantity} units ·{' '}
+                  {rx.frequencyPerDay || 1} times daily · {humanize(rx.mealTiming || 'ANY_TIME')} ·{' '}
+                  {rx.dosage} · {rx.durationDays} days
+                  <br />
+                  {items.error || typeof medicine?.stockQuantity !== 'number'
+                    ? 'Live stock unavailable. Refresh before prescribing.'
+                    : `Live stock: ${medicine.stockQuantity} ${medicine.unit} available · ${medicine.reservedQuantity ?? 0} reserved · ${medicine.onHandQuantity ?? 0} eligible in stock.`}
+                </p>
+              );
+            })}
             <PrescriptionRows
               recordedCount={selected?.prescriptions?.length || 0}
               disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
@@ -892,6 +911,12 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
             </p>
           </fieldset>
         </MutationForm>
+        {selected?.status === 'SIGNED' && !!selected.prescriptions.length && (
+          <p className="form-help">
+            Signing reserves medicines and sends this consultation to Dispensary → Dispense
+            medicines. Available stock excludes medicines reserved for patients.
+          </p>
+        )}
       </Panel>
     </div>
   );
@@ -918,8 +943,15 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         >
           <p className="form-help">
             Patients called to your consultation room appear here. Select one to prepare a note;
-            nothing is saved until you confirm.
+            assignments update automatically. Nothing is saved until you confirm.
           </p>
+          {!!assignedPatients.data?.length && (
+            <p className="form-help" role="status" aria-live="polite">
+              {assignedPatients.data.length}{' '}
+              {assignedPatients.data.length === 1 ? 'patient ready' : 'patients ready'} for
+              consultation.
+            </p>
+          )}
           {assignedPatients.loading && <Loading />}
           {assignedPatients.error && <ErrorNotice>{assignedPatients.error}</ErrorNotice>}
           {suggestionError && <ErrorNotice>{suggestionError}</ErrorNotice>}

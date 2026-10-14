@@ -736,7 +736,9 @@ export class DemoClinic {
     )
       return;
     const prior = ticket.status;
-    ticket.status = new QueueTicket(ticket.status as QueueStatus).transition('DISPENSARY_WAITING');
+    ticket.status = new QueueTicket(ticket.status as QueueStatus).transition(
+      encounter.prescriptions.length ? 'DISPENSARY_WAITING' : 'PAYMENT_WAITING',
+    );
     ticket.version++;
     this.add(
       'audit',
@@ -764,6 +766,40 @@ export class DemoClinic {
             .reduce((sum, r) => sum + r.quantity, 0),
         expires_on: b.expiresOn,
       }));
+  }
+  private advanceVisit(
+    encounter: Row,
+    branch: number,
+    actorName: string,
+    from: QueueStatus,
+    to: QueueStatus,
+    action: string,
+  ) {
+    const ticket = this.scoped('queue', branch).find((row) => row.id === encounter.queueTicketId);
+    if (
+      !ticket ||
+      !activeQueue(ticket) ||
+      ticket.status !== from ||
+      ticket.patientId !== encounter.patientId ||
+      ticket.practitionerId !== encounter.practitionerId
+    )
+      return;
+    ticket.status = new QueueTicket(ticket.status as QueueStatus).transition(to);
+    ticket.version++;
+    if (to === 'COMPLETED') ticket.completedAt = now();
+    this.add(
+      'audit',
+      {
+        actorName,
+        action,
+        entityType: 'queue',
+        entityId: ticket.id,
+        requestId: 'browser-demo',
+        from,
+        to,
+      },
+      branch,
+    );
   }
   private notice(patient: Row, template: string, branch: number) {
     if (patient.notificationConsent)
@@ -856,7 +892,7 @@ export class DemoClinic {
                   ? 'clinical'
                   : /^\/(inventory|dispensary|dispenses)(\/|$)/.test(route)
                     ? 'inventory'
-                    : /^\/(invoices|deposits)(\/|$)/.test(route)
+                    : /^\/(invoices|deposits|billing)(\/|$)/.test(route)
                       ? 'billing'
                       : /^\/(notifications|reports)(\/|$)/.test(route)
                         ? 'reports'
@@ -1084,7 +1120,7 @@ export class DemoClinic {
       if (!modules.some((m) => ['clinical', 'inventory'].includes(m)))
         fail('Medication selector access denied.', 403);
       return {
-        data: this.scoped('inventory', branch)
+        data: this.inventory(branch)
           .filter(
             (i) =>
               [i.name, i.sku, i.ingredient]
@@ -1094,15 +1130,31 @@ export class DemoClinic {
               i.category === 'MEDICATION' &&
               (i.active !== false || url.searchParams.get('includeInactive') === '1'),
           )
-          .map(({ id, name, ingredient, unit, category, priceCents, active }) => ({
-            active,
-            id,
-            name,
-            ingredient,
-            unit,
-            category,
-            priceCents,
-          })),
+          .map(
+            ({
+              id,
+              name,
+              ingredient,
+              unit,
+              category,
+              priceCents,
+              active,
+              onHandQuantity,
+              reservedQuantity,
+              stockQuantity,
+            }) => ({
+              active,
+              id,
+              name,
+              ingredient,
+              unit,
+              category,
+              priceCents,
+              onHandQuantity,
+              reservedQuantity,
+              stockQuantity,
+            }),
+          ),
       };
     }
     if (route.startsWith('/references/postcodes/')) {
@@ -1780,11 +1832,53 @@ export class DemoClinic {
           if (original) original.status = 'FULFILLED';
         }
       }
-      return this.add(
+      const dispense = this.add(
         'dispenses',
         { ...v, patientId: e.patientId, actorId: user.id, allocations: usedAllocations },
         branch,
       );
+      this.advanceVisit(e, branch, user.name, 'DISPENSARY_WAITING', 'PAYMENT_WAITING', 'DISPENSE');
+      return dispense;
+    }
+    if (route === '/billing/suggestions' && method === 'GET') {
+      const search = (url.searchParams.get('search') || '').toLowerCase();
+      return {
+        data: this.scoped('encounters', branch)
+          .filter(
+            (e) =>
+              !e.deletedAt &&
+              e.status === 'SIGNED' &&
+              (!e.prescriptions.length ||
+                this.scoped('dispenses', branch).some((d) => d.encounterId === e.id)) &&
+              !this.scoped('invoices', branch).some((i) => i.encounterId === e.id),
+          )
+          .map((e) => {
+            const patient = this.record('patients', e.patientId, branch);
+            const dispense = this.scoped('dispenses', branch).find((d) => d.encounterId === e.id);
+            return {
+              id: e.id,
+              encounterId: e.id,
+              patientId: e.patientId,
+              patientNumber: e.patientId,
+              patientName: patient.name,
+              practitionerId: e.practitionerId,
+              practitionerName: this.state.rows.users.find((u) => u.id === e.practitionerId)?.name,
+              queueTicketId: e.queueTicketId || null,
+              signedAt: e.signedAt,
+              dispensedAt: dispense?.createdAt || null,
+              prescriptions: e.prescriptions.map((rx: Row) => ({
+                ...rx,
+                itemName: rx.itemName || this.record('inventory', rx.itemId, branch).name,
+                unitPriceCents: this.record('inventory', rx.itemId, branch).priceCents,
+              })),
+            };
+          })
+          .filter((e) =>
+            `${e.patientId} ${e.patientName} ${e.encounterId} ${e.practitionerName}`
+              .toLowerCase()
+              .includes(search),
+          ),
+      };
     }
     if (route === '/deposits' && method === 'POST') {
       const v = schemas.deposit.parse(body);
@@ -1823,6 +1917,24 @@ export class DemoClinic {
       const patient = this.record('patients', v.patientId, branch),
         clinicBranch = this.state.rows.branches.find((b) => b.id === branch)!;
       this.doctor(v.practitionerId, branch);
+      const encounter = v.encounterId
+        ? this.record('encounters', v.encounterId, branch)
+        : undefined;
+      if (encounter) {
+        if (
+          encounter.status !== 'SIGNED' ||
+          encounter.patientId !== v.patientId ||
+          encounter.practitionerId !== v.practitionerId
+        )
+          fail('Choose a signed consultation for this patient and GP.', 409);
+        if (
+          encounter.prescriptions.length &&
+          !this.scoped('dispenses', branch).some((d) => d.encounterId === encounter.id)
+        )
+          fail('Dispense prescribed medicines before checkout.', 409);
+        if (this.scoped('invoices', branch).some((i) => i.encounterId === encounter.id))
+          fail('Consultation already checked out.', 409);
+      }
       const total = v.lines.reduce(
         (sum, l) => sum + new Money(l.unitPriceCents).multiply(l.quantity).cents,
         0,
@@ -1856,6 +1968,8 @@ export class DemoClinic {
         branch,
       );
       invoice.invoiceNumber = 'DEMO-INV-' + invoice.id;
+      if (encounter)
+        this.advanceVisit(encounter, branch, user.name, 'PAYMENT_WAITING', 'COMPLETED', 'CHECKOUT');
       if (used)
         this.add(
           'deposits',

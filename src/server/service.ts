@@ -738,14 +738,15 @@ export class ClinicService {
           )
         ).rows[0];
         if (linked) {
-          new QueueTicket('IN_CONSULTATION').transition('DISPENSARY_WAITING');
-          await db.query(
-            "UPDATE queue_tickets SET status='DISPENSARY_WAITING',version=version+1 WHERE id=$1",
-            [linked.id],
-          );
+          const next = input.prescriptions.length ? 'DISPENSARY_WAITING' : 'PAYMENT_WAITING';
+          new QueueTicket('IN_CONSULTATION').transition(next);
+          await db.query('UPDATE queue_tickets SET status=$2,version=version+1 WHERE id=$1', [
+            linked.id,
+            next,
+          ]);
           await this.audit(db, ctx, 'TRANSITION', 'queue', linked.id, {
             from: 'IN_CONSULTATION',
-            to: 'DISPENSARY_WAITING',
+            to: next,
           });
         }
       }
@@ -985,8 +986,38 @@ export class ClinicService {
       return camel(usage);
     });
   }
+  private async advanceVisit(
+    db: Database,
+    ctx: Context,
+    encounter: any,
+    from: QueueStatus,
+    to: QueueStatus,
+  ) {
+    if (!encounter.queue_ticket_id) return;
+    const ticket = (
+      await db.query(
+        'SELECT id FROM queue_tickets WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND patient_id=$4 AND practitioner_id=$5 AND status=$6 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) FOR UPDATE',
+        [
+          encounter.queue_ticket_id,
+          ctx.actor.tenantId,
+          ctx.branchId,
+          encounter.patient_id,
+          encounter.practitioner_id,
+          from,
+        ],
+      )
+    ).rows[0];
+    if (!ticket) return;
+    new QueueTicket(from).transition(to);
+    await db.query(
+      "UPDATE queue_tickets SET status=$2,version=version+1,completed_at=CASE WHEN $2='COMPLETED' THEN now() ELSE completed_at END WHERE id=$1",
+      [ticket.id, to],
+    );
+    await this.audit(db, ctx, 'TRANSITION', 'queue', ticket.id, { from, to });
+  }
   async dispense(ctx: Context, input: any) {
     return this.transact(async (db) => {
+      await lock(db, [`queue-lifecycle:${ctx.actor.tenantId}:${ctx.branchId}`]);
       await lock(db, [`dispense:${ctx.branchId}:${input.idempotencyKey}`]);
       const prior = await db.query(
         `SELECT * FROM dispenses WHERE branch_id=$1 AND idempotency_key=$2`,
@@ -1064,6 +1095,7 @@ export class ClinicService {
             ]);
         }
       }
+      await this.advanceVisit(db, ctx, e, 'DISPENSARY_WAITING', 'PAYMENT_WAITING');
       await this.audit(db, ctx, 'DISPENSE', 'dispense', record.rows[0].id);
       return { ...camel(record.rows[0]), allocations };
     });
@@ -1155,6 +1187,8 @@ export class ClinicService {
   async createInvoice(ctx: Context, input: any) {
     const requestHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     return this.transact(async (db) => {
+      if (input.encounterId)
+        await lock(db, [`queue-lifecycle:${ctx.actor.tenantId}:${ctx.branchId}`]);
       await lock(db, [`invoice:${ctx.branchId}:${input.idempotencyKey}`]);
       const prior = await db.query(
         `SELECT * FROM invoices WHERE branch_id=$1 AND idempotency_key=$2`,
@@ -1168,6 +1202,44 @@ export class ClinicService {
             409,
           );
         return camel(prior.rows[0]);
+      }
+      let checkoutEncounter: any;
+      if (input.encounterId) {
+        checkoutEncounter = (
+          await db.query(
+            'SELECT * FROM encounters WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND deleted_at IS NULL FOR UPDATE',
+            [input.encounterId, ctx.actor.tenantId, ctx.branchId],
+          )
+        ).rows[0];
+        if (!checkoutEncounter) throw missing();
+        if (
+          checkoutEncounter.patient_id !== input.patientId ||
+          checkoutEncounter.practitioner_id !== input.practitionerId
+        )
+          throw new DomainError(
+            'CHECKOUT_PATIENT_MISMATCH',
+            'Checkout must use the consultation patient and practitioner.',
+            409,
+          );
+        if (
+          checkoutEncounter.status !== 'SIGNED' ||
+          (checkoutEncounter.prescriptions.length &&
+            !(
+              await db.query('SELECT id FROM dispenses WHERE encounter_id=$1', [
+                checkoutEncounter.id,
+              ])
+            ).rowCount)
+        )
+          throw new DomainError(
+            'CHECKOUT_NOT_READY',
+            'Sign consultation and dispense its medicines before checkout.',
+            409,
+          );
+        if (
+          (await db.query('SELECT id FROM invoices WHERE encounter_id=$1', [checkoutEncounter.id]))
+            .rowCount
+        )
+          throw new DomainError('ALREADY_BILLED', 'Consultation already has a receipt.', 409);
       }
       const patient = await this.patient(db, ctx, input.patientId);
       await this.practitioner(db, ctx, input.practitionerId);
@@ -1211,7 +1283,7 @@ export class ClinicService {
           throw new DomainError('INSUFFICIENT_DEPOSIT', 'Patient deposit balance is insufficient.');
       }
       const { rows } = await db.query(
-        `INSERT INTO invoices(tenant_id,branch_id,patient_id,practitioner_id,invoice_number,\`lines\`,total_cents,idempotency_key,request_hash,receipt_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        `INSERT INTO invoices(tenant_id,branch_id,patient_id,practitioner_id,invoice_number,\`lines\`,total_cents,idempotency_key,request_hash,receipt_snapshot,encounter_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
         [
           ctx.actor.tenantId,
           ctx.branchId,
@@ -1223,6 +1295,7 @@ export class ClinicService {
           input.idempotencyKey,
           requestHash,
           JSON.stringify(receiptSnapshot),
+          input.encounterId || null,
         ],
       );
       for (const payment of input.payments)
@@ -1242,6 +1315,8 @@ export class ClinicService {
           `INSERT INTO patient_deposits(tenant_id,branch_id,patient_id,amount_cents,reference) VALUES($1,$2,$3,$4,$5)`,
           [ctx.actor.tenantId, ctx.branchId, input.patientId, -depositUsed, rows[0].invoice_number],
         );
+      if (checkoutEncounter)
+        await this.advanceVisit(db, ctx, checkoutEncounter, 'PAYMENT_WAITING', 'COMPLETED');
       await this.audit(db, ctx, 'CHECKOUT', 'invoice', rows[0].id);
       return camel(rows[0]);
     });

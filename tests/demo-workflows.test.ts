@@ -179,7 +179,7 @@ describe('demo draft consultation removal', () => {
   });
 });
 describe('demo signed consultation queue handoff', () => {
-  it('moves a linked signed consultation with no medicines to dispensary waiting', async () => {
+  it('moves a linked signed consultation with no medicines directly to payment waiting', async () => {
     const { clinic } = await ready();
     const ticket = await calledPatient(clinic);
     await clinic.request('/encounters', 'POST', {
@@ -191,7 +191,7 @@ describe('demo signed consultation queue handoff', () => {
     });
     expect(
       (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id).status,
-    ).toBe('DISPENSARY_WAITING');
+    ).toBe('PAYMENT_WAITING');
   });
   it.each(['create', 'draft'])(
     'moves a %s signed multi-medicine consultation to dispensing after all holds succeed',

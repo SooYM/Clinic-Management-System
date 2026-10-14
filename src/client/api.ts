@@ -47,6 +47,7 @@ class ClinicApi {
         const payload = await (await this.demoStore()).request(path, method, body, this.branch);
         if (signal?.aborted) throw new DOMException('Request cancelled.', 'AbortError');
         if (payload.csrfToken) this.csrf = payload.csrfToken;
+        if (method !== 'GET') window.dispatchEvent(new Event('clinic:workflow-updated'));
         return (unwrap && Array.isArray(payload.data) ? payload.data : payload) as T;
       } catch (error) {
         if (error instanceof DOMException) throw error;
@@ -92,6 +93,7 @@ class ClinicApi {
       );
     }
     if (payload.csrfToken) this.csrf = payload.csrfToken;
+    if (method !== 'GET') window.dispatchEvent(new Event('clinic:workflow-updated'));
     return (unwrap && Array.isArray(payload.data) ? payload.data : payload) as T;
   }
   get<T>(path: string, signal?: AbortSignal) {

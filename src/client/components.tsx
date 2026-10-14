@@ -32,12 +32,28 @@ export function useDebouncedValue<T>(value: T, delay = 300) {
   }, [value, delay]);
   return settled;
 }
-export function useResource<T>(path: string) {
+export function useResource<T>(path: string, refreshInterval = 0) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const loaded = useRef(false);
+  useEffect(() => {
+    if (!path || !refreshInterval) return;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') setRevision((v) => v + 1);
+    };
+    const timer = window.setInterval(refresh, refreshInterval);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('clinic:workflow-updated', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('clinic:workflow-updated', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [path, refreshInterval]);
   useEffect(() => {
     let active = true;
     if (!path) {

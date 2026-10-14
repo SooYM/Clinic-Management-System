@@ -75,10 +75,23 @@ export function referenceRouter() {
       const search = z.string().max(200).default('').parse(req.query.search);
       const includeInactive = z.enum(['1']).optional().parse(req.query.includeInactive);
       const { rows } = await pool.query(
-        "SELECT id,name,ingredient,unit,category,price_cents,active,version FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND category='MEDICATION' AND ($4=1 OR active=1) AND (name LIKE $3 OR sku LIKE $3 OR ingredient LIKE $3) ORDER BY name LIMIT 200",
+        `SELECT i.id,i.name,i.ingredient,i.unit,i.category,i.price_cents,i.active,i.version,
+          (SELECT COALESCE(SUM(b.quantity),0) FROM inventory_batches b WHERE b.tenant_id=i.tenant_id AND b.branch_id=i.branch_id AND b.item_id=i.id AND b.expires_on>DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))) on_hand_quantity,
+          (SELECT COALESCE(SUM(r.quantity),0) FROM prescription_reservations r JOIN inventory_batches b ON b.id=r.batch_id AND b.item_id=r.item_id AND b.tenant_id=r.tenant_id AND b.branch_id=r.branch_id WHERE r.tenant_id=i.tenant_id AND r.branch_id=i.branch_id AND r.item_id=i.id AND r.consumed_at IS NULL AND b.expires_on>DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))) reserved_quantity
+          FROM inventory_items i WHERE i.tenant_id=$1 AND i.branch_id=$2 AND i.category='MEDICATION' AND ($4=1 OR i.active=1) AND (i.name LIKE $3 OR i.sku LIKE $3 OR i.ingredient LIKE $3) ORDER BY i.id LIMIT 200`,
         [req.context.actor.tenantId, req.context.branchId, `%${search}%`, includeInactive ? 1 : 0],
       );
-      res.json({ data: camel(rows.map((row) => ({ ...row, active: Boolean(row.active) }))) });
+      res.json({
+        data: camel(
+          rows.map((row) => ({
+            ...row,
+            active: Boolean(row.active),
+            on_hand_quantity: Number(row.on_hand_quantity),
+            reserved_quantity: Number(row.reserved_quantity),
+            stock_quantity: Number(row.on_hand_quantity) - Number(row.reserved_quantity),
+          })),
+        ),
+      });
     }),
   );
   router.get(
@@ -129,6 +142,44 @@ export function referenceRouter() {
           mealTiming: rx.mealTiming || 'ANY_TIME',
         }));
       await audit(req, 'READ_DISPENSARY', 'encounter', null, rows.length);
+      res.json({ data: camel(rows) });
+    }),
+  );
+  router.get(
+    '/billing/suggestions',
+    route(async (req, res) => {
+      anyModule(req, ['billing']);
+      const search = z.string().max(200).default('').parse(req.query.search);
+      const { rows } = await pool.query(
+        `SELECT e.id,e.id encounter_id,e.patient_id,p.id patient_number,p.name patient_name,e.practitioner_id,u.name practitioner_name,e.queue_ticket_id,e.signed_at,d.created_at dispensed_at,e.prescriptions
+         FROM encounters e JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id
+         JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id LEFT JOIN dispenses d ON d.encounter_id=e.id
+         WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.deleted_at IS NULL AND e.status='SIGNED'
+           AND (JSON_LENGTH(e.prescriptions)=0 OR d.id IS NOT NULL)
+           AND NOT EXISTS(SELECT 1 FROM invoices i WHERE i.encounter_id=e.id)
+           AND (p.name LIKE $3 OR CAST(p.id AS CHAR) LIKE $3)
+         ORDER BY COALESCE(d.created_at,e.signed_at),e.id LIMIT 200`,
+        [req.context.actor.tenantId, req.context.branchId, `%${search}%`],
+      );
+      const itemIds = [
+        ...new Set(rows.flatMap((row) => row.prescriptions.map((rx: any) => rx.itemId))),
+      ];
+      const items = itemIds.length
+        ? (
+            await pool.query(
+              'SELECT id,name,price_cents FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND id IN ($3)',
+              [req.context.actor.tenantId, req.context.branchId, itemIds],
+            )
+          ).rows
+        : [];
+      const drugs = new Map(items.map((item) => [item.id, item]));
+      for (const row of rows)
+        row.prescriptions = row.prescriptions.map((rx: any) => ({
+          ...rx,
+          itemName: rx.itemName || drugs.get(rx.itemId)?.name || 'Medication',
+          unitPriceCents: Number(drugs.get(rx.itemId)?.price_cents || 0),
+        }));
+      await audit(req, 'READ_BILLING_SUGGESTIONS', 'encounter', null, rows.length);
       res.json({ data: camel(rows) });
     }),
   );

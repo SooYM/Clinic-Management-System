@@ -54,7 +54,7 @@ Open **Appointments → Book appointment**. Search for the patient instead of sc
 
 Patient choices follow ascending patient IDs. Booking dates must be today or later in Malaysia time; an earlier time today remains permitted. Use Delete appointment and confirm removal for unused booked or cancelled appointments. Attended appointments cannot be removed; removal preserves history and audit records.
 
-Use **Clinic overview → Check in patient** to find the patient and add their visit. They appear as **Waiting for doctor**. Choose **Call to room** beside that patient, select an available room and doctor, then confirm the call in the popup. Start the consultation, then move the visit to dispensary or payment as appropriate. The waiting-room display shows ticket numbers and rooms without patient identity.
+Use **Clinic overview → Check in patient** to find the patient and add their visit. They appear as **Waiting for doctor**. Choose **Call to room** beside that patient, select an available room and doctor, then confirm the call in the popup. Select the suggested patient in Clinical workspace. Signing, dispensing and linked checkout advance the active visit automatically. The waiting-room display shows ticket numbers and rooms without patient identity.
 
 ## GP consultation and prescribing
 
@@ -188,3 +188,11 @@ History now shows concise previews. Expand Search, filter & sort history only wh
 ## Super Admin database reset
 
 Only an explicitly privileged Super Admin sees Administration → Danger zone. Review the scope and affected counts, then Reset database. Type RESET ALL CLINIC DATA exactly, enter your current password, acknowledge erasure, and choose Erase all clinic data. This permanently clears the entire database across all clinics, including signed notes, and restores one configured default administrator/main branch/three rooms. Back up before deliberately using it. Cancel/Escape clears the fields without resetting; pressing Enter while typing does not erase. After success every session ends; sign in using configured bootstrap credentials. IDs continue increasing. This control is the explicit exception to normal signed-record protection.
+
+## Check-in through checkout
+1. Check in the patient, then **Call to room** and assign the doctor.
+2. GP opens **Clinical workspace → Assigned patients → Start consultation**. Record SOAP and choose medicines. Choices show available stock; the selected medicine shows eligible stock and reservations.
+3. Choose **Signed** and confirm saving when the note is complete. Medicines are reserved automatically and the patient appears in **Dispensary → Dispense medicines**, now the first/default section. Without medicines, the patient goes directly to billing.
+4. Review the suggested prescription and confirm **Dispense medicines**. The visit moves to payment automatically. Staff with billing access can click **Open patient checkout**; other billing staff see the patient in their own suggestions.
+5. **Billing & payments → Patient checkout** opens first. Choose **Prepare checkout** to fill patient, GP and medicine charge lines. Review prices, add consultation charges where appropriate, enter payments, and confirm **Complete checkout**. The linked visit completes and leaves billing suggestions.
+Suggestions and stock update automatically within 15 seconds while visible and when returning to the window. **Prescription history** has compact rows, collapsed filters, and a bounded scroll area. Opening usage logs is optional. Nothing records a payment merely by opening a suggestion.

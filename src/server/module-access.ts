@@ -33,7 +33,7 @@ function routeModule(path: string): ModuleId | undefined {
   if (/^\/appointments(\/|$)/.test(path)) return 'appointments';
   if (/^\/(encounters|documents|clinical)(\/|$)/.test(path)) return 'clinical';
   if (/^\/(inventory|dispensary|dispenses)(\/|$)/.test(path)) return 'inventory';
-  if (/^\/(invoices|deposits)(\/|$)/.test(path)) return 'billing';
+  if (/^\/(invoices|deposits|billing)(\/|$)/.test(path)) return 'billing';
   if (/^\/(notifications|reports)(\/|$)/.test(path)) return 'reports';
   return undefined;
 }

@@ -68,3 +68,7 @@ Long operational pages now use named task sections with persistent section navig
 Administrators can rename staff and branches, remove/restore settings, and show removed entries. Unused rooms delete; historical rooms archive and upcoming/busy rooms remain protected. Branch archival is versioned and protected. Stock unit guidance explains tablet/bottle/piece choices. Receipts now preview before download using the supplied official-receipt structure, with immutable new identity/cashier snapshots and actual tender breakdown.
 
 - Consultation history action columns remain aligned across draft and signed records, including phone layouts.
+
+## Synchronized check-in, prescribing, dispensing and checkout
+
+Compact prescription history, live GP stock counts, default dispense/checkout sections, automatic visit-stage handoffs, patient billing suggestions and unique consultation-linked checkout. Migration021 retains existing receipts and data.

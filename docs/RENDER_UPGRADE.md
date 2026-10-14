@@ -70,3 +70,5 @@ Demo mirrors repeatable medicine rows and atomic signed-consultation queue hando
 ## Draft removal and demo reset
 
 Rebuild demo assets for compact history and draft deletion. Demo Super Admin Danger zone clears session-simulated data and restores an empty default clinic; Reset demo remains the separate sample-fixture restart. No real MySQL reset is performed by browser-demo controls. Persistent MySQL installations require 019/020 and explicit owner capability grant. Git publication does not prove hosted Blueprint deployment.
+
+Synchronized handoffs ship in both demo and full MySQL modes. Rebuild the Render demo with the existing Blueprint demo build; migration 021 applies only to real MySQL deployments. Git publication alone does not confirm Blueprint sync or successful Render operation.

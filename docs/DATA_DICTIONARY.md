@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–020. No records or credentials are included.
+Schema-only reference after migrations001–021. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -217,6 +217,7 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | request_hash     | varchar(2000)   | NO       | NULL                 |                              |
 | created_at       | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 | receipt_snapshot | json            | YES      | NULL                 |                              |
+| encounter_id     | bigint unsigned | YES      | NULL                 |                              |
 
 ## notification_outbox
 

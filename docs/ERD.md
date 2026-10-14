@@ -1,6 +1,6 @@
 # Entity relationship diagrams
 
-These diagrams describe the final MySQL 8.4 schema after migrations 001–020, including numeric conversion, general supplies and prescription reservations.
+These diagrams describe the final MySQL 8.4 schema after migrations 001–021, including numeric conversion, general supplies and prescription reservations.
 Every displayed entity `id` is `BIGINT UNSIGNED AUTO_INCREMENT`; referenced IDs are unsigned BIGINT.
 Mermaid `bigint` labels omit unsigned/auto-increment syntax for readability. Exact SQL remains authoritative.
 Letter previews reuse `clinical_documents.payload`; prescription activity joins encounters, reservations, dispenses and stock movements. Neither read projection adds an entity.
@@ -221,6 +221,7 @@ erDiagram
   inventory_batches ||--o{ stock_movements : ledger
   dispenses o|--o{ stock_movements : allocation
   users ||--o{ stock_movements : actor
+  encounters o|--o| invoices : optional_checkout
   patients ||--o{ invoices : billed
   users ||--o{ invoices : practitioner
   invoices ||--o{ payments : tender
@@ -290,6 +291,7 @@ erDiagram
   }
   invoices {
     bigint id PK
+    bigint encounter_id FK,UK
     bigint tenant_id FK
     bigint branch_id FK
     bigint patient_id FK

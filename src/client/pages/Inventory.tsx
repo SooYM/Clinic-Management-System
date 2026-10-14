@@ -17,6 +17,7 @@ import {
   useResource,
   useDebouncedValue,
   useRole,
+  useModules,
 } from '../components';
 import { type InventoryItem, dateTime, humanize } from '../types';
 import { useListControls } from '../ListControls';
@@ -111,11 +112,13 @@ function PendingMedicines({
 }
 export default function Inventory() {
   const role = useRole();
+  const modules = useModules();
+  const [billingPatient, setBillingPatient] = useState<{ id: number; name: string }>();
   const confirm = useConfirm();
   const [showRemoved, setShowRemoved] = useState(false);
   const [catalogError, setCatalogError] = useState('');
   const [detailsItemId, setDetailsItemId] = useState<number>();
-  const [section, setSection] = useState('stock');
+  const [section, setSection] = useState('dispense');
   const editorRef = useRef<HTMLDivElement>(null);
   const units = useResource<CatalogEntry[]>('/references/catalogs?kind=INVENTORY_UNIT');
   const [editingItem, setEditingItem] = useState<InventoryItem>();
@@ -131,7 +134,7 @@ export default function Inventory() {
   const historyTerm = useDebouncedValue(historySearch.trim());
   const history = useResource<
     { id: number; patientName: string; patientId: number; dispensed: boolean }[]
-  >(`/dispensary/history?search=${encodeURIComponent(historyTerm)}`);
+  >(`/dispensary/history?search=${encodeURIComponent(historyTerm)}`, 15000);
   const [encounterId, setEncounterId] = useState('');
   const [prescriptionSearch, setPrescriptionSearch] = useState('');
   const [inventorySearch, setInventorySearch] = useState('');
@@ -143,9 +146,11 @@ export default function Inventory() {
   const inventoryTerm = useDebouncedValue(inventorySearch.trim());
   const resource = useResource<InventoryItem[]>(
     `/inventory?search=${encodeURIComponent(inventoryTerm)}${category ? `&category=${encodeURIComponent(category)}` : ''}`,
+    15000,
   );
   const pending = useResource<PendingPrescription[]>(
     `/dispensary/encounters?search=${encodeURIComponent(prescriptionTerm)}`,
+    15000,
   );
   const [dispenseKey, setDispenseKey] = useState(crypto.randomUUID());
   const selected = pending.data?.find((e) => e.id === Number(encounterId));
@@ -246,6 +251,161 @@ export default function Inventory() {
         }
       />
       <WorkspaceSections label="Dispensary sections" value={section} onChange={setSection}>
+        <WorkspaceSection
+          id="dispense"
+          label="Dispense medicines"
+          description="Review and complete signed GP prescriptions."
+        >
+          <Panel title="Patients ready for dispensing">
+            <p className="form-help">
+              Signed prescriptions appear automatically. This list updates every 15 seconds and when
+              you return.
+            </p>
+            {billingPatient && (
+              <div className="notice success" role="status">
+                <span>{billingPatient.name} is ready for billing.</span>
+                {modules.includes('billing') && (
+                  <a
+                    href="#billing"
+                    onClick={() => {
+                      sessionStorage.setItem(
+                        `clinic:billing-handoff:${api.getBranch() || 'default'}`,
+                        String(billingPatient.id),
+                      );
+                    }}
+                  >
+                    Open patient checkout
+                  </a>
+                )}
+              </div>
+            )}
+            <Field
+              label="Search prescription list"
+              hint="Search patient, IC/passport, GP, encounter ID or medicine name."
+            >
+              <input
+                type="search"
+                placeholder="Patient or medicine"
+                value={prescriptionSearch}
+                onChange={(event) => {
+                  setPrescriptionSearch(event.target.value);
+                  setEncounterId('');
+                  setDispenseKey(crypto.randomUUID());
+                }}
+              />
+            </Field>
+            <ResourceState {...pending}>
+              <details className="inventory-list-options">
+                <summary>Filter and sort waiting prescriptions</summary>
+                {pendingList.controls}
+              </details>
+              {pendingList.items.map((row) => (
+                <div className="prescription-history-row" key={row.id}>
+                  <div>
+                    <strong>{row.patientName}</strong>
+                    <p className="form-help">
+                      Encounter #{row.id} · {row.practitionerName} · {dateTime(row.createdAt)}
+                    </p>
+                  </div>
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      setEncounterId(String(row.id));
+                      setDispenseKey(crypto.randomUUID());
+                    }}
+                  >
+                    Review prescription
+                  </button>
+                </div>
+              ))}
+              {!!pending.data?.length && !pendingList.items.length && (
+                <p className="form-help">
+                  No pending prescriptions match these filters. Clear filters to review all loaded
+                  records.
+                </p>
+              )}
+              {pending.data?.length ? (
+                <MutationForm
+                  label="Dispense medicines"
+                  disabled={!selected}
+                  disabledReason="Select a patient prescription to review medicines before dispensing."
+                  onSuccess={() => {
+                    if (selected)
+                      setBillingPatient({ id: selected.id, name: selected.patientName });
+                    setLogEncounterId(encounterId);
+                    refresh();
+                    setEncounterId('');
+                    setDispenseKey(crypto.randomUUID());
+                  }}
+                  onSubmit={() => {
+                    if (!selected) throw new Error('Select a signed prescription first.');
+                    return api.post('/dispenses', {
+                      encounterId: selected.id,
+                      idempotencyKey: dispenseKey,
+                    });
+                  }}
+                >
+                  {!matchingPrescriptions.length && (
+                    <p className="form-help" role="status">
+                      No prescriptions match this search. Clear or change the search to see pending
+                      work.
+                    </p>
+                  )}
+                  <Field label="Signed GP prescription">
+                    <select
+                      required
+                      value={encounterId}
+                      onChange={(e) => {
+                        setEncounterId(e.target.value);
+                        setDispenseKey(crypto.randomUUID());
+                      }}
+                    >
+                      <option value="">Select patient prescription</option>
+                      {matchingPrescriptions.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.patientName} · Patient ID #{e.patientId} · Prescription encounter #
+                          {e.id} · {e.practitionerName} · {dateTime(e.createdAt)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {selected && (
+                    <div>
+                      <h3>{selected.patientName}</h3>
+                      <p className="form-help">
+                        Patient ID #{selected.patientId} · {selected.nationalId} · GP{' '}
+                        {selected.practitionerName}
+                      </p>
+                      <p className="allergies">
+                        Allergies: {selected.allergies?.join(', ') || 'None recorded'}
+                      </p>
+                      <PendingMedicines key={selected.id} prescriptions={selected.prescriptions} />
+                    </div>
+                  )}
+                  <div className="notice info">
+                    <Status value="FEFO" />
+                    Signed prescriptions use reserved stock. Older unreserved prescriptions use
+                    eligible FEFO batches. Physical stock is deducted once when dispensed.
+                  </div>
+                </MutationForm>
+              ) : (
+                <Empty
+                  title={
+                    prescriptionTerm
+                      ? 'No matching prescriptions'
+                      : 'No signed prescriptions waiting'
+                  }
+                  description={
+                    prescriptionTerm
+                      ? 'Clear or change the search to find pending signed prescriptions.'
+                      : 'A GP must save and sign a consultation containing medicines. Already dispensed prescriptions are excluded. Ask your administrator to create a GP account if none is available.'
+                  }
+                />
+              )}
+            </ResourceState>
+            <a href="#guide">Read the consultation and dispensing guide</a>
+          </Panel>
+        </WorkspaceSection>
         <WorkspaceSection
           id="stock"
           label="Stock catalogue"
@@ -721,130 +881,6 @@ export default function Inventory() {
           </Panel>
         </WorkspaceSection>
         <WorkspaceSection
-          id="dispense"
-          label="Dispense medicines"
-          description="Review and complete signed GP prescriptions."
-        >
-          <Panel title="Dispense a signed prescription">
-            <Field
-              label="Search prescription list"
-              hint="Search patient, IC/passport, GP, encounter ID or medicine name."
-            >
-              <input
-                type="search"
-                placeholder="Patient or medicine"
-                value={prescriptionSearch}
-                onChange={(event) => {
-                  setPrescriptionSearch(event.target.value);
-                  setEncounterId('');
-                  setDispenseKey(crypto.randomUUID());
-                }}
-              />
-            </Field>
-            <ResourceState {...pending}>
-              {pendingList.controls}
-              {pendingList.items.map((row) => (
-                <div className="list-row" key={row.id}>
-                  <strong>{row.patientName}</strong>
-                  <p className="form-help">
-                    Encounter #{row.id} · {row.practitionerName} · {dateTime(row.createdAt)}
-                  </p>
-                  <button
-                    className="secondary"
-                    onClick={() => {
-                      setEncounterId(String(row.id));
-                      setDispenseKey(crypto.randomUUID());
-                    }}
-                  >
-                    Review prescription
-                  </button>
-                </div>
-              ))}
-              {!!pending.data?.length && !pendingList.items.length && (
-                <p className="form-help">
-                  No pending prescriptions match these filters. Clear filters to review all loaded
-                  records.
-                </p>
-              )}
-              {pending.data?.length ? (
-                <MutationForm
-                  label="Dispense eligible batches"
-                  onSuccess={() => {
-                    setLogEncounterId(encounterId);
-                    refresh();
-                    setEncounterId('');
-                    setDispenseKey(crypto.randomUUID());
-                  }}
-                  onSubmit={() => {
-                    if (!selected) throw new Error('Select a signed prescription first.');
-                    return api.post('/dispenses', {
-                      encounterId: selected.id,
-                      idempotencyKey: dispenseKey,
-                    });
-                  }}
-                >
-                  {!matchingPrescriptions.length && (
-                    <p className="form-help" role="status">
-                      No prescriptions match this search. Clear or change the search to see pending
-                      work.
-                    </p>
-                  )}
-                  <Field label="Signed GP prescription">
-                    <select
-                      required
-                      value={encounterId}
-                      onChange={(e) => {
-                        setEncounterId(e.target.value);
-                        setDispenseKey(crypto.randomUUID());
-                      }}
-                    >
-                      <option value="">Select patient prescription</option>
-                      {matchingPrescriptions.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.patientName} · Patient ID #{e.patientId} · Prescription encounter #
-                          {e.id} · {e.practitionerName} · {dateTime(e.createdAt)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {selected && (
-                    <div>
-                      <h3>{selected.patientName}</h3>
-                      <p className="form-help">
-                        Patient ID #{selected.patientId} · {selected.nationalId} · GP{' '}
-                        {selected.practitionerName}
-                      </p>
-                      <p className="allergies">
-                        Allergies: {selected.allergies?.join(', ') || 'None recorded'}
-                      </p>
-                      <PendingMedicines key={selected.id} prescriptions={selected.prescriptions} />
-                    </div>
-                  )}
-                  <div className="notice info">
-                    <Status value="FEFO" />
-                    Signed prescriptions use reserved stock. Older unreserved prescriptions use
-                    eligible FEFO batches. Physical stock is deducted once when dispensed.
-                  </div>
-                </MutationForm>
-              ) : (
-                <Empty
-                  title={
-                    prescriptionTerm
-                      ? 'No matching prescriptions'
-                      : 'No signed prescriptions waiting'
-                  }
-                  description={
-                    prescriptionTerm
-                      ? 'Clear or change the search to find pending signed prescriptions.'
-                      : 'A GP must save and sign a consultation containing medicines. Already dispensed prescriptions are excluded. Ask your administrator to create a GP account if none is available.'
-                  }
-                />
-              )}
-            </ResourceState>
-            <a href="#guide">Read the consultation and dispensing guide</a>
-          </Panel>
-        </WorkspaceSection>
-        <WorkspaceSection
           id="history"
           label="Prescription history"
           description="Find pending or completed prescriptions and their clinic activity."
@@ -862,19 +898,26 @@ export default function Inventory() {
               />
             </Field>
             <ResourceState {...history}>
-              {historyList.controls}
-              {historyList.items.map((row) => (
-                <div className="list-row" key={row.id}>
-                  <strong>{row.patientName}</strong>
-                  <p className="form-help">
-                    Patient #{row.patientId} · Encounter #{row.id} ·{' '}
-                    {row.dispensed ? 'Dispensed' : 'Pending'}
-                  </p>
-                  <button className="secondary" onClick={() => setLogEncounterId(String(row.id))}>
-                    View activity
-                  </button>
-                </div>
-              ))}
+              <details className="inventory-list-options">
+                <summary>Filter and sort prescription history</summary>
+                {historyList.controls}
+              </details>
+              <div className="prescription-history-list">
+                {historyList.items.map((row) => (
+                  <div className="prescription-history-row" key={row.id}>
+                    <div>
+                      <strong>{row.patientName}</strong>
+                      <p className="form-help">
+                        Patient #{row.patientId} · Encounter #{row.id} ·{' '}
+                        {row.dispensed ? 'Dispensed' : 'Pending'}
+                      </p>
+                    </div>
+                    <button className="secondary" onClick={() => setLogEncounterId(String(row.id))}>
+                      View activity
+                    </button>
+                  </div>
+                ))}
+              </div>
               {!!history.data?.length && !historyList.items.length && (
                 <p className="form-help">No prescription history matches these filters.</p>
               )}

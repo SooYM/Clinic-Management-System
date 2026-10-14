@@ -195,3 +195,18 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | Reset failure | Wrong credentials/unknown schema/non-InnoDB/failing defaults leave data | Guarded MySQL/demo |
 | Global reset | All tenants cleared; only defaults/audit restored; old sessions invalid | Disposable MySQL/demo only |
 | Identifier continuity | New entities use larger IDs; migrations retained | Actual MySQL/demo |
+
+## Synchronized handoff regression cases
+| Case | Expected result |
+| --- | --- |
+| Clinical-only GP reads medication reference | Live available/on-hand/reserved counts; stock mutations and billing remain unauthorized |
+| Signed linked multi-medicine consultation | All reservations succeed atomically; DISPENSARY_WAITING and pending prescription suggestion |
+| Signed linked no-medicine consultation | PAYMENT_WAITING and billing suggestion without a dispense |
+| Dispense and retry | Physical stock deducted once, reservation fulfilled/released, PAYMENT_WAITING once |
+| Linked invoice and retry | Matching signed patient/GP only; medicines already dispensed; one invoice, COMPLETED once |
+| Duplicate invoice with another key | 409; no second payment/invoice |
+| Expired queue handoff | Historical dispensing/billing available; expired visit stays expired |
+| Browser default sections | Dispense medicines and Patient checkout first/default |
+| Prefilled checkout / change visit | Authoritative patient and GP; suggested editable medicine prices; consent before discarding edited charges |
+| Phone prescription history | Bounded compact list, expandable filters, no page overflow |
+| Live refresh during editing | New reference/suggestion data; unsaved form inputs preserved |

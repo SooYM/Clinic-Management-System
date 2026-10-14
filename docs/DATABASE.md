@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `020_super_admin.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `021_checkout_encounter.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -163,3 +163,6 @@ Queue check-ins last at most 12 hours from created_at, across Malaysia midnight.
 ## Migrations 019 and 020
 
 019 adds nullable encounters.deleted_at and an active-history index; original rows and dependencies remain. 020 adds users.is_super_admin default FALSE with a constraint requiring ADMIN for elevated capability. Existing admins are not automatically elevated. Initial bootstrap/reset creates an explicit privileged default administrator; operator CLI can grant the configured existing bootstrap owner. No extra entity ID table is added. DatabaseResetService validates live capability/password and bootstrap configuration, verifies the reviewed schema and InnoDB storage, takes SERIALIZABLE tenant/user range locks, then executes child-first DELETE and reusable bootstrap creation in one transaction. Foreign-key checks remain enabled; no TRUNCATE, schema drop or sequence reset occurs. Failed recreation rolls back all data changes. Ordinary service transactions retain their prior isolation. Newly allocated IDs ensure requests holding old actor/tenant IDs cannot act as recreated accounts. Extra/unknown tables block reset until the reviewed table list is updated. Existing encrypted files/backups outside the database are outside this database-only operation.
+
+## Migration 021: consultation-linked checkout
+`invoices.encounter_id` is nullable unsigned BIGINT, uniquely indexed, with scoped `(tenant_id,branch_id,encounter_id)` foreign key to encounters. Existing invoices remain unchanged with NULL linkage. No new table or entity ID is introduced. One consultation may have at most one linked invoice. Deployment must run migration 021 before serving this version.

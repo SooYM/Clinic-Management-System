@@ -35,3 +35,33 @@
 .inventory-catalogue td:nth-child(3) {
   font-variant-numeric: tabular-nums;
 }
+
+.prescription-history-list {
+  max-height: 26rem;
+  overflow-y: auto;
+}
+.prescription-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--border, #dbe2ec);
+}
+.prescription-history-row > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.prescription-history-row p {
+  margin-block: 0.25rem 0;
+}
+.prescription-history-row button {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .prescription-history-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}

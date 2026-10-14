@@ -188,3 +188,17 @@ Assigned patient → Start consultation → SOAP and one or more medicine rows �
 ## Draft and reset workflows
 
 Patient → compact history → Open full note, or own Delete draft → consent → versioned soft removal → history/suggestions refresh; selected record tools lock. Signed record → no individual delete. Super Admin → Danger zone → affected-count preview → Reset database → exact phrase + current password + acknowledgment → final erase → transactional reset/default recreation → session ends → sign in with configured bootstrap credentials. Ordinary Admin → no reset controls and server denial.
+
+## Automatic visit stages
+```mermaid
+flowchart LR
+  A[Patient check-in] --> B[Call to room and assign GP]
+  B --> C[GP selects suggested patient]
+  C --> D[Save draft or sign consultation]
+  D -->|Signed with medicines: reserve stock| E[Dispensary suggested patient]
+  D -->|Signed without medicines| G[Billing suggested patient]
+  E -->|Confirm dispense: deduct physical stock once| G
+  G --> H[Review charges and confirm payment]
+  H --> I[Visit completed]
+```
+Drafts remain editable without stock holds. Signing rejects insufficient eligible stock atomically. Dispensing and payment preserve idempotency. Automatic transitions apply only to the linked active queue ticket; expired visits stay expired.

@@ -317,6 +317,7 @@ export const schemas = {
     .object({
       patientId: id,
       practitionerId: id,
+      encounterId: id.optional(),
       lines: z
         .array(
           z
