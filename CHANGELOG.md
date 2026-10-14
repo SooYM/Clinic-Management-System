@@ -74,3 +74,5 @@ Administrators can rename staff and branches, remove/restore settings, and show 
 Compact prescription history, live GP stock counts, default dispense/checkout sections, automatic visit-stage handoffs, patient billing suggestions and unique consultation-linked checkout. Migration021 retains existing receipts and data.
 
 - Prepare checkout scrolls its prefilled form below sticky navigation, including reselecting the same patient; reduced-motion uses an immediate scroll.
+
+- Full payment fills the invoice total using the selected row's method/reference; replacing split entries requires consent.

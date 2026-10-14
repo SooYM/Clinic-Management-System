@@ -198,3 +198,5 @@ Only an explicitly privileged Super Admin sees Administration → Danger zone. R
 Suggestions and stock update automatically within 15 seconds while visible and when returning to the window. **Prescription history** has compact rows, collapsed filters, and a bounded scroll area. Opening usage logs is optional. Nothing records a payment merely by opening a suggestion.
 
 Click **Prepare checkout** to fill the patient and charges and scroll directly to the checkout form. Canceling replacement keeps the existing checkout and position.
+
+Choose Cash/Card/QR/Deposit, then click **Full payment** in that row to fill the invoice total. If splits exist, confirm replacing them. Click **Complete checkout** separately to record payment; deposits still need sufficient balance.

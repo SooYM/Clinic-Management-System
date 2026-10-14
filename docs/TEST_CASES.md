@@ -212,3 +212,5 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | Live refresh during editing | New reference/suggestion data; unsaved form inputs preserved |
 
 Checkout scroll: Prepare checkout positions the form below sticky navigation on desktop and phone; repeat selection preserves edits and scrolls again; reduced-motion uses immediate scrolling.
+
+Full payment: disabled for zero invoice; exact cent total filled; chosen method/reference retained; split replacement cancel preserves all entries, confirm leaves one full allocation; no invoice issued before checkout; usable at 320px.

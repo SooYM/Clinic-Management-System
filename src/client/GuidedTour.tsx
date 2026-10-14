@@ -339,7 +339,7 @@ const tours: Record<string, Step[]> = {
       target: '.payment-line',
       open: 'section-checkout',
       title: 'Split the payment',
-      text: 'Cash, card, QR and deposit amounts must exactly match the total. Deposit spending cannot exceed the recorded balance.',
+      text: 'Full payment fills the invoice total using the chosen method. Replacing split payments requires confirmation. Cash, card, QR and deposit amounts must exactly match the total; deposits need sufficient balance.',
     },
     {
       target: panel('invoices'),

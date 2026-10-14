@@ -291,3 +291,5 @@ Called patients appear in their assigned GP's clinical suggestions. Saving a sig
 Dispense medicines is the first/default dispensary section; Patient checkout is the first/default billing section. Prescription history uses compact, bounded rows and expandable controls. GP medicine choices show available, reserved and eligible on-hand stock. Suggestions and stock refresh after same-tab mutations, on focus/visibility return, and every 15 seconds while visible across staff sessions; server transactions remain authoritative.
 
 Prepare checkout scrolls the prefilled form below sticky section navigation after successful selection. Re-selecting the same visit preserves entries and scrolls again. Reduced-motion uses immediate scrolling; canceled replacement does not scroll.
+
+Each payment row offers Full payment to fill the entire invoice total using that row's method and reference. Multiple split entries require popup consent before replacement. This changes draft allocation only; checkout still requires confirmation and server validation.

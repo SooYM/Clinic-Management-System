@@ -86,6 +86,20 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     setLines((v) => v.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   const updatePayment = (index: number, patch: Partial<Payment>) =>
     setPayments((v) => v.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+  async function fullPayment(index: number) {
+    if (
+      payments.length > 1 &&
+      !(await confirm({
+        title: 'Use full payment?',
+        message:
+          'The selected payment method will cover the entire invoice. Other split payment entries will be removed. Cancel keeps all entries.',
+        confirmLabel: 'Use full payment',
+      }))
+    )
+      return;
+    checkoutDirty.current = true;
+    setPayments([{ ...payments[index], amountCents: total }]);
+  }
   async function discardCheckout() {
     if (!checkoutDirty.current && !selectedVisit) return true;
     return confirm({
@@ -387,6 +401,14 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                         />
                       </Field>
                       <button
+                        className="secondary"
+                        type="button"
+                        disabled={!(total > 0)}
+                        onClick={() => void fullPayment(i)}
+                      >
+                        Full payment
+                      </button>
+                      <button
                         className="text-button"
                         type="button"
                         disabled={payments.length === 1}
@@ -416,8 +438,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   <strong>{money((total - paid) / 100)}</strong>
                 </div>
                 <p className="form-help">
-                  Payment amounts must match the invoice. Deposit payments require sufficient
-                  patient balance.
+                  Full payment fills the invoice total using that row's payment method. Payment
+                  amounts must match the invoice. Deposit payments require sufficient patient
+                  balance.
                 </p>
               </MutationForm>
             </div>
