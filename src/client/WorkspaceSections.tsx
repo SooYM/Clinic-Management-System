@@ -1,12 +1,4 @@
-import {
-  Children,
-  cloneElement,
-  useId,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from 'react';
+import { Children, cloneElement, useId, useState, type ReactElement, type ReactNode } from 'react';
 
 interface SectionProps {
   id: string;
@@ -47,7 +39,6 @@ export function WorkspaceSections({
   const sections = Children.toArray(children) as ReactElement<SectionProps>[];
   const [selected, setSelected] = useState(sections[0]?.props.id);
   const prefix = useId();
-  const navigation = useRef<HTMLElement>(null);
   const current = value ?? selected;
   const active =
     sections.find((section) => section.props.id === current && !section.props.disabled) ??
@@ -56,11 +47,10 @@ export function WorkspaceSections({
     if (sections.find((section) => section.props.id === id)?.props.disabled) return;
     setSelected(id);
     onChange?.(id);
-    navigation.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
   }
   return (
     <div className="workspace-sections">
-      <nav ref={navigation} className="section-navigation" aria-label={label}>
+      <nav className="section-navigation" aria-label={label}>
         {sections.map(({ props }) => (
           <button
             key={props.id}

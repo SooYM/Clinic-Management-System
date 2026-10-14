@@ -73,6 +73,7 @@ State transitions follow the server domain model:
 
 ```mermaid
 stateDiagram-v2
+  REGISTERED --> CALLED_TO_ROOM: direct room call
   REGISTERED --> TRIAGE_WAITING
   REGISTERED --> SKIPPED
   TRIAGE_WAITING --> CALLED_TO_ROOM
@@ -264,3 +265,8 @@ Patients and appointment patient choices default to numeric patient ID; stock it
 ## Patient-first interaction revision
 
 Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout or Patient deposits. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. All persistent form submissions except sign-in require popup consent. Queue transitions, removal/restoration and demo reset also require consent. Cancel/Escape keeps drafts without sending the mutation. Clinical signing explicitly explains permanent notes and stock reservation. This is a UI safeguard; server permissions, validation, transactions and auditing remain authoritative.
+
+
+## Queue and navigation interaction revision
+
+Check in patient → Waiting for doctor → Call to room beside that patient → choose available room and doctor → Confirm call → popup consent → Called to room. The previous Ready for triage step is no longer required. Historical TRIAGE_WAITING tickets remain supported. Missing room/doctor configuration and occupied rooms explain why final confirmation is unavailable; the entry action stays available. Patient search is available at check-in, and advanced queue filters are collapsed. Shared section switches retain mounted drafts and no longer force scrollIntoView; overflow anchoring is disabled within the changing task area. Guided tours still scroll deliberately to their targets. Navigation uses current module grants; bootstrap access refreshes every 15 seconds while visible and on focus/visibility return. Unpermitted appointment navigation and written help topics are hidden, and direct routes remain access restricted. Server access checks remain authoritative.

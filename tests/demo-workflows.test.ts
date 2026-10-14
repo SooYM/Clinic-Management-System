@@ -25,6 +25,42 @@ const rx = (quantity: number) => ({
   durationDays: 1,
 });
 describe('demo reservation and supplies workflows', () => {
+  it('checks in as registered and directly calls only a valid free scoped room and GP', async () => {
+    const { clinic } = await ready();
+    const q = await clinic.request('/queue', 'POST', { patientId: 1, priority: 'NORMAL' });
+    expect(q.status).toBe('REGISTERED');
+    const call = { version: q.version, status: 'CALLED_TO_ROOM', roomId: 1, practitionerId: 2 };
+    await expect(
+      clinic.request(`/queue/${q.id}/transition`, 'POST', { ...call, roomId: undefined }),
+    ).rejects.toThrow('Choose room');
+    await expect(
+      clinic.request(`/queue/${q.id}/transition`, 'POST', { ...call, practitionerId: undefined }),
+    ).rejects.toThrow('Choose room');
+    await expect(
+      clinic.request(`/queue/${q.id}/transition`, 'POST', { ...call, practitionerId: 3 }),
+    ).rejects.toThrow();
+    await expect(clinic.request(`/queue/${q.id}/transition`, 'POST', call, 2)).rejects.toThrow();
+    const called = await clinic.request(`/queue/${q.id}/transition`, 'POST', call);
+    expect(called).toMatchObject({
+      status: 'CALLED_TO_ROOM',
+      roomId: 1,
+      practitionerId: 2,
+      version: 2,
+    });
+    await expect(clinic.request(`/queue/${q.id}/transition`, 'POST', call)).rejects.toThrow(
+      'Ticket changed',
+    );
+    const second = await clinic.request('/queue', 'POST', { patientId: 4, priority: 'NORMAL' });
+    await expect(
+      clinic.request(`/queue/${second.id}/transition`, 'POST', {
+        ...call,
+        version: second.version,
+      }),
+    ).rejects.toThrow('occupied');
+    expect(
+      (await clinic.request('/queue')).data.find((entry: any) => entry.id === second.id),
+    ).toMatchObject({ status: 'REGISTERED', version: 1 });
+  });
   it('reserves on sign, leaves physical unchanged, and dispenses once', async () => {
     const { clinic } = await ready();
     const draft = await clinic.request('/encounters', 'POST', {

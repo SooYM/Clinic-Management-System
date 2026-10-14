@@ -147,3 +147,8 @@ ADMIN PUT /api/admin/users/:id accepts optional name and/or active, requiring at
 ADMIN DELETE /api/admin/rooms/:id returns `{id,removed:"deleted"}` for unused rooms or `{id,removed:"archived"}` when history exists. Busy/upcoming-booked rooms return 409. Mutations remain scoped, CSRF protected and audited.
 
 Billing-module GET /api/invoices/:id/receipt-view returns safe ReceiptView metadata, line amounts, total and payments, without raw request hashes. GET /api/invoices/:id/receipt defaults to inline PDF; ?download=1 explicitly downloads. Both require authenticated tenant/branch scope. New invoice receiptSnapshot metadata wins over later renamed master records; legacy invoices use current metadata and historical checkout actor, with Not recorded when unavailable. Demo supports sample receipt-view, not real PDF.
+
+
+## Direct registered patient call
+
+POST /api/queue/:id/transition accepts status CALLED_TO_ROOM directly from REGISTERED, with version, roomId and practitionerId. Existing room scope/active/occupancy, practitioner, concurrency and audit rules remain. TRIAGE_WAITING paths remain compatible. No new endpoint or schema.

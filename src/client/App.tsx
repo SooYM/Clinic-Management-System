@@ -117,6 +117,19 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [activeBranch, setActiveBranch] = useState(user.branchId);
   const [branchRevision, setBranchRevision] = useState(0);
   const [tour, setTour] = useState<string>();
+  useEffect(() => {
+    const refreshAccess = () => {
+      if (document.visibilityState === 'visible') bootstrap.refresh();
+    };
+    const timer = window.setInterval(refreshAccess, 15000);
+    window.addEventListener('focus', refreshAccess);
+    document.addEventListener('visibilitychange', refreshAccess);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshAccess);
+      document.removeEventListener('visibilitychange', refreshAccess);
+    };
+  }, []);
   const closeTour = () => {
     setTour(undefined);
     requestAnimationFrame(() =>

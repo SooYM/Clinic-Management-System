@@ -247,14 +247,14 @@ const tours: Record<string, Step[]> = {
       text: 'Confirm the patient and priority before adding a ticket. One active visit per patient is allowed.',
     },
     {
-      target: '.queue-controls',
+      target: panel('live-visit-queue'),
       title: 'Choose room and GP',
-      text: 'Assign an active room and GP before calling a ticket. Busy rooms cannot hold another consultation.',
+      text: 'Choose Call to room beside a waiting patient. Their room and doctor choices open below that row. Select both and confirm; occupied rooms cannot be chosen.',
     },
     {
       target: panel('live-visit-queue'),
       title: 'Move the visit forward',
-      text: 'Use ticket actions for triage, call, consultation, dispensing and payment. Skip and undo actions correct arrivals; this tour never changes statuses.',
+      text: 'Check in, call the patient, start consultation, then move to medicines and payment. Skip and undo actions correct arrivals; this tour never changes statuses.',
     },
   ],
   clinical: [

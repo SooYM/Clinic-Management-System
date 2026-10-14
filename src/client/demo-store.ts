@@ -287,7 +287,7 @@ function seed(): State {
         ticketNumber: 'Q-001',
         serviceDate: today(),
         priority: 'NORMAL',
-        status: 'TRIAGE_WAITING',
+        status: 'REGISTERED',
         version: 1,
         createdAt: timestamp,
       },
@@ -1058,7 +1058,7 @@ export class DemoClinic {
         )
       )
         fail('Patient already has an active ticket.', 409);
-      const q = this.add('queue', { ...v, status: 'TRIAGE_WAITING', serviceDate: today() }, branch);
+      const q = this.add('queue', { ...v, status: 'REGISTERED', serviceDate: today() }, branch);
       q.ticketNumber = 'Q-' + String(q.id).padStart(3, '0');
       return this.enrich(q);
     }

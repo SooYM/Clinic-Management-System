@@ -38,7 +38,7 @@ export const queueStatuses = [
 ] as const;
 export type QueueStatus = (typeof queueStatuses)[number];
 const transitions: Record<QueueStatus, readonly QueueStatus[]> = {
-  REGISTERED: ['TRIAGE_WAITING', 'SKIPPED'],
+  REGISTERED: ['CALLED_TO_ROOM', 'TRIAGE_WAITING', 'SKIPPED'],
   TRIAGE_WAITING: ['CALLED_TO_ROOM', 'SKIPPED'],
   CALLED_TO_ROOM: ['IN_CONSULTATION', 'TRIAGE_WAITING'],
   IN_CONSULTATION: ['DISPENSARY_WAITING', 'PAYMENT_WAITING'],

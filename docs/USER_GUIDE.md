@@ -54,7 +54,7 @@ Open **Appointments → Book appointment**. Search for the patient instead of sc
 
 Patient choices follow ascending patient IDs. Booking dates must be today or later in Malaysia time; an earlier time today remains permitted. Use Delete appointment and confirm removal for unused booked or cancelled appointments. Attended appointments cannot be removed; removal preserves history and audit records.
 
-Use **Clinic overview** to check patients into the queue. Assign the GP and room when calling a ticket. Start the consultation, then move the visit to dispensary or payment as appropriate. The waiting-room display shows ticket numbers and rooms without patient identity.
+Use **Clinic overview → Check in patient** to find the patient and add their visit. They appear as **Waiting for doctor**. Choose **Call to room** beside that patient, select an available room and doctor, then confirm the call in the popup. Start the consultation, then move the visit to dispensary or payment as appropriate. The waiting-room display shows ticket numbers and rooms without patient identity.
 
 ## GP consultation and prescribing
 
@@ -164,3 +164,6 @@ In Billing → Invoice history, select **Preview receipt**. The official-receipt
 ## Current task navigation and confirmation
 
 Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout or Patient deposits. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Before saving, review the popup and choose the named action to consent. Cancel or Escape returns to the unchanged form. Unsaved line edits, navigation, previews, filters and search remain immediate. No consultation history is shown until you select a patient. Only GPs can create consultations.
+
+
+Section buttons change the task without forcing a jump to the top. Appointment navigation and help appear only when your role has access. Role access refreshes while the workspace is visible and when you return to it.

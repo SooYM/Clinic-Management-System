@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Simplify waiting-patient room calls with per-patient choices and direct registered-to-room transition.
+- Remove forced section scrolling and refresh module navigation; filter restricted written help.
+
 - Simplify task entry tabs; make consultations patient-first; collapse catalogue detail controls; enable default ID direction.
 - Add shared modal consent for persistent changes, remove sidebar guide, and request practitioner registration only for doctors.
 

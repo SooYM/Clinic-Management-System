@@ -143,3 +143,8 @@ Shared PatientSelect/SearchablePatientSelect sort copied inputs by numeric ID. L
 ## Shared confirmation and task navigation
 
 ConfirmationProvider supplies useConfirm to direct action handlers and MutationForm. Native dialog.showModal supplies modal focus containment and inert background; Cancel has initial focus, Escape cancels, and close restores prior focus. Requests resolve only after explicit consent; a pending prompt cannot be replaced. FormData is captured before consent and cancelled forms remain mounted. Sign-in bypasses consent. Clinical patient search uses scoped reference endpoints and existing paginated history without loading all encounters. No schema or API contract change is introduced.
+
+
+## Stable sections and access freshness
+
+Shared section switches retain mounted drafts and no longer force scrollIntoView; overflow anchoring is disabled within the changing task area. Guided tours still scroll deliberately to their targets. Navigation uses current module grants; bootstrap access refreshes every 15 seconds while visible and on focus/visibility return. Unpermitted appointment navigation and written help topics are hidden, and direct routes remain access restricted. Server access checks remain authoritative. The existing transactional queue service handles direct CALLED_TO_ROOM; domain transition policy adds REGISTERED as an allowed source. Demo initial/check-in states now match REGISTERED from the backend.

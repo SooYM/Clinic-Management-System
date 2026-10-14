@@ -1722,6 +1722,7 @@ dd {
 }
 .workspace-sections {
   min-width: 0;
+  overflow-anchor: none;
 }
 .workspace-sections > section[hidden] {
   display: none;
@@ -1918,4 +1919,20 @@ dd {
 .confirmation-dialog .actions {
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+.queue-call-panel {
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+}
+.queue-call-panel h3 {
+  margin: 0 0 12px;
+}
+.queue-list-options {
+  margin: 12px 0;
+}
+.queue-list-options summary {
+  cursor: pointer;
+  font-weight: 600;
 }

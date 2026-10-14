@@ -19,6 +19,10 @@ describe('money invariants', () => {
   );
 });
 describe('queue lifecycle', () => {
+  it('allows calling a registered patient directly while retaining optional triage', () => {
+    expect(new QueueTicket('REGISTERED').transition('CALLED_TO_ROOM')).toBe('CALLED_TO_ROOM');
+    expect(new QueueTicket('REGISTERED').transition('TRIAGE_WAITING')).toBe('TRIAGE_WAITING');
+  });
   it('allows complete clinic workflow', () => {
     const states = [
       'REGISTERED',

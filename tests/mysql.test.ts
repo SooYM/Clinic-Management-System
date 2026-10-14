@@ -848,6 +848,65 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     ]);
     expect(tickets[0].ticketNumber).not.toBe(tickets[1].ticketNumber);
   });
+  it('calls registered patients directly with scoped, versioned and exclusive room assignment', async () => {
+    const a = await patient(),
+      b = await patient(),
+      roomId = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      roomId,
+      tenant,
+      branch,
+      'QA Direct Call',
+    ]);
+    const first = await service.checkIn(ctx, { patientId: a.id, priority: 'NORMAL' }),
+      second = await service.checkIn(ctx, { patientId: b.id, priority: 'NORMAL' });
+    expect(first.status).toBe('REGISTERED');
+    const call = {
+      version: first.version,
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+    };
+    await expect(
+      service.transitionQueue(ctx, first.id, { ...call, roomId: undefined }),
+    ).rejects.toMatchObject({ code: 'ROOM_REQUIRED' });
+    await expect(
+      service.transitionQueue(ctx, first.id, { ...call, practitionerId: undefined }),
+    ).rejects.toMatchObject({ code: 'ROOM_REQUIRED' });
+    await expect(
+      service.transitionQueue(ctx, first.id, { ...call, practitionerId: receptionist }),
+    ).rejects.toMatchObject({ code: 'INVALID_PRACTITIONER' });
+    await expect(service.transitionQueue(otherCtx, first.id, call)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    const foreignRoom = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      foreignRoom,
+      tenant,
+      otherBranch,
+      'QA Foreign Direct Call',
+    ]);
+    await expect(
+      service.transitionQueue(ctx, first.id, { ...call, roomId: foreignRoom }),
+    ).rejects.toMatchObject({ code: 'INVALID_ROOM' });
+    const called = await service.transitionQueue(ctx, first.id, call);
+    expect(called).toMatchObject({
+      status: 'CALLED_TO_ROOM',
+      roomId,
+      practitionerId: doctor,
+      version: first.version + 1,
+    });
+    expect(called.calledAt).toBeTruthy();
+    await expect(service.transitionQueue(ctx, first.id, call)).rejects.toMatchObject({
+      code: 'VERSION_CONFLICT',
+    });
+    await expect(
+      service.transitionQueue(ctx, second.id, { ...call, version: second.version }),
+    ).rejects.toMatchObject({ code: 'ROOM_OCCUPIED' });
+    expect(
+      (await rows('SELECT status,room_id,version FROM queue_tickets WHERE id=?', [second.id]))[0],
+    ).toMatchObject({ status: 'REGISTERED', room_id: null, version: 1 });
+  });
   it('enforces queue lifecycle and room allocation', async () => {
     const p = await patient();
     const q = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });

@@ -15,6 +15,7 @@ const topics = [
   },
   {
     title: 'Register or update a patient',
+    module: 'patients',
     steps: [
       'Open Patients and search before registering, to avoid duplicate records.',
       'Enter first and last names, then choose Malaysian or non-Malaysian.',
@@ -26,6 +27,7 @@ const topics = [
   },
   {
     title: 'Book an appointment',
+    module: 'appointments',
     steps: [
       'Open Appointments and select Book appointment. Search by patient name, identity number, or phone.',
       'Choose a registered GP, an available room if needed, and start and end times.',
@@ -35,9 +37,10 @@ const topics = [
   },
   {
     title: 'Manage arrivals and rooms',
+    module: 'queue',
     steps: [
       'Use Clinic overview to check in a registered patient and set normal or urgent priority.',
-      'Move the ticket to triage, then select room and GP before calling to the room.',
+      'A checked-in patient is waiting for a doctor. Choose Call to room beside that patient, select an available room and doctor, then confirm the call.',
       'Start consultation, send to dispensary or payment, then complete the visit.',
       'Use Skip, Undo skip, or Undo call to correct a waiting-room action.',
       'The waiting-room display shows ticket numbers and room names only. Enable the chime after opening the display. Queue estimates are approximate.',
@@ -45,6 +48,7 @@ const topics = [
   },
   {
     title: 'Record a GP consultation',
+    module: 'clinical',
     steps: [
       'Open Clinical workspace → Consultations. Select a patient, then Open consultation from their history. New consultation has a separate creation tab. Save before record tools unlock.',
       'Add each medicine with quantity, times per day, meal timing, dosage instructions, and supply days. Recorded allergies are checked before saving.',
@@ -57,6 +61,7 @@ const topics = [
   },
   {
     title: 'Receive stock and dispense',
+    module: 'inventory',
     steps: [
       'Open Dispensary. Add medicines, consumables or retail products such as lab coats, then receive stock using batch number, expiry date, and quantity. Supplies and retail items may have no expiry. Search the catalog or filter its category.',
       'Available quantity excludes prescription reservations. Unexpired stock is eligible physical stock; Reserved is held for signed prescriptions. Dispensing deducts physical quantities once.',
@@ -69,6 +74,7 @@ const topics = [
   },
   {
     title: 'Take payment and preview receipts',
+    module: 'billing',
     steps: [
       'Open Billing & payments and create an itemised checkout for the patient and practitioner.',
       'Add cash, card, QR, or deposit payment amounts. Split amounts must equal the invoice total exactly.',
@@ -77,6 +83,7 @@ const topics = [
   },
   {
     title: 'Administer the clinic',
+    module: 'admin',
     steps: [
       'Create branches and consultation rooms in Administration. Rename a room or archive it when no longer needed; a busy room cannot be changed.',
       'Create staff accounts in their branch. Choose GP for practitioners and provide the required registration number.',
@@ -129,16 +136,23 @@ export default function Guide() {
               account.
             </p>
             <div className="guide-topics">
-              {topics.map((topic) => (
-                <details key={topic.title}>
-                  <summary>{topic.title}</summary>
-                  <ol>
-                    {topic.steps.map((step) => (
-                      <li key={step}>{step}</li>
-                    ))}
-                  </ol>
-                </details>
-              ))}
+              {topics
+                .filter(
+                  (topic) =>
+                    !topic.module ||
+                    modules.includes(topic.module) ||
+                    (topic.module === 'admin' && role === 'ADMIN'),
+                )
+                .map((topic) => (
+                  <details key={topic.title}>
+                    <summary>{topic.title}</summary>
+                    <ol>
+                      {topic.steps.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                  </details>
+                ))}
             </div>
           </Panel>
         </WorkspaceSection>

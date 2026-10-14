@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import { ArrowRight, RefreshCw } from 'lucide-react';
 import { api, isDemo } from '../api';
@@ -8,10 +8,8 @@ import {
   MutationForm,
   PageTitle,
   Panel,
-  PatientSelect,
+  SearchablePatientSelect,
   ResourceState,
-  SelectReference,
-  Status,
   formText,
   useResource,
 } from '../components';
@@ -41,6 +39,7 @@ export default function Queue({
   const [busy, setBusy] = useState<number>();
   const [room, setRoom] = useState('');
   const [doctor, setDoctor] = useState('');
+  const [callingTicket, setCallingTicket] = useState<number>();
   useEffect(() => {
     const refresh = () => {
       resource.refresh();
@@ -60,7 +59,7 @@ export default function Queue({
     search: (row) =>
       `${row.ticketNumber} ${row.patientName || patients.data?.find((patient) => patient.id === row.patientId)?.name || ''} ${row.roomName || ''}`,
     filters: [
-      { key: 'status', label: 'Status', value: (row) => row.status },
+      { key: 'status', label: 'Stage', value: (row) => stageLabel(row.status) },
       { key: 'room', label: 'Room', value: (row) => row.roomName || 'Unassigned' },
     ],
     sorts: [
@@ -76,6 +75,32 @@ export default function Queue({
   });
   const waiting = tickets.filter((t) => ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status));
   const active = tickets.filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status));
+  const canCall =
+    rooms.some((entry) => entry.id === Number(room)) &&
+    !active.some((ticket) => ticket.roomId === Number(room)) &&
+    practitioners.some((entry) => entry.id === Number(doctor));
+  function stageLabel(status: string) {
+    return (
+      (
+        {
+          REGISTERED: 'Waiting for doctor',
+          TRIAGE_WAITING: 'Waiting for doctor',
+          CALLED_TO_ROOM: 'Called to room',
+          IN_CONSULTATION: 'With doctor',
+          DISPENSARY_WAITING: 'Waiting for medicines',
+          PAYMENT_WAITING: 'Waiting for payment',
+          COMPLETED: 'Completed',
+          SKIPPED: 'Skipped',
+        } as Record<string, string>
+      )[status] || status.replaceAll('_', ' ')
+    );
+  }
+  function openCall(ticket: Ticket) {
+    setCallingTicket(ticket.id);
+    setRoom('');
+    setDoctor('');
+    setError('');
+  }
   async function transition(ticket: Ticket, target?: string) {
     const next =
       target || queueStates[queueStates.indexOf(ticket.status as (typeof queueStates)[number]) + 1];
@@ -83,8 +108,11 @@ export default function Queue({
     if (
       !(await confirm({
         title: 'Update patient visit?',
-        message: `Move ${ticket.patientName || 'patient'} (${ticket.ticketNumber}) from ${ticket.status.replaceAll('_', ' ').toLowerCase()} to ${next.replaceAll('_', ' ').toLowerCase()}? This updates the live queue.`,
-        confirmLabel: 'Update visit',
+        message:
+          next === 'CALLED_TO_ROOM'
+            ? `Call ${ticket.patientName || 'patient'} (${ticket.ticketNumber}) to ${rooms.find((entry) => entry.id === Number(room))?.name || 'selected room'} with ${practitioners.find((entry) => entry.id === Number(doctor))?.name || 'selected doctor'}?`
+            : `Move ${ticket.patientName || 'patient'} (${ticket.ticketNumber}) from ${stageLabel(ticket.status).toLowerCase()} to ${stageLabel(next).toLowerCase()}? This updates the live queue.`,
+        confirmLabel: next === 'CALLED_TO_ROOM' ? 'Call patient' : 'Update visit',
       }))
     )
       return;
@@ -99,6 +127,8 @@ export default function Queue({
           : {}),
       });
       resource.refresh();
+      estimate.refresh();
+      if (callingTicket === ticket.id) setCallingTicket(undefined);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -200,37 +230,15 @@ export default function Queue({
               </button>
             }
           >
-            <div className="queue-controls">
-              <label>
-                Call into room
-                <select value={room} onChange={(e) => setRoom(e.target.value)}>
-                  <option value="">Select room</option>
-                  {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Attending practitioner
-                <select value={doctor} onChange={(e) => setDoctor(e.target.value)}>
-                  <option value="">Select practitioner</option>
-                  {practitioners.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name || p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p>
-                Queue updates every 15 seconds.
-                <br />
-                Room allocation is checked when you call.
-              </p>
-            </div>
+            <p className="form-help">
+              Choose Call to room beside a waiting patient, then select their room and doctor. Queue
+              updates every 15 seconds.
+            </p>
             {error && <ErrorNotice>{error}</ErrorNotice>}
-            {queueList.controls}
+            <details className="queue-filters">
+              <summary>Search, filter and sort queue</summary>
+              {queueList.controls}
+            </details>
             <ResourceState {...resource}>
               {tickets.length ? (
                 <div className="table-wrap">
@@ -246,74 +254,187 @@ export default function Queue({
                     </thead>
                     <tbody>
                       {queueList.items.map((t) => (
-                        <tr key={t.id}>
-                          <td className="ticket">
-                            {t.ticketNumber}
-                            <small>Ticket ID #{t.id}</small>
-                          </td>
-                          <td>
-                            {t.patientName ||
-                              patients.data?.find((p) => p.id === t.patientId)?.name ||
-                              'Patient record'}
-                          </td>
-                          <td>
-                            <Status value={t.status} />
-                          </td>
-                          <td>{t.roomName || rooms.find((r) => r.id === t.roomId)?.name || '—'}</td>
-                          <td>
-                            {!['COMPLETED', 'SKIPPED'].includes(t.status) && (
-                              <button
-                                className="secondary"
-                                disabled={
-                                  busy === t.id ||
-                                  (t.status === 'TRIAGE_WAITING' && (!room || !doctor))
-                                }
-                                onClick={() => transition(t)}
-                              >
-                                {busy === t.id
-                                  ? 'Updating…'
-                                  : (
-                                      {
-                                        REGISTERED: 'Ready for triage',
-                                        TRIAGE_WAITING: 'Call to room',
-                                        CALLED_TO_ROOM: 'Start consultation',
-                                        IN_CONSULTATION: 'Send to dispensary',
-                                        DISPENSARY_WAITING: 'Ready for payment',
-                                        PAYMENT_WAITING: 'Complete visit',
-                                      } as Record<string, string>
-                                    )[t.status]}
-                                <ArrowRight size={14} />
-                              </button>
+                        <Fragment key={t.id}>
+                          <tr>
+                            <td className="ticket">
+                              {t.ticketNumber}
+                              <small>Ticket ID #{t.id}</small>
+                            </td>
+                            <td>
+                              {t.patientName ||
+                                patients.data?.find((p) => p.id === t.patientId)?.name ||
+                                'Patient record'}
+                            </td>
+                            <td>
+                              <span className={`status ${t.status.toLowerCase()}`}>
+                                {stageLabel(t.status)}
+                              </span>
+                            </td>
+                            <td>
+                              {t.roomName || rooms.find((r) => r.id === t.roomId)?.name || '—'}
+                            </td>
+                            <td>
+                              {!['COMPLETED', 'SKIPPED'].includes(t.status) && (
+                                <button
+                                  className="secondary"
+                                  disabled={busy !== undefined}
+                                  aria-expanded={
+                                    ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status)
+                                      ? callingTicket === t.id
+                                      : undefined
+                                  }
+                                  onClick={() =>
+                                    ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status)
+                                      ? openCall(t)
+                                      : void transition(t)
+                                  }
+                                >
+                                  {busy === t.id
+                                    ? 'Updating…'
+                                    : (
+                                        {
+                                          REGISTERED: 'Call to room',
+                                          TRIAGE_WAITING: 'Call to room',
+                                          CALLED_TO_ROOM: 'Start consultation',
+                                          IN_CONSULTATION: 'Send to dispensary',
+                                          DISPENSARY_WAITING: 'Send to payment',
+                                          PAYMENT_WAITING: 'Complete visit',
+                                        } as Record<string, string>
+                                      )[t.status]}
+                                  <ArrowRight size={14} />
+                                </button>
+                              )}
+                              {['REGISTERED', 'TRIAGE_WAITING'].includes(t.status) && (
+                                <button
+                                  className="text-button"
+                                  disabled={busy === t.id}
+                                  onClick={() => transition(t, 'SKIPPED')}
+                                >
+                                  Skip
+                                </button>
+                              )}
+                              {t.status === 'SKIPPED' && (
+                                <button
+                                  className="secondary"
+                                  disabled={busy === t.id}
+                                  onClick={() => transition(t, 'TRIAGE_WAITING')}
+                                >
+                                  Undo skip
+                                </button>
+                              )}
+                              {t.status === 'CALLED_TO_ROOM' && (
+                                <button
+                                  className="text-button"
+                                  disabled={busy === t.id}
+                                  onClick={() => transition(t, 'TRIAGE_WAITING')}
+                                >
+                                  Undo call
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                          {callingTicket === t.id &&
+                            ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status) && (
+                              <tr>
+                                <td colSpan={5}>
+                                  <form
+                                    className="queue-call-panel"
+                                    aria-label={`Call ${t.patientName || t.ticketNumber} to room`}
+                                    onSubmit={(event) => {
+                                      event.preventDefault();
+                                      if (canCall && busy === undefined)
+                                        void transition(t, 'CALLED_TO_ROOM');
+                                    }}
+                                  >
+                                    <h3>Call {t.patientName || t.ticketNumber} to room</h3>
+                                    {!rooms.length || !practitioners.length ? (
+                                      <p className="notice" role="status">
+                                        {!rooms.length
+                                          ? 'No consultation room is configured for this branch. '
+                                          : ''}
+                                        {!practitioners.length
+                                          ? 'No active doctor is configured for this branch. '
+                                          : ''}
+                                        Ask an administrator to configure these before calling this
+                                        patient.
+                                      </p>
+                                    ) : (
+                                      <div className="queue-controls">
+                                        <label data-guide="field-call-into-room">
+                                          Consultation room
+                                          <select
+                                            required
+                                            value={room}
+                                            onChange={(event) => setRoom(event.target.value)}
+                                          >
+                                            <option value="">Choose room</option>
+                                            {rooms.map((entry) => (
+                                              <option
+                                                key={entry.id}
+                                                value={entry.id}
+                                                disabled={active.some(
+                                                  (ticket) => ticket.roomId === entry.id,
+                                                )}
+                                              >
+                                                {entry.name}
+                                                {active.some((ticket) => ticket.roomId === entry.id)
+                                                  ? ' · Occupied'
+                                                  : ''}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <label data-guide="field-attending-practitioner">
+                                          Doctor
+                                          <select
+                                            required
+                                            value={doctor}
+                                            onChange={(event) => setDoctor(event.target.value)}
+                                          >
+                                            <option value="">Choose doctor</option>
+                                            {practitioners.map((entry) => (
+                                              <option key={entry.id} value={entry.id}>
+                                                {entry.name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <p>
+                                          Review this patient's room and doctor. Occupied rooms
+                                          cannot be selected.
+                                        </p>
+                                      </div>
+                                    )}
+                                    {!!rooms.length &&
+                                      rooms.every((entry) =>
+                                        active.some((ticket) => ticket.roomId === entry.id),
+                                      ) && (
+                                        <p role="status">
+                                          All consultation rooms are occupied. Wait for a room to
+                                          become available.
+                                        </p>
+                                      )}
+                                    <div className="actions">
+                                      <button
+                                        type="submit"
+                                        disabled={!canCall || busy !== undefined}
+                                      >
+                                        Confirm call
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="secondary"
+                                        disabled={busy !== undefined}
+                                        onClick={() => setCallingTicket(undefined)}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </form>
+                                </td>
+                              </tr>
                             )}
-                            {['REGISTERED', 'TRIAGE_WAITING'].includes(t.status) && (
-                              <button
-                                className="text-button"
-                                disabled={busy === t.id}
-                                onClick={() => transition(t, 'SKIPPED')}
-                              >
-                                Skip
-                              </button>
-                            )}
-                            {t.status === 'SKIPPED' && (
-                              <button
-                                className="secondary"
-                                disabled={busy === t.id}
-                                onClick={() => transition(t, 'TRIAGE_WAITING')}
-                              >
-                                Undo skip
-                              </button>
-                            )}
-                            {t.status === 'CALLED_TO_ROOM' && (
-                              <button
-                                className="text-button"
-                                disabled={busy === t.id}
-                                onClick={() => transition(t, 'TRIAGE_WAITING')}
-                              >
-                                Undo call
-                              </button>
-                            )}
-                          </td>
-                        </tr>
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -350,7 +471,7 @@ export default function Queue({
                 }
               >
                 <div className="form-grid">
-                  <PatientSelect patients={patients.data || []} />
+                  <SearchablePatientSelect />
                   <label className="field">
                     <span>Priority</span>
                     <select name="priority">

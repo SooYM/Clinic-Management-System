@@ -143,3 +143,14 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 | GP registration | Required only for DOCTOR; other payloads null | Browser/source contract |
 | Popup consent | Cancel/Escape no write, drafts retained; Confirm commits; focus stays modal | Desktop/320px browser |
 | Help | Header launcher present; sidebar guide absent | Browser |
+
+
+## Simplified queue and tab cases
+
+| Case | Expected | Evidence |
+| --- | --- | --- |
+| Waiting patient room call | Enabled entry; targeted required room/doctor choices; no extra triage click | Domain/MySQL/demo/browser |
+| Invalid room call | Scope, occupancy and version guards; no partial change | Actual MySQL and demo |
+| Permission-limited receptionist | No appointment navigation/help; direct route restricted | Fictional browser |
+| Section switching | Single visible area; no forced scrolling; drafts mounted | Browser/source |
+| Phone call form | No page overflow; available/occupied options explicit | 320px browser |
