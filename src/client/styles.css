@@ -169,6 +169,11 @@ label {
   align-content: start;
   gap: 17px;
 }
+.nationality-fields select:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
 .phone-entry {
   display: flex;
   align-items: center;
@@ -980,6 +985,12 @@ dd {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 65px;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.public-display header .field {
+  min-width: 200px;
+  max-width: 100%;
 }
 .display-grid {
   display: grid;

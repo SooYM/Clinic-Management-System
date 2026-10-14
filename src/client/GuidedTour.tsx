@@ -28,12 +28,12 @@ const sectionGuides: Record<string, [string, string, string][]> = {
     [
       'visits',
       'Scheduled visits',
-      'Search, filter and sort saved appointments. Review patient, GP, room and visit times before changing booking details.',
+      'Search, filter and sort saved appointments. Review patient, GP and visit times. Rooms are chosen when calling patients.',
     ],
     [
       'booking',
       'Book appointment',
-      'Choose a patient and GP, set start and end times, and optionally assign a room. Saving validates booking conflicts.',
+      'Choose a patient and GP, then set start and end times. GP time conflicts are checked. Due appointments suggest patient check-in in Clinic overview.',
     ],
   ],
   queue: [
@@ -112,11 +112,6 @@ const sectionGuides: Record<string, [string, string, string][]> = {
       'checkout',
       'Patient checkout',
       'This default section suggests patients after dispensing, or signing without medicines. Prepare checkout fills patient, GP and medicine charges. Review charges and confirm payment.',
-    ],
-    [
-      'deposits',
-      'Patient deposits',
-      'Record deposits before spending their available balance at checkout. Receipt and invoice history retain recorded payments.',
     ],
   ],
   admin: [
@@ -339,7 +334,7 @@ const tours: Record<string, Step[]> = {
       target: '.payment-line',
       open: 'section-checkout',
       title: 'Split the payment',
-      text: 'Full payment fills the invoice total using the chosen method. Replacing split payments requires confirmation. Cash, card, QR and deposit amounts must exactly match the total; deposits need sufficient balance.',
+      text: 'Full payment fills the invoice total using the chosen method. Replacing split payments requires confirmation. Cash, card and QR amounts must exactly match the total.',
     },
     {
       target: panel('invoices'),

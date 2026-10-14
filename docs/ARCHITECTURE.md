@@ -72,7 +72,7 @@ Public certificate verification omits patient identity. The authenticated waitin
 
 ## Transactions and concurrency
 
-One transaction owns each multi-record operation, including stock receipt/dispensing, checkout, deposit spending and document issuance.
+One transaction owns each multi-record operation, including stock receipt/dispensing, checkout, document issuance.
 READ COMMITTED transactions use stable resource locks and row locks for cross-row invariants.
 Optimistic versions reject stale patient, booking, queue and draft-chart edits.
 Booking and MC scope locks serialize overlap checks. Generated queue uniqueness protects active visits and occupied rooms.
@@ -166,3 +166,11 @@ Clinical patient history uses collapsed search/filter/sort controls, concise ass
 
 ## Synchronized operational views
 Opt-in live resources refresh every 15 seconds while visible, on focus/visibility return, and after successful mutations. They refresh reference/list data without remounting unsaved clinical or checkout forms. Separate authenticated staff sessions converge through API reads; browser events provide immediate same-tab invalidation, not server push. Stock allocation, visit stage and linked invoice uniqueness remain transactional server responsibilities. A branch-scoped, one-time browser handoff selects only a visit returned by the authoritative billing suggestion endpoint; it grants no permission.
+
+Appointment-arrival reads use minimal queue-authorized projections, not appointment-management permission. Versioned check-in owns appointment status and queue linkage in one transaction with per-patient locking and unique appointment linkage. Room assignment is deferred to the existing room-call transaction. Deposit creation/spending paths are retired; historical ledger/receipt adapters remain. Conditional country rendering changes presentation only.
+
+Shared SearchBox owns accessible combobox/listbox behavior, bounded suggestions and keyboard/pointer selection. useResource exposes pending refresh state and settled path to hide stale query results without remounting drafts. Shared patient lookup preserves selected numeric IDs; generic ListControls suggests only loaded matching records. Custom patient, medicine, prescription and stock lookups use authorized API projections. Registration handoff intent is one-time and branch-scoped; it grants no module access.
+
+## Anonymous display boundary
+
+`public-display.ts` provides a separate read-only router mounted before staff authentication and after shared API security/rate-limit middleware. It returns active public branch branding and a deliberately small anonymous queue projection. Explicit branch selection resolves tenant scope in SQL; no patient or practitioner join is needed. Malaysia service-day, 12-hour lifetime and expiry predicates apply independently of staff lifecycle cleanup. Staff queue endpoints preserve their existing authentication, CSRF and module permissions. The browser polls every 15 seconds; it does not reuse staff SSE credentials. Render demo remains browser-local simulation rather than a shared clinical database.

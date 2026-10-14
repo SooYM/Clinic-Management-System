@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Open `/display` without sign-in, with active branch selection and anonymous queue polling every 15 seconds.
+
 - Compact clinical history and add audited attending-GP draft removal; signed records remain individually protected.
 - Add separate Super Admin capability and typed/password-verified transactional entire-database reset with default restoration.
 
@@ -76,3 +78,11 @@ Compact prescription history, live GP stock counts, default dispense/checkout se
 - Prepare checkout scrolls its prefilled form below sticky navigation, including reselecting the same patient; reduced-motion uses an immediate scroll.
 
 - Full payment fills the invoice total using the selected row's method/reference; replacing split entries requires consent.
+
+## Retire deposits and simplify appointments
+
+Removed deposit controls/APIs/new tender while preserving historical receipts. Booking defers rooms until call; due appointments suggest confirmed check-in with booked GP and one linked waiting ticket. Country selection is greyed out for Malaysian forms and enabled for non-Malaysians; Malaysian profiles omit the redundant country detail. Migration022 preserves existing records.
+
+Prominent patient-registration entry points and shared matching-result dropdowns added across patient, clinical, stock, prescription and loaded-list searches. Malaysian country fields show a greyed-out Malaysia box; foreign choices remain editable.
+
+Daily live queue resets at Malaysia midnight while retaining all clinical/history data; today's visit count includes terminal and expired rows. Temperature input and API validation now enforce28°C–40°C inclusive.

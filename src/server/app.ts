@@ -1,3 +1,4 @@
+import { publicDisplayRouter } from './public-display.js';
 import { readReceipt } from './receipt-service.js';
 import { databaseResetRouter } from './database-reset.js';
 import { renderReceiptPdf } from './receipt-renderer.js';
@@ -138,6 +139,7 @@ export function createApp(service = new ClinicService()) {
       );
     }),
   );
+  app.use('/api/public/display', publicDisplayRouter());
   const api = express.Router();
   api.use(authenticate);
   api.use(authorizeModules);
@@ -264,6 +266,12 @@ export function createApp(service = new ClinicService()) {
     broadcast(r.context.branchId);
     return result;
   });
+  api.get(
+    '/queue/appointment-arrivals',
+    asyncRoute(async (req, res) => {
+      res.json({ data: await service.appointmentArrivals(req.context) });
+    }),
+  );
   mutation('/queue/:id/transition', schemas.transition, async (r, i) => {
     const result = await service.transitionQueue(r.context, idSchema.parse(r.params.id), i);
     broadcast(r.context.branchId);
@@ -300,7 +308,6 @@ export function createApp(service = new ClinicService()) {
   mutation('/dispenses', schemas.dispense, (r, i) => service.dispense(r.context, i));
 
   mutation('/invoices', schemas.invoice, (r, i) => service.createInvoice(r.context, i));
-  mutation('/deposits', schemas.deposit, (r, i) => service.addDeposit(r.context, i));
   mutation('/documents', schemas.document, (r, i) => service.issueDocument(r.context, i));
   mutation(
     '/documents/:id/revoke',
@@ -326,18 +333,6 @@ export function createApp(service = new ClinicService()) {
       doc.pipe(res);
       renderReceiptPdf(doc, receipt);
       doc.end();
-    }),
-  );
-  api.get(
-    '/patients/:id/deposit-balance',
-    asyncRoute(async (req, res) => {
-      const id = idSchema.parse(req.params.id);
-      await service.getPatient(req.context, id);
-      const { rows } = await pool.query(
-        'SELECT coalesce(sum(amount_cents),0) balance_cents FROM patient_deposits WHERE tenant_id=$1 AND branch_id=$2 AND patient_id=$3',
-        [req.context.actor.tenantId, req.context.branchId, id],
-      );
-      res.json({ patientId: id, balanceCents: Number(rows[0].balance_cents) });
     }),
   );
   mutation('/notifications/:id/retry', z.object({}).strict(), async (r) => {

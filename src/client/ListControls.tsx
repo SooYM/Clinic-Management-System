@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SearchBox } from './SearchBox';
 import { applyListControls, type ListConfig } from '../shared/list-controls';
 
 export function useListControls<T>(rows: readonly T[], config: ListConfig<T>) {
@@ -20,11 +21,12 @@ export function useListControls<T>(rows: readonly T[], config: ListConfig<T>) {
       <div className="list-controls" role="group" aria-label={`${label} controls`}>
         <label>
           Search loaded records
-          <input
-            type="search"
-            aria-label={`${label} search`}
+          <SearchBox
+            ariaLabel={`${label} search`}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
+            suggestions={items.map((row, index) => ({ id: index, label: config.search(row) }))}
+            onSelect={(suggestion) => setSearch(suggestion.label)}
           />
         </label>
         {(config.filters || []).map((filter) => {

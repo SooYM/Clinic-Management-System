@@ -50,7 +50,7 @@ IC format/date fields are described in [Microsoft's Malaysia identity number def
 
 ## Appointment and queue
 
-Open **Appointments → Book appointment**. Search for the patient instead of scrolling through the whole directory. Confirm the selected patient, practitioner, optional room, date and time before booking. A room or practitioner conflict prevents saving.
+Open **Appointments → Book appointment**. Search for the patient instead of scrolling through the whole directory. Confirm the selected patient, practitioner, date and time before booking. A practitioner time conflict prevents saving. Rooms are selected when calling the patient.
 
 Patient choices follow ascending patient IDs. Booking dates must be today or later in Malaysia time; an earlier time today remains permitted. Use Delete appointment and confirm removal for unused booked or cancelled appointments. Attended appointments cannot be removed; removal preserves history and audit records.
 
@@ -107,7 +107,7 @@ Clinic stock events do not confirm that a patient took their medicine. Medicatio
 
 ## Billing, notifications and access problems
 
-Use **Billing & payments** for itemised invoices, split cash/card/QR/deposit payments and receipts. Payment amounts must equal the invoice total. Commissions and treatment packages are not part of the active application.
+Use **Billing & payments** for itemised invoices, split cash/card/QR payments and receipts. Payment amounts must equal the invoice total. Commissions and treatment packages are not part of the active application.
 
 Notification delivery requires configured providers and recorded patient consent. Unconfigured providers do not claim successful delivery. The before/after photo workflow is removed.
 
@@ -144,7 +144,7 @@ Use the section buttons below each module title. The highlighted button identifi
 | Appointments       | Scheduled visits; Book appointment                                                      |
 | Clinical workspace | Consultations; Note & prescription; Documents; Medication logs                          |
 | Dispensary         | Stock catalogue; Receive stock; Use supplies; Dispense medicines; Prescription history  |
-| Billing            | Invoice history; Patient checkout; Patient deposits                                     |
+| Billing            | Patient checkout; Invoice history                                     |
 | Administration     | Staff accounts; Branches; Consultation rooms; Catalog choices; Role access; Audit trail |
 | User guide         | Visual walkthroughs; Written instructions                                               |
 
@@ -163,7 +163,7 @@ In Billing → Invoice history, select **Preview receipt**. The official-receipt
 
 ## Current task navigation and confirmation
 
-Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout or Patient deposits. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Before saving, review the popup and choose the named action to consent. Cancel or Escape returns to the unchanged form. Unsaved line edits, navigation, previews, filters and search remain immediate. No consultation history is shown until you select a patient. Only GPs can create consultations.
+Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Before saving, review the popup and choose the named action to consent. Cancel or Escape returns to the unchanged form. Unsaved line edits, navigation, previews, filters and search remain immediate. No consultation history is shown until you select a patient. Only GPs can create consultations.
 
 
 Section buttons change the task without forcing a jump to the top. Appointment navigation and help appear only when your role has access. Role access refreshes while the workspace is visible and when you return to it.
@@ -171,9 +171,9 @@ Section buttons change the task without forcing a jump to the top. Appointment n
 
 ## Twelve-hour check-in and assigned patients
 
-A check-in expires 12 hours after it was created. If already active, use the existing Live queue ticket; the error now explains this. Expiry releases patient/room assignments and keeps clinical history. It does not delete medical notes.
+An unfinished check-in expires after 12 hours or at midnight Malaysia time, whichever comes first. If already active, use the existing Live queue ticket; the error now explains this. Expiry releases patient/room assignments and keeps clinical history. It does not delete medical notes.
 
-After the nurse calls or starts the visit with the assigned GP, the GP opens Clinical workspace → Assigned patients. Start consultation fills the patient and queue reference automatically; confirm the completed note to save. Open consultation resumes an existing note. Suggestions refresh automatically or with Refresh assignments. If none appear, verify branch, assigned GP, visit state and the 12-hour lifetime. Manual patient selection remains available.
+After the nurse calls or starts the visit with the assigned GP, the GP opens Clinical workspace → Assigned patients. Start consultation fills the patient and queue reference automatically; confirm the completed note to save. Open consultation resumes an existing note. Suggestions refresh automatically or with Refresh assignments. If none appear, verify branch, assigned GP, visit state and the 12-hour/day-end lifetime. Manual patient selection remains available.
 
 
 ## Add multiple medicines and send to dispensary
@@ -199,4 +199,22 @@ Suggestions and stock update automatically within 15 seconds while visible and w
 
 Click **Prepare checkout** to fill the patient and charges and scroll directly to the checkout form. Canceling replacement keeps the existing checkout and position.
 
-Choose Cash/Card/QR/Deposit, then click **Full payment** in that row to fill the invoice total. If splits exist, confirm replacing them. Click **Complete checkout** separately to record payment; deposits still need sufficient balance.
+Choose Cash/Card/QR, then click **Full payment** in that row to fill the invoice total. If splits exist, confirm replacing them. Click **Complete checkout** separately to record payment.
+
+## Due appointments and removed deposits
+
+Book an appointment with patient, doctor and times. No room is chosen at booking. In Clinic overview, Appointments ready for check-in shows today's patients when their appointment time arrives. Click Check in patient and confirm they have actually arrived; they join Waiting for doctor. Call to room preselects their booked GP and asks for a currently available room. Early walk-ins still use ordinary patient check-in.
+Billing now offers Patient checkout and Invoice history. Choose Cash, Card or QR; Full payment remains available. Existing old deposit receipts remain viewable. The country box shows Malaysia greyed out for Malaysian forms and enables selection for non-Malaysians. Malaysian profiles omit the redundant country detail; MY remains stored internally.
+
+## Register and find patients quickly
+
+Use the prominent Register patient button in Patients, or the Register patient link in Clinic overview → Check in patient. The link opens registration directly; existing new-patient entries are preserved. Search boxes show matching choices as you type, including patient names and IDs. Choose a match with a click or Arrow keys and Enter. Escape closes suggestions. No matching results means change the query or register the patient; an empty dropdown does not silently do nothing. Search results follow your branch/module access. Large result lists show up to eight choices; refine the query to locate another match. Searching and selecting suggestions do not submit checkout or clinical forms.
+
+## Today's queue
+
+Visits today shows the day's total. If ten visits were registered, the day's count stays ten even after completion or expiry. At midnight Malaysia time, the new day's live queue starts empty. Older records and pending medicine/payment work remain stored. Expired rows are read-only; check in a new visit when appropriate. Ticket display numbers restart daily, while database IDs keep increasing.
+Temperature accepts28°C–40°C inclusive. Leave it blank when no reading is being entered.
+
+## Waiting-room screen without sign-in
+
+Open `/display` on the clinic website; locally use `http://127.0.0.1:5173/display`. Choose the clinic branch from the dropdown. Calling/waiting ticket numbers and rooms refresh every 15 seconds. Patient names and medical details are hidden. Choose another branch to change the queue. Staff still sign in to manage visits; this screen only displays information.

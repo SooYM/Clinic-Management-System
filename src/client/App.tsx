@@ -376,15 +376,13 @@ function ClinicApp() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
-    if (location.pathname !== '/display' && !location.pathname.startsWith('/verify'))
-      api
-        .get<{ user: User }>('/auth/me')
-        .then((r) => setUser(r.user))
-        .catch((e) => {
-          if (!(e instanceof ApiError && e.status === 401)) setError(e.message);
-        })
-        .finally(() => setReady(true));
-    else setReady(true);
+    api
+      .get<{ user: User }>('/auth/me')
+      .then((r) => setUser(r.user))
+      .catch((e) => {
+        if (!(e instanceof ApiError && e.status === 401)) setError(e.message);
+      })
+      .finally(() => setReady(true));
   }, []);
   useEffect(() => {
     const expired = () => {
@@ -394,8 +392,6 @@ function ClinicApp() {
     window.addEventListener('clinic:session-expired', expired);
     return () => window.removeEventListener('clinic:session-expired', expired);
   }, []);
-  if (location.pathname === '/display') return <QueueDisplay />;
-  if (location.pathname.startsWith('/verify')) return <VerifyCertificate />;
   if (!ready)
     return (
       <main className="boot-loading">
@@ -417,6 +413,14 @@ function ClinicApp() {
 }
 function Application() {
   const confirm = useConfirm();
+  const content =
+    location.pathname === '/display' ? (
+      <QueueDisplay />
+    ) : location.pathname.startsWith('/verify') ? (
+      <VerifyCertificate />
+    ) : (
+      <ClinicApp />
+    );
   return isDemo ? (
     <div className="demo-app">
       <div className="demo-banner" role="note">
@@ -439,10 +443,10 @@ function Application() {
           Reset demo
         </button>
       </div>
-      <ClinicApp />
+      {content}
     </div>
   ) : (
-    <ClinicApp />
+    content
   );
 }
 export default function App() {

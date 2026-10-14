@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, isDemo } from '../api';
+import { SearchBox } from '../SearchBox';
 import {
   Empty,
   ErrorNotice,
@@ -279,11 +280,27 @@ function MedicinePicker({
   return (
     <>
       <Field label="Search drug catalog">
-        <input
-          type="search"
+        <SearchBox
+          ariaLabel="Search drug catalog"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={setSearch}
+          suggestions={choices.map((item) => ({
+            id: item.id,
+            label: item.name,
+            description: `Item #${item.id} · ${item.sku} · ${item.stockQuantity ?? 0} ${item.unit} available`,
+          }))}
+          onSelect={(suggestion) => {
+            const medicine = choices.find((item) => item.id === suggestion.id);
+            if (!medicine) return;
+            setSelected(medicine);
+            onSelectionChange(true);
+            setSearch(medicine.name);
+          }}
+          loading={search.trim() !== term || resource.refreshing}
+          error={resource.error}
+          filterSuggestions={false}
           placeholder="Medicine, SKU or ingredient"
+          emptyMessage="No active medicines match. Change the search or ask an administrator to add the medicine."
         />
       </Field>
       <Field label="Medicine">
@@ -842,13 +859,13 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               </select>
             </Field>
             <BloodPressureField initial={selected?.vitals?.bloodPressure} />
-            <Field label="Temperature (°C)">
+            <Field label="Temperature (°C)" hint="Enter 28°C to 40°C.">
               <input
                 name="temperature"
                 type="number"
                 step="0.1"
-                min="25"
-                max="45"
+                min="28"
+                max="40"
                 defaultValue={selected?.vitals?.temperature}
               />
             </Field>
@@ -871,11 +888,21 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
             {!!selected?.prescriptions?.length && prescriptionList.controls}
             {!!selected?.prescriptions?.length && (
               <Field label="Search recorded prescriptions">
-                <input
-                  type="search"
+                <SearchBox
+                  ariaLabel="Search recorded prescriptions"
                   value={prescriptionSearch}
-                  onChange={(event) => setPrescriptionSearch(event.target.value)}
+                  onChange={setPrescriptionSearch}
+                  suggestions={(selected?.prescriptions || []).map((rx, index) => ({
+                    id: index,
+                    label:
+                      rx.itemName ||
+                      items.data?.find((item) => item.id === rx.itemId)?.name ||
+                      `Item #${rx.itemId}`,
+                    description: rx.dosage,
+                  }))}
+                  onSelect={(suggestion) => setPrescriptionSearch(suggestion.label)}
                   placeholder="Medicine or dosage instructions"
+                  emptyMessage="No recorded medicines match."
                 />
               </Field>
             )}
@@ -992,12 +1019,24 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
             label="Search patient"
             hint="Search name, IC, passport or phone. Then select a patient."
           >
-            <input
-              type="search"
+            <SearchBox
+              ariaLabel="Search patient"
               value={patientSearch}
-              maxLength={200}
-              onChange={(event) => setPatientSearch(event.target.value)}
+              onChange={setPatientSearch}
+              suggestions={(patients.data || []).map((row) => ({
+                id: row.id,
+                label: row.name,
+                description: `Patient #${row.id} · ${row.nationalId} · ${row.phone || ''}`,
+              }))}
+              onSelect={async (suggestion) => {
+                const nextPatient = patients.data?.find((row) => row.id === suggestion.id);
+                if (nextPatient && (await keepOrDiscardNote())) choosePatient(nextPatient);
+              }}
+              loading={patientSearch.trim() !== patientTerm || patients.refreshing}
+              error={patients.error}
+              filterSuggestions={false}
               placeholder="Name, IC, passport or phone"
+              emptyMessage="No matching patient. Change the search or register the patient first."
             />
           </Field>
           <Field label="Patient">

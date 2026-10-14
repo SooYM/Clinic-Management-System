@@ -4,6 +4,7 @@ import type { CatalogEntry } from '../AdminCatalogs';
 import PrescriptionLog from '../PrescriptionLog';
 import { RefreshCw } from 'lucide-react';
 import { api } from '../api';
+import { SearchBox } from '../SearchBox';
 import {
   Empty,
   ErrorNotice,
@@ -283,15 +284,28 @@ export default function Inventory() {
               label="Search prescription list"
               hint="Search patient, IC/passport, GP, encounter ID or medicine name."
             >
-              <input
-                type="search"
+              <SearchBox
+                ariaLabel="Search prescription list"
                 placeholder="Patient or medicine"
                 value={prescriptionSearch}
-                onChange={(event) => {
-                  setPrescriptionSearch(event.target.value);
+                onChange={(value) => {
+                  setPrescriptionSearch(value);
                   setEncounterId('');
                   setDispenseKey(crypto.randomUUID());
                 }}
+                suggestions={matchingPrescriptions.map((row) => ({
+                  id: row.id,
+                  label: row.patientName,
+                  description: `Encounter #${row.id} · ${row.practitionerName} · ${row.prescriptions.map((rx) => rx.itemName).join(', ')}`,
+                }))}
+                onSelect={(suggestion) => {
+                  setEncounterId(String(suggestion.id));
+                  setDispenseKey(crypto.randomUUID());
+                }}
+                loading={prescriptionSearch.trim() !== prescriptionTerm || pending.refreshing}
+                error={pending.error}
+                filterSuggestions={false}
+                emptyMessage="No pending prescriptions match this search."
               />
             </Field>
             <ResourceState {...pending}>
@@ -562,11 +576,21 @@ export default function Inventory() {
             </p>
             <div className="form-grid">
               <Field label="Search inventory">
-                <input
-                  type="search"
+                <SearchBox
+                  ariaLabel="Search inventory"
                   placeholder="Item name, SKU, ingredient or category"
                   value={inventorySearch}
-                  onChange={(event) => setInventorySearch(event.target.value)}
+                  onChange={setInventorySearch}
+                  suggestions={catalogItems.map((item) => ({
+                    id: item.id,
+                    label: item.name,
+                    description: `Item #${item.id} · ${item.sku} · ${item.stockQuantity ?? item.quantity ?? 0} ${item.unit} available`,
+                  }))}
+                  onSelect={(suggestion) => setInventorySearch(suggestion.label)}
+                  loading={inventorySearch.trim() !== inventoryTerm || resource.refreshing}
+                  error={resource.error}
+                  filterSuggestions={false}
+                  emptyMessage="No stock items match this search and category."
                 />
               </Field>
               <Field label="Inventory category">
@@ -890,11 +914,21 @@ export default function Inventory() {
               label="Search prescription history"
               hint="Find pending or completed prescriptions by patient, GP or encounter ID."
             >
-              <input
-                type="search"
+              <SearchBox
+                ariaLabel="Search prescription history"
                 value={historySearch}
-                onChange={(event) => setHistorySearch(event.target.value)}
+                onChange={setHistorySearch}
+                suggestions={(history.data || []).map((row) => ({
+                  id: row.id,
+                  label: row.patientName,
+                  description: `Patient #${row.patientId} · Encounter #${row.id} · ${row.dispensed ? 'Dispensed' : 'Pending'}`,
+                }))}
+                onSelect={(suggestion) => setLogEncounterId(String(suggestion.id))}
+                loading={historySearch.trim() !== historyTerm || history.refreshing}
+                error={history.error}
+                filterSuggestions={false}
                 placeholder="Patient, GP or encounter ID"
+                emptyMessage="No prescription history matches this search."
               />
             </Field>
             <ResourceState {...history}>

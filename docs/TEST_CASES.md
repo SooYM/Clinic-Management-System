@@ -214,3 +214,58 @@ RECEIPT-01: Real HTTP tests verify billing/auth/branch access, safe DTO, origina
 Checkout scroll: Prepare checkout positions the form below sticky navigation on desktop and phone; repeat selection preserves edits and scrolls again; reduced-motion uses immediate scrolling.
 
 Full payment: disabled for zero invoice; exact cent total filled; chosen method/reference retained; split replacement cancel preserves all entries, confirm leaves one full allocation; no invoice issued before checkout; usable at 320px.
+
+## Deposit retirement and appointment arrival cases
+
+| Case | Expected result |
+| --- | --- |
+| New deposit or balance request | 410 FEATURE_RETIRED, no money mutation |
+| New DEPOSIT checkout | Rejected, old balances unchanged |
+| Historical deposit receipt | Preview/PDF still readable |
+| Booking | No room input; roomId rejected; GP conflicts retained |
+| Due Malaysia appointment | Suggested under queue permission; future/previous-day/canceled/checked-in excluded |
+| Confirm scheduled arrival | One waiting ticket with booked GP and null room; appointment CHECKED_IN |
+| Cancel arrival consent | No ticket/status mutation |
+| Concurrent/stale/foreign arrival | One success at most; guarded failure with no duplicate ticket |
+| Malaysian patient forms/profile | Country box visible/grey/disabled with Malaysia; MY retained; stable field positions; profile country omitted |
+| Non-Malaysian forms/profile | Country selection/value shown |
+
+## Registration/search acceptance
+
+| Case | Expected result |
+| --- | --- |
+| Patients primary Register patient | Opens registration and scrolls; current new draft remains |
+| Check-in Register patient shortcut | Authorized staff open registration directly; no link for queue-only staff |
+| Malaysian/foreign country switch | Visible disabled Malaysia box versus enabled foreign selection; nationality toggle stays editable |
+| Search John in patient directory | Matching name/ID/identity/phone choices; selecting opens correct profile |
+| Search patient in appointment/check-in | Selected numeric patient ID populated |
+| Search medicine/prescription/stock | Relevant authorized choices shown and selected |
+| No match or pending/error response | Explicit feedback; stale choices hidden |
+| Arrow keys/Enter/Escape | Select/dismiss; never submit the surrounding form |
+| Phone dropdown | Bounded choices; no horizontal page overflow |
+
+## Daily queue and temperature regressions
+
+| Case | Expected result |
+| --- | --- |
+| Ten tickets today including final/expired | Ten visible and visitsToday=10; expired rows read-only |
+| Malaysia midnight | Previous day's live list/count zero, history retained, room/patient locks released |
+| Repeat expiry cleanup | One expiry audit/version change, no deletion |
+| Previous signed dispense/checkout | Still allowed; expired queue never revived |
+| New day first ticket | Q-001, new increasing numeric ID |
+| Temperature28 or40 | Accepted by form/API |
+| Temperature27.9/40.1/nonfinite/nonnumeric | Save rejected; no new consultation mutation |
+| Temperature omitted/blank | Accepted |
+
+## Anonymous waiting-room display cases
+
+| Case | Expected result | Evidence |
+| --- | --- | --- |
+| Read branch listing without cookie | Only active `{id,name,clinicName}` branches | Guarded real MySQL/HTTP |
+| Supply conflicting staff branch header | Explicit query branch wins; no other branch tickets | Guarded real MySQL/HTTP |
+| Inspect anonymous queue | Exact `{ticketNumber,status,roomName}` fields; no private data | Guarded real MySQL/HTTP |
+| Prior-day/completed/expired tickets | Absent from public waiting projection | Guarded real MySQL/HTTP |
+| Missing/malformed or unavailable branch | 400 for malformed input; 404 for unavailable branch | Guarded real MySQL/HTTP |
+| Read staff queue/display/events without cookie | 401; staff APIs remain protected | Guarded real MySQL/HTTP |
+| POST to public queue URL | No public write route; request rejects | Guarded real MySQL/HTTP |
+| Open `/display`, select branch, wait | No login prompt; refresh every 15 seconds | Browser acceptance |

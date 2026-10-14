@@ -19,13 +19,7 @@ import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import { useListControls } from '../ListControls';
 import { malaysiaDate } from '../../shared/clinic-dates';
 import { useConfirm } from '../Confirmation';
-export default function Appointments({
-  practitioners,
-  rooms,
-}: {
-  practitioners: Reference[];
-  rooms: Reference[];
-}) {
+export default function Appointments({ practitioners }: { practitioners: Reference[] }) {
   const resource = useResource<Appointment[]>('/appointments');
   const patients = useResource<Patient[]>('/references/patients');
   const [section, setSection] = useState('visits');
@@ -64,7 +58,7 @@ export default function Appointments({
     <>
       <PageTitle
         title="Appointments"
-        description="Plan practitioner time and reserve the right consultation room."
+        description="Plan practitioner time. A room is assigned when the patient is called."
       />
       <WorkspaceSections label="Appointment sections" value={section} onChange={setSection}>
         <WorkspaceSection
@@ -185,7 +179,6 @@ export default function Appointments({
                 api.post('/appointments', {
                   patientId: Number(formText(f, 'patientId')),
                   practitionerId: Number(formText(f, 'practitionerId')),
-                  roomId: Number(formText(f, 'roomId')) || undefined,
                   startsAt: new Date(formText(f, 'startsAt')).toISOString(),
                   endsAt: new Date(formText(f, 'endsAt')).toISOString(),
                   reason: formText(f, 'reason'),
@@ -195,7 +188,6 @@ export default function Appointments({
               <div className="form-grid">
                 <SearchablePatientSelect />
                 <SelectReference name="practitionerId" label="Practitioner" items={practitioners} />
-                <SelectReference name="roomId" label="Room" items={rooms} required={false} />
                 <Field label="Reason for visit">
                   <input name="reason" required />
                 </Field>
@@ -207,8 +199,9 @@ export default function Appointments({
                 </Field>
               </div>
               <p className="form-help">
-                Overlapping practitioner and room bookings are checked before confirmation. Choose
-                today or a future date in Malaysia time. Earlier times today are allowed.
+                Overlapping practitioner bookings are checked before confirmation. Choose today or a
+                future date in Malaysia time. Earlier times today are allowed. Rooms are assigned
+                from available rooms when the patient is called.
               </p>
             </MutationForm>
           </Panel>

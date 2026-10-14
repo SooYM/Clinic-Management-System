@@ -12,8 +12,16 @@ import {
   ResourceState,
   formText,
   useResource,
+  useModules,
 } from '../components';
-import { type Patient, type Reference, type Ticket, queueStates } from '../types';
+import {
+  type Patient,
+  type Reference,
+  type Ticket,
+  type Appointment,
+  dateTime,
+  queueStates,
+} from '../types';
 import { useListControls } from '../ListControls';
 import { useConfirm } from '../Confirmation';
 export default function Queue({
@@ -23,9 +31,14 @@ export default function Queue({
   rooms: Reference[];
   practitioners: Reference[];
 }) {
+  const modules = useModules();
   const confirm = useConfirm();
   const resource = useResource<Ticket[]>('/queue');
+  const arrivals = useResource<(Appointment & { practitionerName: string })[]>(
+    '/queue/appointment-arrivals',
+  );
   const estimate = useResource<{
+    visitsToday: number;
     estimatedMinutes: number | null;
     sampleCount: number;
     practitionerCount: number;
@@ -40,17 +53,22 @@ export default function Queue({
   const [room, setRoom] = useState('');
   const [doctor, setDoctor] = useState('');
   const [callingTicket, setCallingTicket] = useState<number>();
+  const [arrivalBusy, setArrivalBusy] = useState<number>();
+  const [arrivalError, setArrivalError] = useState('');
   useEffect(() => {
     const refresh = () => {
       resource.refresh();
       estimate.refresh();
+      arrivals.refresh();
     };
     const stream = isDemo ? undefined : new EventSource(api.url('/queue/events'));
     stream?.addEventListener('queue', refresh);
     const interval = window.setInterval(refresh, 15000);
+    window.addEventListener('clinic:workflow-updated', refresh);
     return () => {
       stream?.close();
       window.clearInterval(interval);
+      window.removeEventListener('clinic:workflow-updated', refresh);
     };
   }, []);
   const tickets = resource.data || [];
@@ -102,7 +120,11 @@ export default function Queue({
   function openCall(ticket: Ticket) {
     setCallingTicket(ticket.id);
     setRoom('');
-    setDoctor('');
+    setDoctor(
+      practitioners.some((entry) => entry.id === ticket.practitionerId)
+        ? String(ticket.practitionerId)
+        : '',
+    );
     setError('');
   }
   async function transition(ticket: Ticket, target?: string) {
@@ -137,6 +159,35 @@ export default function Queue({
       setError((e as Error).message);
     } finally {
       setBusy(undefined);
+    }
+  }
+  async function checkInAppointment(appointment: Appointment) {
+    if (
+      !(await confirm({
+        title: 'Check in appointment?',
+        message: `Confirm ${appointment.patientName || 'patient'} has arrived for their ${dateTime(appointment.startsAt)} appointment? They will join the queue waiting to be called.`,
+        confirmLabel: 'Check in patient',
+      }))
+    )
+      return;
+    setArrivalBusy(appointment.id);
+    setArrivalError('');
+    try {
+      await api.post('/queue', {
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        appointmentVersion: appointment.version,
+        priority: 'NORMAL',
+      });
+      resource.refresh();
+      arrivals.refresh();
+      estimate.refresh();
+      setCheckIn(false);
+    } catch (failure) {
+      setArrivalError((failure as Error).message);
+      arrivals.refresh();
+    } finally {
+      setArrivalBusy(undefined);
     }
   }
   return (
@@ -197,6 +248,40 @@ export default function Queue({
               ? 'Queue clearance estimate needs more consultation history and an active practitioner.'
               : `Approximate queue clearance: ${estimate.data.estimatedMinutes} minutes · ${estimate.data.waiting} waiting · based on ${estimate.data.sampleCount} consultations and ${estimate.data.practitionerCount} practitioners. Individual waiting times may vary.`}
       </p>
+      <Panel title="Appointments ready for check-in">
+        <p className="form-help">
+          Today's appointments appear when their scheduled time arrives. Confirm arrival to add the
+          patient to the waiting queue.
+        </p>
+        <ResourceState {...arrivals}>
+          {arrivals.data?.length ? (
+            <div className="consultation-history-list" role="list">
+              {arrivals.data.map((appointment) => (
+                <div className="consultation-history-row" role="listitem" key={appointment.id}>
+                  <div className="consultation-history-summary">
+                    <strong>{appointment.patientName}</strong>
+                    <small>
+                      Patient #{appointment.patientId} · {dateTime(appointment.startsAt)} ·{' '}
+                      {appointment.practitionerName}
+                    </small>
+                    {appointment.reason && <p>{appointment.reason}</p>}
+                  </div>
+                  <button
+                    className="secondary"
+                    disabled={arrivalBusy !== undefined}
+                    onClick={() => void checkInAppointment(appointment)}
+                  >
+                    {arrivalBusy === appointment.id ? 'Checking in…' : 'Check in patient'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="form-help">No appointments are due for check-in.</p>
+          )}
+        </ResourceState>
+        {arrivalError && <ErrorNotice>{arrivalError}</ErrorNotice>}
+      </Panel>
       <WorkspaceSections
         label="Clinic overview sections"
         value={checkIn ? 'check-in' : 'queue'}
@@ -236,6 +321,13 @@ export default function Queue({
               </button>
             }
           >
+            <p className="form-help" role="status">
+              <strong>
+                Visits today:{' '}
+                {resource.loading ? '—' : (estimate.data?.visitsToday ?? tickets.length)}
+              </strong>
+              {' · '}Resets at midnight, Malaysia time.
+            </p>
             <p className="form-help">
               Choose Call to room beside a waiting patient, then select their room and doctor. Queue
               updates every 15 seconds.
@@ -275,7 +367,7 @@ export default function Queue({
                               <span
                                 className={`status ${t.expiredAt ? 'skipped' : t.status.toLowerCase()}`}
                               >
-                                {t.expiredAt ? 'Check-in expired' : stageLabel(t.status)}
+                                {t.expiredAt ? 'Expired' : stageLabel(t.status)}
                               </span>
                             </td>
                             <td>
@@ -466,7 +558,25 @@ export default function Queue({
           label="Check in patient"
           description="Add a registered patient to today's queue."
         >
-          <Panel title="Check in">
+          <Panel
+            title="Check in"
+            action={
+              modules.includes('patients') ? (
+                <a
+                  className="button"
+                  href="#patients"
+                  onClick={() =>
+                    sessionStorage.setItem(
+                      `clinic:register-patient:${api.getBranch() || 'default'}`,
+                      '1',
+                    )
+                  }
+                >
+                  Register patient
+                </a>
+              ) : undefined
+            }
+          >
             <p className="form-help">
               A check-in stays active for 12 hours. If the patient already has an active visit,
               continue that ticket in Live queue. Expiry keeps their clinical records.

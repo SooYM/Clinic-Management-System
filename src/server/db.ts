@@ -25,6 +25,7 @@ const entityIdColumns = new Set([
   'room_id',
   'encounter_id',
   'queue_ticket_id',
+  'appointment_id',
   'item_id',
   'batch_id',
   'dispense_id',

@@ -1,4 +1,5 @@
 import { catalogKinds } from '../shared/catalogs';
+import { malaysiaDate } from '../shared/clinic-dates';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { buildReceiptView } from '../shared/receipt-view';
 import { schemas, validateItemIngredient } from '../server/validation';
@@ -39,8 +40,15 @@ const key = 'clinic-session-demo-v1';
 const defaultDemoPassword = 'demo';
 const now = () => new Date().toISOString();
 const queueLifetimeMs = 12 * 60 * 60 * 1000;
-const activeQueue = (ticket: Row) =>
+const queueExpiryTime = (ticket: Row) =>
+  Math.min(
+    new Date(ticket.createdAt).getTime() + queueLifetimeMs,
+    new Date(`${ticket.serviceDate}T00:00:00+08:00`).getTime() + 24 * 60 * 60 * 1000,
+  );
+const unfinishedQueue = (ticket: Row) =>
   !ticket.expiredAt && !['COMPLETED', 'SKIPPED'].includes(ticket.status);
+const activeQueue = (ticket: Row) =>
+  unfinishedQueue(ticket) && ticket.serviceDate === today() && queueExpiryTime(ticket) > Date.now();
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kuala_Lumpur',
@@ -48,6 +56,7 @@ const today = () =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
+const todayFor = (value: string) => malaysiaDate(new Date(value));
 const fail = (message: string, status = 422): never => {
   throw new DomainError('DEMO_ERROR', message, status);
 };
@@ -273,7 +282,7 @@ function seed(): State {
         branchId: 1,
         patientId: 3,
         practitionerId: 2,
-        roomId: 2,
+        roomId: null,
         startsAt: nextVisit.toISOString(),
         endsAt: new Date(nextVisit.getTime() + 1800000).toISOString(),
         reason: 'Blood pressure follow-up',
@@ -355,18 +364,7 @@ function seed(): State {
         version: 1,
       },
     ],
-    deposits: [
-      {
-        id: 1,
-        tenantId: 1,
-        branchId: 1,
-        patientId: 2,
-        amountCents: 3000,
-        reference: 'DEMO-NO-REAL-DEPOSIT',
-        createdAt: timestamp,
-        version: 1,
-      },
-    ],
+    deposits: [],
     documents: [],
     notifications: [
       {
@@ -502,7 +500,11 @@ export class DemoClinic {
       item.active ??= true;
       item.version ??= 1;
     }
-    for (const ticket of this.state.rows.queue) ticket.expiredAt ??= null;
+    for (const ticket of this.state.rows.queue) {
+      ticket.expiredAt ??= null;
+      ticket.serviceDate ??= todayFor(ticket.createdAt);
+      ticket.appointmentId ??= null;
+    }
     for (const encounter of this.state.rows.encounters) encounter.deletedAt ??= null;
     for (const user of this.state.rows.users)
       user.isSuperAdmin ??=
@@ -623,8 +625,8 @@ export class DemoClinic {
     let changed = false;
     for (const ticket of this.state.rows.queue) {
       if (
-        activeQueue(ticket) &&
-        new Date(ticket.createdAt).getTime() + queueLifetimeMs <= Date.now()
+        unfinishedQueue(ticket) &&
+        (ticket.serviceDate !== today() || queueExpiryTime(ticket) <= Date.now())
       ) {
         ticket.expiredAt = now();
         ticket.version++;
@@ -646,9 +648,7 @@ export class DemoClinic {
     return changed;
   }
   private visibleQueue(branch: number) {
-    return this.scoped('queue', branch).filter(
-      (ticket) => !ticket.expiredAt && (activeQueue(ticket) || ticket.serviceDate === today()),
-    );
+    return this.scoped('queue', branch).filter((ticket) => ticket.serviceDate === today());
   }
   private consultationTicket(
     ticketId: number,
@@ -658,7 +658,10 @@ export class DemoClinic {
   ) {
     const ticket = this.record('queue', ticketId, branch);
     if (ticket.expiredAt)
-      fail('Queue ticket expired after 12 hours. Check the patient in again.', 409);
+      fail(
+        'Queue ticket expired after 12 hours or at clinic midnight. Check the patient in again.',
+        409,
+      );
     if (ticket.patientId !== patientId) fail('Queue ticket belongs to a different patient.', 409);
     if (ticket.practitionerId !== doctorId) fail('Queue ticket is assigned to another GP.', 403);
     if (!['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(ticket.status))
@@ -840,6 +843,54 @@ export class DemoClinic {
   private dispatch(path: string, method: string, body: any, branchId?: number): any {
     const url = new URL(path, 'https://demo.invalid'),
       route = url.pathname;
+    if (route.startsWith('/public/display')) {
+      if (method !== 'GET') fail('Public display is read-only.', 404);
+      const branches = this.state.rows.branches
+        .filter(
+          (row) =>
+            row.active && this.state.rows.tenants.some((tenant) => tenant.id === row.tenantId),
+        )
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          clinicName: this.state.rows.tenants.find((tenant) => tenant.id === row.tenantId)!.name,
+        }))
+        .sort((left, right) => left.id - right.id);
+      if (route === '/public/display/branches') return { data: branches };
+      if (route === '/public/display/queue') {
+        const parsed = idSchema.safeParse(url.searchParams.get('branchId'));
+        if (!parsed.success) fail('Choose a valid branch.', 400);
+        const branch =
+          branches.find((row) => row.id === parsed.data) || fail('Branch unavailable.', 404);
+        const source = this.state.rows.branches.find((row) => row.id === branch.id)!;
+        return {
+          branch,
+          data: this.state.rows.queue
+            .filter(
+              (ticket) =>
+                ticket.branchId === branch.id &&
+                ticket.tenantId === source.tenantId &&
+                activeQueue(ticket) &&
+                ['REGISTERED', 'TRIAGE_WAITING', 'CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(
+                  ticket.status,
+                ),
+            )
+            .sort((left, right) => left.id - right.id)
+            .map((ticket) => ({
+              ticketNumber: ticket.ticketNumber,
+              status: ticket.status,
+              roomName:
+                this.state.rows.rooms.find(
+                  (room) =>
+                    room.id === ticket.roomId &&
+                    room.branchId === branch.id &&
+                    room.tenantId === source.tenantId,
+                )?.name || null,
+            })),
+        };
+      }
+      fail('Public display route not found.', 404);
+    }
     if (route === '/auth/login' && method === 'POST') {
       const user = this.state.rows.users.find(
         (u) =>
@@ -871,6 +922,8 @@ export class DemoClinic {
     )
       fail('This demo account has no access to that branch.', 403);
     const modules = this.modules(user);
+    if (/^\/deposits(?:\/|$)/.test(route) || /^\/patients\/[^/]+\/deposit-balance$/.test(route))
+      fail('Patient deposits have been removed from active billing.', 410);
     if (/^\/(packages|commissions|photos)(\/|$)/.test(route)) fail('Feature retired.', 410);
     if (route.startsWith('/admin/') && user.role !== 'ADMIN')
       fail('Demo administration requires administrator role.', 403);
@@ -1188,14 +1241,6 @@ export class DemoClinic {
         ].map((k) => [k, p[k]]),
       );
     }
-    if (/^\/patients\/\d+\/deposit-balance$/.test(route)) {
-      this.record('patients', id!, branch);
-      return {
-        balanceCents: this.scoped('deposits', branch)
-          .filter((d) => d.patientId === id)
-          .reduce((sum, d) => sum + d.amountCents, 0),
-      };
-    }
     if (/^\/patients\/\d+\/encounters$/.test(route)) {
       this.record('patients', id!, branch);
       return {
@@ -1297,18 +1342,17 @@ export class DemoClinic {
       const v = schemas.appointment.parse(body);
       this.record('patients', v.patientId, branch);
       this.doctor(v.practitionerId, branch);
-      if (v.roomId && !this.record('rooms', v.roomId, branch).active) fail('Room is archived.');
       if (
         this.scoped('appointments', branch).some(
           (a) =>
-            a.status === 'BOOKED' &&
-            (a.practitionerId === v.practitionerId || (v.roomId && a.roomId === v.roomId)) &&
-            a.startsAt < v.endsAt &&
-            a.endsAt > v.startsAt,
+            ['BOOKED', 'CHECKED_IN'].includes(a.status) &&
+            a.practitionerId === v.practitionerId &&
+            new Date(a.startsAt).getTime() < new Date(v.endsAt).getTime() &&
+            new Date(a.endsAt).getTime() > new Date(v.startsAt).getTime(),
         )
       )
-        fail('Appointment overlaps practitioner or room booking.', 409);
-      const a = this.add('appointments', { ...v, status: 'BOOKED' }, branch);
+        fail('Appointment overlaps practitioner booking.', 409);
+      const a = this.add('appointments', { ...v, roomId: null, status: 'BOOKED' }, branch);
       this.notice(this.record('patients', v.patientId, branch), 'BOOKING', branch);
       return this.enrich(a);
     }
@@ -1334,24 +1378,91 @@ export class DemoClinic {
     if (route === '/queue' && method === 'POST') {
       const v = schemas.queue.parse(body);
       this.record('patients', v.patientId, branch);
+      const appointment = v.appointmentId
+        ? this.record('appointments', v.appointmentId, branch)
+        : undefined;
+      if (appointment) {
+        if (
+          appointment.deletedAt ||
+          appointment.status !== 'BOOKED' ||
+          appointment.version !== v.appointmentVersion ||
+          appointment.patientId !== v.patientId
+        )
+          fail('Appointment changed. Refresh arrivals before checking in.', 409);
+        if (
+          today() !== todayFor(appointment.startsAt) ||
+          new Date(appointment.startsAt).getTime() > Date.now()
+        )
+          fail('Appointment is not due today yet.', 409);
+        this.doctor(appointment.practitionerId, branch);
+      }
       if (this.scoped('queue', branch).some((q) => q.patientId === v.patientId && activeQueue(q)))
         fail(
-          'Patient is already checked in with an active ticket. Use the existing ticket or wait until it expires after 12 hours.',
+          'Patient is already checked in with an active ticket. Use the existing ticket or wait until it expires after 12 hours or at clinic midnight.',
           409,
         );
       const q = this.add(
         'queue',
-        { ...v, status: 'REGISTERED', serviceDate: today(), expiredAt: null },
+        {
+          patientId: v.patientId,
+          priority: v.priority,
+          appointmentId: appointment?.id || null,
+          practitionerId: appointment?.practitionerId || null,
+          roomId: null,
+          status: 'REGISTERED',
+          serviceDate: today(),
+          expiredAt: null,
+        },
         branch,
       );
-      q.ticketNumber = 'Q-' + String(q.id).padStart(3, '0');
+      q.ticketNumber =
+        'Q-' +
+        String(
+          this.scoped('queue', branch).filter((ticket) => ticket.serviceDate === today()).length,
+        ).padStart(3, '0');
+      if (appointment) {
+        appointment.status = 'CHECKED_IN';
+        appointment.version++;
+      }
       return this.enrich(q);
+    }
+    if (route === '/queue/appointment-arrivals' && method === 'GET') {
+      return {
+        data: this.scoped('appointments', branch)
+          .filter(
+            (a) =>
+              !a.deletedAt &&
+              a.status === 'BOOKED' &&
+              todayFor(a.startsAt) === today() &&
+              new Date(a.startsAt).getTime() <= Date.now() &&
+              !this.scoped('queue', branch).some(
+                (q) => q.patientId === a.patientId && activeQueue(q),
+              ),
+          )
+          .sort(
+            (a, b) =>
+              new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime() || a.id - b.id,
+          )
+          .map((a) => ({
+            id: a.id,
+            patientId: a.patientId,
+            patientName: this.record('patients', a.patientId, branch).name,
+            practitionerId: a.practitionerId,
+            practitionerName: this.state.rows.users.find((u) => u.id === a.practitionerId)?.name,
+            startsAt: a.startsAt,
+            reason: a.reason,
+            version: a.version,
+          })),
+      };
     }
     if (/^\/queue\/\d+\/transition$/.test(route)) {
       const v = schemas.transition.parse(body),
         q = this.record('queue', id!, branch);
       if (q.expiredAt)
-        fail('Queue ticket expired after 12 hours. Check the patient in again.', 409);
+        fail(
+          'Queue ticket expired after 12 hours or at clinic midnight. Check the patient in again.',
+          409,
+        );
       if (q.version !== v.version) fail('Ticket changed.', 409);
       if (user.role === 'DOCTOR' && q.practitionerId && q.practitionerId !== user.id)
         fail('GP can only manage own consultations.', 403);
@@ -1367,7 +1478,7 @@ export class DemoClinic {
           this.scoped('queue', branch).some(
             (t) =>
               t.id !== q.id &&
-              !t.expiredAt &&
+              activeQueue(t) &&
               t.roomId === v.roomId &&
               ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status),
           )
@@ -1384,14 +1495,17 @@ export class DemoClinic {
     }
     if (route === '/queue/display')
       return {
-        data: this.visibleQueue(branch).map((q) => ({
-          ticketNumber: q.ticketNumber,
-          status: q.status,
-          roomName: this.state.rows.rooms.find((r) => r.id === q.roomId)?.name,
-        })),
+        data: this.visibleQueue(branch)
+          .filter(activeQueue)
+          .map((q) => ({
+            ticketNumber: q.ticketNumber,
+            status: q.status,
+            roomName: this.state.rows.rooms.find((r) => r.id === q.roomId)?.name,
+          })),
       };
     if (route === '/queue/estimate')
       return {
+        visitsToday: this.visibleQueue(branch).length,
         sampleCount: 0,
         practitionerCount: this.state.rows.users.filter(
           (u) => u.role === 'DOCTOR' && u.active && u.branchIds.includes(branch),
@@ -1423,9 +1537,7 @@ export class DemoClinic {
             version: ticket.version,
             createdAt: ticket.createdAt,
             calledAt: ticket.calledAt || null,
-            expiresAt: new Date(
-              new Date(ticket.createdAt).getTime() + queueLifetimeMs,
-            ).toISOString(),
+            expiresAt: new Date(queueExpiryTime(ticket)).toISOString(),
             encounterId:
               this.scoped('encounters', branch).find(
                 (encounter) => !encounter.deletedAt && encounter.queueTicketId === ticket.id,
@@ -1880,11 +1992,6 @@ export class DemoClinic {
           ),
       };
     }
-    if (route === '/deposits' && method === 'POST') {
-      const v = schemas.deposit.parse(body);
-      this.record('patients', v.patientId, branch);
-      return this.add('deposits', v, branch);
-    }
     if (/^\/invoices\/\d+\/receipt-view$/.test(route) && method === 'GET') {
       const invoice = this.record('invoices', id!, branch),
         patient = this.record('patients', invoice.patientId, branch),
@@ -1942,13 +2049,6 @@ export class DemoClinic {
       new Money(total);
       if (!total || v.payments.reduce((sum, p) => sum + p.amountCents, 0) !== total)
         fail('Payment total must equal invoice total.');
-      const used = v.payments
-          .filter((p) => p.method === 'DEPOSIT')
-          .reduce((sum, p) => sum + p.amountCents, 0),
-        balance = this.scoped('deposits', branch)
-          .filter((d) => d.patientId === v.patientId)
-          .reduce((sum, d) => sum + d.amountCents, 0);
-      if (used > balance) fail('Insufficient deposit.');
       const invoice = this.add(
         'invoices',
         {
@@ -1970,12 +2070,6 @@ export class DemoClinic {
       invoice.invoiceNumber = 'DEMO-INV-' + invoice.id;
       if (encounter)
         this.advanceVisit(encounter, branch, user.name, 'PAYMENT_WAITING', 'COMPLETED', 'CHECKOUT');
-      if (used)
-        this.add(
-          'deposits',
-          { patientId: v.patientId, amountCents: -used, reference: invoice.invoiceNumber },
-          branch,
-        );
       return this.enrich(invoice);
     }
     if (route === '/documents' && method === 'POST') {
@@ -2212,7 +2306,7 @@ export class DemoClinic {
       if (
         this.scoped('queue', branch).some(
           (q) =>
-            !q.expiredAt &&
+            activeQueue(q) &&
             q.roomId === room.id &&
             ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(q.status),
         )

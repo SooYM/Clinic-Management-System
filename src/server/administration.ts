@@ -175,7 +175,7 @@ export function administrationRouter() {
         [req.context.actor.tenantId, req.context.branchId],
       );
       const waiting = await pool.query(
-        "SELECT COUNT(*) count FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status IN ('REGISTERED','TRIAGE_WAITING')",
+        "SELECT COUNT(*) visits_today,COALESCE(SUM(CASE WHEN expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status IN ('REGISTERED','TRIAGE_WAITING') THEN 1 ELSE 0 END),0) count FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))",
         [req.context.actor.tenantId, req.context.branchId],
       );
       const sampleCount = Number(history.rows[0].sample_count),
@@ -184,6 +184,7 @@ export function administrationRouter() {
         sampleCount,
         practitionerCount,
         waiting: Number(waiting.rows[0].count),
+        visitsToday: Number(waiting.rows[0].visits_today),
         estimatedMinutes:
           sampleCount >= 5 && practitionerCount > 0
             ? Math.ceil(
@@ -533,7 +534,7 @@ export function administrationRouter() {
         ).rows[0];
         if (!room) throw new DomainError('NOT_FOUND', 'Room not found in selected branch.', 404);
         const busy = await db.query(
-          "SELECT id FROM queue_tickets WHERE room_id=$1 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
+          "SELECT id FROM queue_tickets WHERE room_id=$1 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)) AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
           [id],
         );
         if (busy.rowCount)
@@ -596,7 +597,7 @@ export function administrationRouter() {
         if (
           (
             await db.query(
-              "SELECT id FROM queue_tickets WHERE room_id=$1 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
+              "SELECT id FROM queue_tickets WHERE room_id=$1 AND expired_at IS NULL AND created_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)) AND status IN ('CALLED_TO_ROOM','IN_CONSULTATION') LIMIT 1",
               [id],
             )
           ).rowCount

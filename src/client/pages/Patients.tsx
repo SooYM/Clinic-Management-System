@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Search, ArrowLeft } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { api } from '../api';
 import {
   Empty,
@@ -21,6 +21,8 @@ import PatientForm from './PatientForm';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import { useListControls } from '../ListControls';
 import { countryName } from '../../shared/countries';
+import { useConfirm } from '../Confirmation';
+import { SearchBox } from '../SearchBox';
 interface Encounter {
   id: number;
   createdAt: string;
@@ -138,6 +140,9 @@ function PatientHistory({ patientId }: { patientId: number }) {
   );
 }
 export default function Patients() {
+  const confirm = useConfirm();
+  const registrationPanel = useRef<HTMLDivElement>(null);
+  const patientFormDirty = useRef(false);
   const role = useRole();
   const canEdit = true;
   const [search, setSearch] = useState('');
@@ -171,7 +176,46 @@ export default function Patients() {
       { key: 'birth', label: 'Birth date', value: (row) => row.dateOfBirth },
     ],
   });
+  function scrollToRegistration() {
+    requestAnimationFrame(() => {
+      const panel = registrationPanel.current;
+      const navigation = panel
+        ?.closest('.workspace-sections')
+        ?.querySelector('.section-navigation');
+      if (!panel || !navigation) return;
+      panel.style.scrollMarginTop = `${navigation.getBoundingClientRect().height + parseFloat(getComputedStyle(navigation).top) + 12}px`;
+      panel.scrollIntoView({
+        block: 'start',
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      });
+    });
+  }
+  async function openRegistration() {
+    if (
+      editing &&
+      patientFormDirty.current &&
+      !(await confirm({
+        title: 'Discard patient changes?',
+        message: 'Opening registration will discard unsaved changes to this patient profile.',
+        confirmLabel: 'Discard changes',
+      }))
+    )
+      return;
+    if (editing) patientFormDirty.current = false;
+    setEditing(false);
+    setSelected(undefined);
+    setSection('registration');
+    scrollToRegistration();
+  }
+  useEffect(() => {
+    const key = `clinic:register-patient:${api.getBranch() || 'default'}`;
+    if (sessionStorage.getItem(key) !== '1') return;
+    sessionStorage.removeItem(key);
+    setSection('registration');
+    scrollToRegistration();
+  }, []);
   function saved(patient: Patient) {
+    patientFormDirty.current = false;
     resource.refresh();
     setSection('directory');
     setRegistrationRevision((value) => value + 1);
@@ -184,6 +228,11 @@ export default function Patients() {
       <PageTitle
         title="Patients"
         description="Find a patient, review their profile, or register a first visit."
+        action={
+          <button type="button" onClick={() => void openRegistration()}>
+            Register patient
+          </button>
+        }
       />
       <WorkspaceSections
         label="Patient sections"
@@ -260,14 +309,16 @@ export default function Patients() {
                           ? 'Non-Malaysian'
                           : 'Not recorded'}
                     </dd>
-                    <dt>Country of nationality</dt>
-                    <dd>
-                      {selected.nationality === 'MALAYSIAN'
-                        ? 'Malaysia'
-                        : selected.countryCode
-                          ? countryName(selected.countryCode)
-                          : 'Not recorded'}
-                    </dd>
+                    {selected.nationality === 'NON_MALAYSIAN' && (
+                      <>
+                        <dt>Country of nationality</dt>
+                        <dd>
+                          {selected.countryCode
+                            ? countryName(selected.countryCode)
+                            : 'Not recorded'}
+                        </dd>
+                      </>
+                    )}
                     <dt>
                       {selected.nationality === 'MALAYSIAN'
                         ? 'IC number'
@@ -313,23 +364,27 @@ export default function Patients() {
             </>
           ) : (
             <Panel title="Patient directory">
-              <label htmlFor="patient-list-search">Search patient list</label>
-              <div className="search-field">
-                <Search size={18} />
-                <input
-                  id="patient-list-search"
-                  type="search"
-                  aria-label="Search patients"
-                  placeholder="Name, IC/passport, or phone"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                {search && (
-                  <button type="button" className="text-button" onClick={() => setSearch('')}>
-                    Clear
-                  </button>
-                )}
-              </div>
+              <SearchBox
+                ariaLabel="Search patients"
+                placeholder="Name, IC/passport, or phone"
+                value={search}
+                onChange={setSearch}
+                suggestions={(resource.data || []).map((patient) => ({
+                  id: patient.id,
+                  label: patient.name,
+                  description: `Patient #${patient.id} · ${patient.nationalId} · ${patient.phone}`,
+                }))}
+                loading={search.trim() !== searchTerm || resource.refreshing}
+                error={resource.error}
+                emptyMessage="No matching patients."
+                onSelect={(suggestion) => {
+                  const patient = resource.data?.find((entry) => entry.id === suggestion.id);
+                  if (!patient) return;
+                  setSelected(patient);
+                  setSection('directory');
+                  setEditing(false);
+                }}
+              />
               <p className="form-help">
                 Search patient list queries saved patients. Filters and sorting below apply to the
                 loaded results.
@@ -410,17 +465,24 @@ export default function Patients() {
           label={editing ? 'Edit patient' : 'Patient registration'}
           description="Register a first visit or update the selected patient's demographic details."
         >
-          <Panel title={editing && selected ? 'Edit patient details' : 'Patient registration'}>
-            <PatientForm
-              key={
-                editing && selected
-                  ? `${selected.id}:${selected.version}`
-                  : `new:${registrationRevision}`
-              }
-              initial={editing ? selected : undefined}
-              onSaved={saved}
-            />
-          </Panel>
+          <div
+            ref={registrationPanel}
+            onChangeCapture={() => {
+              patientFormDirty.current = true;
+            }}
+          >
+            <Panel title={editing && selected ? 'Edit patient details' : 'Patient registration'}>
+              <PatientForm
+                key={
+                  editing && selected
+                    ? `${selected.id}:${selected.version}`
+                    : `new:${registrationRevision}`
+                }
+                initial={editing ? selected : undefined}
+                onSaved={saved}
+              />
+            </Panel>
+          </div>
         </WorkspaceSection>
       </WorkspaceSections>
     </>

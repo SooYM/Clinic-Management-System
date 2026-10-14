@@ -17,18 +17,43 @@ interface DisplayTicket {
   roomName?: string;
   status: string;
 }
+interface DisplayBranch {
+  id: number;
+  name: string;
+  clinicName: string;
+}
 export function QueueDisplay() {
-  const displayBranch = new URLSearchParams(location.search).get('branchId');
+  const branches = useResource<DisplayBranch[]>('/public/display/branches', 15000);
+  const [displayBranch, setDisplayBranch] = useState<number>();
+  const selectedBranch = branches.data?.find((branch) => branch.id === displayBranch);
   const resource = useResource<DisplayTicket[]>(
-    `/queue/display${displayBranch ? `?branchId=${encodeURIComponent(displayBranch)}` : ''}`,
+    selectedBranch ? `/public/display/queue?branchId=${selectedBranch.id}` : '',
+    15000,
   );
   const [audio, setAudio] = useState(false);
   const [lastCalls, setLastCalls] = useState('');
+  const [ticketBranch, setTicketBranch] = useState<number>();
   useEffect(() => {
-    const interval = window.setInterval(resource.refresh, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    if (resource.data) setTicketBranch(displayBranch);
+  }, [resource.data]);
   useEffect(() => {
+    if (!branches.data?.length) return;
+    if (displayBranch && branches.data.some((branch) => branch.id === displayBranch)) return;
+    const requested = Number(new URLSearchParams(location.search).get('branchId'));
+    const next =
+      branches.data.find((branch) => branch.id === requested) ||
+      [...branches.data].sort((a, b) => a.id - b.id)[0];
+    chooseBranch(next.id);
+  }, [branches.data, displayBranch]);
+  function chooseBranch(id: number) {
+    setDisplayBranch(id);
+    setLastCalls('');
+    const url = new URL(location.href);
+    url.searchParams.set('branchId', String(id));
+    history.replaceState(null, '', url);
+  }
+  useEffect(() => {
+    if (ticketBranch !== displayBranch) return;
     const calls =
       resource.data
         ?.filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status))
@@ -48,58 +73,92 @@ export function QueueDisplay() {
       oscillator.onended = () => void audioContext.close();
     }
     setLastCalls(calls);
-  }, [resource.data, audio]);
+  }, [resource.data, audio, ticketBranch, displayBranch]);
   return (
     <main className="public-display">
       <header>
         <div className="brand">
-          Clinic<span>Waiting room</span>
+          {selectedBranch?.clinicName || 'Clinic'}
+          <span>Waiting room</span>
         </div>
+        <Field label="Branch">
+          <select
+            value={displayBranch || ''}
+            disabled={!branches.data?.length}
+            onChange={(event) => chooseBranch(Number(event.target.value))}
+          >
+            {!displayBranch && <option value="">Choose branch</option>}
+            {[...(branches.data || [])]
+              .sort((a, b) => a.id - b.id)
+              .map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.clinicName} · {branch.name}
+                </option>
+              ))}
+          </select>
+        </Field>
         <button className="secondary" onClick={() => setAudio(!audio)}>
           <Volume2 size={20} />
           {audio ? 'Sound on' : 'Enable call chime'}
         </button>
       </header>
-      <ResourceState {...resource}>
-        <div className="display-grid">
-          <section>
-            <h1>Now calling</h1>
-            {resource.data?.filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status))
-              ?.length ? (
-              resource.data
-                .filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status))
-                .map((t) => (
-                  <div className="display-call" key={t.ticketNumber}>
-                    <strong>{t.ticketNumber}</strong>
-                    <span>Please proceed to {t.roomName}</span>
-                  </div>
-                ))
-            ) : (
-              <Empty
-                title="Rooms are ready"
-                description="Your ticket will appear here when called."
-              />
-            )}
-          </section>
-          <section>
-            <h2>Waiting for consultation</h2>
-            <div className="waiting-tickets">
-              {resource.data
-                ?.filter((t) => ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status))
-                ?.map((t) => (
-                  <strong key={t.ticketNumber}>{t.ticketNumber}</strong>
-                ))}
+      {branches.error && <ErrorNotice>{branches.error}</ErrorNotice>}
+      {branches.loading && <Loading />}
+      {!branches.loading && !branches.error && !branches.data?.length && (
+        <Empty
+          title="No branches available"
+          description="The clinic has no active branch for its waiting room display."
+        />
+      )}
+      {selectedBranch && (
+        <>
+          <p className="form-help">{selectedBranch.name} · Updates every 15 seconds.</p>
+          <ResourceState
+            {...resource}
+            loading={resource.loading || (!resource.error && ticketBranch !== displayBranch)}
+          >
+            <div className="display-grid">
+              <section>
+                <h1>Now calling</h1>
+                {resource.data?.filter((t) =>
+                  ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status),
+                )?.length ? (
+                  resource.data
+                    .filter((t) => ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(t.status))
+                    .map((t) => (
+                      <div className="display-call" key={t.ticketNumber}>
+                        <strong>{t.ticketNumber}</strong>
+                        <span>Please proceed to {t.roomName}</span>
+                      </div>
+                    ))
+                ) : (
+                  <Empty
+                    title="Rooms are ready"
+                    description="Your ticket will appear here when called."
+                  />
+                )}
+              </section>
+              <section>
+                <h2>Waiting for consultation</h2>
+                <div className="waiting-tickets">
+                  {resource.data
+                    ?.filter((t) => ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status))
+                    ?.map((t) => (
+                      <strong key={t.ticketNumber}>{t.ticketNumber}</strong>
+                    ))}
+                </div>
+                {!resource.data?.filter((t) => ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status))
+                  ?.length && <p>No patients waiting.</p>}
+                <div className="display-note">
+                  Keep your ticket nearby.
+                  <br />
+                  Please tell our front desk if you need assistance.
+                </div>
+              </section>
             </div>
-            {!resource.data?.filter((t) => ['REGISTERED', 'TRIAGE_WAITING'].includes(t.status))
-              ?.length && <p>No patients waiting.</p>}
-            <div className="display-note">
-              Keep your ticket nearby.
-              <br />
-              Please tell our front desk if you need assistance.
-            </div>
-          </section>
-        </div>
-      </ResourceState>
+          </ResourceState>
+        </>
+      )}
       <footer>Patient names and clinical information are kept private.</footer>
     </main>
   );

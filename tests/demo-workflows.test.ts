@@ -357,40 +357,68 @@ describe('demo queue expiry and doctor handoff', () => {
       status: 'IN_CONSULTATION',
     });
   });
-  it('keeps previous-day active tickets until 12 hours and persists expiry when stale transitions fail', async () => {
+  it('expires unfinished visits at Malaysia midnight and starts a fresh daily queue without deleting history', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-13T15:30:00Z'));
     const { clinic, storage } = await ready();
-    const ticket = await clinic.request('/queue', 'POST', { patientId: 1, priority: 'NORMAL' });
-    vi.setSystemTime(new Date('2026-10-13T16:30:00Z'));
-    expect((await clinic.request('/queue')).data.some((row: any) => row.id === ticket.id)).toBe(
-      true,
+    const ticket = await calledPatient(clinic, 1);
+    expect((await clinic.request('/clinical/queue-suggestions')).data[0].expiresAt).toBe(
+      '2026-10-13T16:00:00.000Z',
     );
-    await expect(
-      clinic.request('/queue', 'POST', { patientId: 1, priority: 'NORMAL' }),
-    ).rejects.toThrow('already checked in');
-    vi.setSystemTime(new Date('2026-10-14T03:30:00Z'));
+    expect((await clinic.request('/queue')).data).toHaveLength(2);
+    vi.setSystemTime(new Date('2026-10-13T16:00:00Z'));
+    expect((await clinic.request('/queue')).data).toEqual([]);
+    expect((await clinic.request('/queue/display')).data).toEqual([]);
+    expect((await clinic.request('/clinical/queue-suggestions')).data).toEqual([]);
     await expect(
       clinic.request(`/queue/${ticket.id}/transition`, 'POST', {
-        status: 'TRIAGE_WAITING',
+        status: 'IN_CONSULTATION',
         version: ticket.version,
       }),
-    ).rejects.toThrow('expired after 12 hours');
-    expect((await clinic.request('/queue')).data.some((row: any) => row.id === ticket.id)).toBe(
-      false,
-    );
+    ).rejects.toThrow('clinic midnight');
     const state = JSON.parse([...storage.entries.values()][0]);
     expect(state.rows.queue.find((row: any) => row.id === ticket.id)).toMatchObject({
-      status: 'REGISTERED',
-      expiredAt: '2026-10-14T03:30:00.000Z',
-      version: 2,
+      status: 'CALLED_TO_ROOM',
+      expiredAt: '2026-10-13T16:00:00.000Z',
+      version: 3,
     });
-    const replacement = await clinic.request('/queue', 'POST', {
-      patientId: 1,
-      priority: 'NORMAL',
-    });
-    expect(replacement.id).not.toBe(ticket.id);
+    const replacement = await calledPatient(clinic, 1);
+    expect(replacement.id).toBeGreaterThan(ticket.id);
+    expect(replacement.ticketNumber).toBe('Q-001');
     expect(replacement.expiredAt).toBeNull();
+    expect((await clinic.request('/queue')).data).toHaveLength(1);
+  });
+  it('retains every today visit in the daily list while operational displays exclude expired and final visits', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-14T00:00:00Z'));
+    const { clinic, storage } = await ready();
+    const ticket = await clinic.request('/queue', 'POST', { patientId: 1, priority: 'NORMAL' });
+    await clinic.request(`/queue/${ticket.id}/transition`, 'POST', {
+      status: 'SKIPPED',
+      version: ticket.version,
+    });
+    for (let visit = 0; visit < 8; visit++) {
+      const repeat = await clinic.request('/queue', 'POST', { patientId: 1, priority: 'NORMAL' });
+      await clinic.request(`/queue/${repeat.id}/transition`, 'POST', {
+        status: 'SKIPPED',
+        version: repeat.version,
+      });
+    }
+    vi.setSystemTime(new Date('2026-10-14T12:00:00Z'));
+    const rows = (await clinic.request('/queue')).data;
+    expect(rows).toHaveLength(10);
+    expect(rows.find((row: any) => row.id === ticket.id).status).toBe('SKIPPED');
+    expect(rows.find((row: any) => row.status === 'REGISTERED').expiredAt).toBeTruthy();
+    expect((await clinic.request('/queue/display')).data).toEqual([]);
+    expect((await clinic.request('/queue/estimate')).waiting).toBe(0);
+    expect((await clinic.request('/queue/estimate')).visitsToday).toBe(10);
+    const state = JSON.parse([...storage.entries.values()][0]);
+    expect(state.rows.queue).toHaveLength(10);
+    expect(state.rows.audit.some((row: any) => row.action === 'EXPIRE')).toBe(true);
+    vi.setSystemTime(new Date('2026-10-14T16:00:00Z'));
+    expect((await clinic.request('/queue')).data).toEqual([]);
+    expect((await clinic.request('/queue/estimate')).visitsToday).toBe(0);
+    expect(JSON.parse([...storage.entries.values()][0]).rows.queue).toHaveLength(10);
   });
   it('releases rooms occupied by expired tickets without removing their recorded history', async () => {
     vi.useFakeTimers();

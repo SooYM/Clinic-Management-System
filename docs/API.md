@@ -38,8 +38,8 @@ Successful collection reads return `{ "data": [] }`; single-resource and mutatio
 | `/api/inventory/usage`                 | POST       | Non-medication supply usage with `{itemId,quantity,reason,idempotencyKey}`; audited and idempotent       |
 | `/api/invoices`                        | GET / POST | Billing module financial ledger / split checkout                                                         |
 | `/api/invoices/:id/receipt`            | GET        | Authenticated receipt rendering                                                                          |
-| `/api/deposits`                        | POST       | Billing module deposit record                                                                            |
-| `/api/patients/:id/deposit-balance`    | GET        | Billing module scoped deposit balance                                                                    |
+| `/api/deposits`                        | POST       | Retired: 410 FEATURE_RETIRED; historical ledger retained                                                                            |
+| `/api/patients/:id/deposit-balance`    | GET        | Retired: 410 FEATURE_RETIRED                                                                    |
 | `/api/documents`                       | GET / POST | Protected clinical documents / attending doctor issuance                                                 |
 | `/api/documents/:id`                   | GET        | Authenticated, integrity-checked, redacted letter preview projection                                     |
 | `/api/documents/:id/revoke`            | POST       | Issuing GP revocation with reason                                                                        |
@@ -79,7 +79,7 @@ Example split checkout:
 
 Replace example identifiers with existing positive integer IDs. Tender sum must equal invoice total. Reusing same key and payload returns prior invoice. Changed payload with same key returns conflict. Card/QR entries are recorded tender declarations; payment processor authorization is separate integration work.
 
-SSE is process-local in this initial implementation. Multiple API replicas require shared event fanout or periodic client refresh. Waiting-room display still requires an authenticated clinic session.
+SSE is process-local in this initial implementation. Multiple API replicas require shared event fanout or periodic client refresh. The public waiting-room screen polls separate anonymous display endpoints; staff queue SSE still requires authentication.
 
 Patient history returns `{data, nextCursor}`. Supply both `before` (ISO UTC timestamp) and `beforeId` (positive integer) from the returned cursor for the next page. Timestamp/ID ordering retains encounters sharing the same timestamp without duplicates. A null cursor marks the final page. The clinical module is required; a patient outside the selected branch returns 404.
 
@@ -173,3 +173,28 @@ DELETE /api/encounters/:id requires clinical module, attending DOCTOR, {version}
 `GET /api/billing/suggestions?search=...` requires billing permission and returns scoped signed, nondeleted, unpaid consultations with no medicines or a completed dispense. Rows include `id/encounterId`, `patientId/patientNumber/patientName`, `practitionerId/practitionerName`, `queueTicketId`, `signedAt`, `dispensedAt`, and `prescriptions` with `itemName`, `quantity` and `unitPriceCents`. Catalogue prices are editable checkout suggestions, not historical price guarantees.
 `POST /api/invoices` additionally accepts optional numeric `encounterId`. It must identify a signed consultation for the submitted patient/GP; medicine visits must already be dispensed. Duplicate linked checkout returns 409; idempotent retries return the original invoice. Successful linked checkout completes only an active, unexpired PAYMENT_WAITING visit. Standalone invoices retain compatibility.
 Signing/dispensing transitions and billing readiness are committed with their clinical/stock transaction. Expired visits are never revived.
+
+## Appointment arrivals and retired deposit APIs
+
+POST /api/appointments accepts patientId, practitionerId, startsAt, endsAt and reason. roomId is rejected; existing historical room associations remain stored. GP time conflicts remain enforced.
+GET /api/queue/appointment-arrivals requires queue permission and returns {data:[{id,patientId,patientName,practitionerId,practitionerName,startsAt,reason,version}]}. Results are branch/tenant-scoped, BOOKED, not removed, due today in Asia/Kuala_Lumpur with startsAt <= now, and exclude patients already actively checked in.
+POST /api/queue optionally accepts appointmentId and appointmentVersion together, alongside patientId/priority. It validates patient, scope, due status and optimistic version, then inserts the linked waiting ticket and changes the appointment to CHECKED_IN in one transaction. Duplicate or changed arrivals return409; premature arrivals return409. Room remains null until called.
+Deposit and deposit-balance routes return410 FEATURE_RETIRED for authenticated callers. New invoice validation allows only CASH/CARD/QR. Existing historical receipt reads still recognize DEPOSIT; no migration erases old balances or payment rows.
+
+## Daily queue and temperature validation
+
+GET /api/queue returns only the current Malaysia service date, retaining today's completed/skipped/expired records. Operational display/suggestions/actions exclude expired and prior-day rows. Queue expiry is the earlier of createdAt+12h and next Malaysia midnight; expiry metadata records SERVICE_DAY_ENDED or LIFETIME_ELAPSED. GET /api/queue/estimate adds visitsToday, counting all current branch/day rows independently of list pagination. No queue record is deleted merely because the day changes.
+POST/PUT /api/encounters accepts optional vitals.temperature as numeric or numeric text, range28..40 inclusive. Nonfinite/out-of-range values return validation400 at vitals.temperature. The API stores previously issued histories unchanged.
+
+## Anonymous waiting-room display
+
+The `/display` browser route needs no login. Its read-only endpoints run after the common API security headers and rate limit, before staff authentication:
+
+| Endpoint | Result |
+| --- | --- |
+| `GET /api/public/display/branches` | `{data:[{id,name,clinicName}]}` for active branches, ordered by branch ID |
+| `GET /api/public/display/queue?branchId=1` | `{branch:{id,name,clinicName},data:[{ticketNumber,status,roomName}]}` for the explicitly selected active branch |
+
+`branchId` must be a positive safe integer. Missing/malformed IDs return 400; unknown or inactive branches return 404. The query selects the chosen branch's tenant directly; staff cookies and `X-Branch-ID` do not override selection. Responses use `Cache-Control: no-store`. Public queue data includes only today's Asia/Kuala_Lumpur service date, unexpired visits younger than 12 hours, and statuses `REGISTERED`, `TRIAGE_WAITING`, `CALLED_TO_ROOM`, `IN_CONSULTATION`. It excludes internal ticket IDs, patient identifiers/names, practitioner names, contacts, clinical fields, configuration secrets and authentication tokens.
+
+Clients poll every 15 seconds; no public SSE session is created. Existing `/api/queue`, `/api/queue/display` and `/api/queue/events` remain authenticated and permission-controlled. POST requests do not create a public queue mutation route.

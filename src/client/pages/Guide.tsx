@@ -30,8 +30,8 @@ const topics = [
     module: 'appointments',
     steps: [
       'Open Appointments and select Book appointment. Search by patient name, identity number, or phone.',
-      'Choose a registered GP, an available room if needed, and start and end times.',
-      'Save the appointment. Overlapping bookings are rejected; consented notifications enter the delivery queue.',
+      'Choose a registered GP and start and end times. Choose the room later when calling the patient.',
+      'Save the appointment. GP time conflicts are rejected. On its date, due patients appear in Clinic overview for confirmed check-in and then wait to be called.',
       'If no GP is available, ask the administrator to create an active GP account with registration number in this branch.',
     ],
   },
@@ -77,8 +77,8 @@ const topics = [
     module: 'billing',
     steps: [
       'Open Billing & payments and create an itemised checkout for the patient and practitioner.',
-      'Add cash, card, QR, or deposit payment amounts. Split amounts must equal the invoice total exactly.',
-      'Complete checkout, preview the receipt, then download PDF when needed. Record patient deposits separately before using a deposit payment.',
+      'Add cash, card or QR payment amounts. Full payment fills the invoice total; split amounts must equal the total exactly.',
+      'Complete checkout, preview the receipt, then download PDF when needed.',
     ],
   },
   {

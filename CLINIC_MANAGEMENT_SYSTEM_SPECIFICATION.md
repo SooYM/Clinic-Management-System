@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–021.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–022.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -64,8 +64,8 @@ Clinical history is patient scoped and cursor paged in batches of 50; it never i
 
 ## 4. Appointments and queue
 
-Appointments select a searched patient, active GP, optional active room, start/end times and reason.
-Transactional locks reject overlapping practitioner or room bookings. Adjacent intervals are permitted.
+Appointments select a searched patient, active GP, start/end times and reason. Rooms are assigned when calling patients.
+Transactional locks reject overlapping practitioner bookings. Adjacent intervals are permitted.
 The API supports versioned booking cancellation; the current booking screen does not expose a cancellation control.
 
 Queue check-in creates a branch/service-date ticket and rejects duplicate active visits.
@@ -89,7 +89,7 @@ stateDiagram-v2
 
 Every transition uses the current version. Calling assigns an active room and GP; occupied rooms cannot be double booked.
 SSE refresh events and periodic reads keep the workspace current. SSE fanout is process local.
-The waiting-room screen requires staff authentication and displays only ticket numbers and rooms.
+The waiting-room screen at `/display` opens without staff authentication, offers an active branch selector, and shows anonymous ticket numbers and rooms.
 Queue-clearance estimates require at least five qualifying recent consultation observations and remain explicitly approximate.
 
 ## 5. GP consultation and prescribing
@@ -135,7 +135,7 @@ Stock totals and pending work refresh after successful actions.
 
 ## 7. Billing
 
-Checkout stores itemized invoice snapshots and split cash, card, QR or deposit tender records in one transaction.
+Checkout stores itemized invoice snapshots and split cash, card or QR tender records in one transaction.
 All monetary values use integer MYR cents. Positive tender amounts must exactly equal the invoice total.
 Deposit spending locks the patient balance and rejects overspending. Invoice retries reuse the original idempotency key.
 The same key with a changed financial payload returns a conflict.
@@ -213,7 +213,7 @@ Use [prerequisites](docs/PREREQUISITES.md) and the repository deployment/securit
 ## 13. Verification and exclusions
 
 Acceptance includes fresh migration/bootstrap, authenticated branch access, cross-branch denial, IC/postcode registration, module-only workflows, GP signing, FEFO rollback, retry-safe billing and private document verification.
-Concurrency cases cover booking overlaps, occupied rooms, stale versions, stock depletion and deposit overspending.
+Concurrency cases cover booking overlaps, occupied rooms, stale versions, stock depletion and payment mismatches.
 Upgrade tests must preserve historical document integrity and foreign keys while converting actual numeric keys.
 See [test documentation](docs/TESTING.md) for executable checks and recorded limitations.
 
@@ -264,7 +264,7 @@ Patients and appointment patient choices default to numeric patient ID; stock it
 
 ## Patient-first interaction revision
 
-Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout or Patient deposits. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. All persistent form submissions except sign-in require popup consent. Queue transitions, removal/restoration and demo reset also require consent. Cancel/Escape keeps drafts without sending the mutation. Clinical signing explicitly explains permanent notes and stock reservation. This is a UI safeguard; server permissions, validation, transactions and auditing remain authoritative.
+Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. All persistent form submissions except sign-in require popup consent. Queue transitions, removal/restoration and demo reset also require consent. Cancel/Escape keeps drafts without sending the mutation. Clinical signing explicitly explains permanent notes and stock reservation. This is a UI safeguard; server permissions, validation, transactions and auditing remain authoritative.
 
 
 ## Queue and navigation interaction revision
@@ -274,7 +274,7 @@ Check in patient → Waiting for doctor → Call to room beside that patient →
 
 ## Twelve-hour check-in and practitioner handoff
 
-Queue check-ins last at most 12 hours from created_at, across Malaysia midnight. Before queue reads, check-in, room transitions and GP suggestions, scoped lifecycle cleanup marks old unfinished tickets expired_at, increments version and audits QUEUE_EXPIRED. Original status and chart references remain preserved. Active patient and occupied-room uniqueness excludes expired tickets. A fresh duplicate check-in returns a specific existing-ticket 409; an expired patient can check in again. Completed/skipped visits retain their existing terminal behavior. Estimates, room occupancy and queue-near notifications exclude expired visits. Clinical workspace offers Assigned patients to GPs for unexpired CALLED_TO_ROOM or IN_CONSULTATION visits assigned to that GP in the selected branch. Suggestions refresh every 15 seconds while visible and on focus. Start consultation prefills patient and queue reference without writing; Open consultation resumes an associated encounter. Saving a new queue-linked note validates patient, GP, branch and expiry, prevents duplicate encounters, and atomically starts a called visit. Failed saves roll back the start. Existing linked drafts remain editable after queue expiry under ordinary author/version rules. Clinical-only GP grants suffice; queue module access is not required. Manual patient choice remains available. Edited drafts require consent before switching contexts.
+Operational check-ins last at most 12 hours from created_at or until Malaysia midnight, whichever comes first. The live queue shows only today's service-date records, including completed, skipped and expired visits; it starts fresh at midnight without deleting history. Before queue reads, check-in, room transitions and GP suggestions, scoped lifecycle cleanup marks old unfinished tickets expired_at, increments version and audits QUEUE_EXPIRED. Original status and chart references remain preserved. Active patient and occupied-room uniqueness excludes expired tickets. A fresh duplicate check-in returns a specific existing-ticket 409; an expired patient can check in again. Completed/skipped visits retain their existing terminal behavior. Estimates, room occupancy and queue-near notifications exclude expired visits. Clinical workspace offers Assigned patients to GPs for unexpired CALLED_TO_ROOM or IN_CONSULTATION visits assigned to that GP in the selected branch. Suggestions refresh every 15 seconds while visible and on focus. Start consultation prefills patient and queue reference without writing; Open consultation resumes an associated encounter. Saving a new queue-linked note validates patient, GP, branch and expiry, prevents duplicate encounters, and atomically starts a called visit. Failed saves roll back the start. Existing linked drafts remain editable after queue expiry under ordinary author/version rules. Clinical-only GP grants suffice; queue module access is not required. Manual patient choice remains available. Edited drafts require consent before switching contexts.
 
 
 ## Multiple prescriptions and signed handoff
@@ -293,3 +293,20 @@ Dispense medicines is the first/default dispensary section; Patient checkout is 
 Prepare checkout scrolls the prefilled form below sticky section navigation after successful selection. Re-selecting the same visit preserves entries and scrolls again. Reduced-motion uses immediate scrolling; canceled replacement does not scroll.
 
 Each payment row offers Full payment to fill the entire invoice total using that row's method and reference. Multiple split entries require popup consent before replacement. This changes draft allocation only; checkout still requires confirmation and server validation.
+
+## Deposit retirement, appointment arrivals and nationality display
+
+Deposits are removed from active billing: no deposit tab, deposit creation, balance endpoint or new deposit tender. Cash/Card/QR and Full payment remain. Historical ledger rows and old deposit receipts stay readable. Appointment booking chooses patient, GP and times; new bookings reserve no room. Due BOOKED appointments on today's Malaysia date appear in Clinic overview once their start time arrives. Staff confirm actual arrival; one linked REGISTERED queue ticket is created with the booked GP, room unassigned, and the appointment becomes CHECKED_IN. Room availability is checked when staff Call to room. Queue-only staff may read minimal arrival suggestions without appointment-management permission. Malaysian registration/edit forms show Malaysia in a greyed-out, disabled country box; non-Malaysian selection enables it. MY stays stored internally. Malaysian profiles omit the redundant country detail. Form spacing stays stable.
+
+## Prominent registration and matching search
+
+Patients has a primary Register patient action that opens and scrolls to registration while preserving a current new-patient draft. Check-in includes a Register patient shortcut only for staff with patient-module permission, using a branch-scoped one-time registration intent. Replacing unsaved patient edits requires consent. All search inputs use matching-result dropdowns with at most eight choices, identity details, loading/error/no-match states, keyboard arrows/Enter/Escape and pointer selection. Selecting patient/medicine/prescription choices updates the appropriate record or existing selector. Search never submits its surrounding form. Async lookups suppress stale results; loaded-list filters remain scoped to loaded records.
+
+## Daily live queue and temperature limits
+
+The live queue and Visits today count reset at 00:00 Asia/Kuala_Lumpur. All today's ticket records remain visible, including completed/skipped/expired rows, so ten visits remain ten for that service day. Expired rows have no operational actions. Prior-day unfinished tickets expire and release room/patient locks; signed prescriptions, reservations, invoices and clinical history remain available. Ticket references restart Q-001 each day; numeric entity IDs never reset. The total visitsToday count covers the whole branch day even when the displayed list reaches its API row limit. Queue and display refresh automatically.
+New/edited consultation temperature entries must be finite numeric values between28°C and40°C inclusive. Empty temperature remains optional. The form and shared API/demo validator enforce the same range. Historical readings are not rewritten.
+
+## Public waiting-room display
+
+`/display` opens without staff sign-in. Visitors choose an active clinic branch; duplicate branch names are distinguished by clinic name. The screen polls every 15 seconds and shows anonymous ticket numbers, queue stages and consultation rooms. It displays only current Malaysia service-day visits awaiting registration/triage or called/in consultation, with no expired, completed or skipped tickets. Patient identities, practitioner details, contact information and clinical data are never part of the public projection. Staff queue management, history and refresh events retain session and module authorization.

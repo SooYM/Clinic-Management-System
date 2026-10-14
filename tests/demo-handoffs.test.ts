@@ -175,8 +175,17 @@ describe('demo synchronized visit handoffs', () => {
       idempotencyKey: 'expired-handoff-test',
     });
     await clinic.request('/invoices', 'POST', checkout(encounter.id));
-    expect((await clinic.request('/queue')).data.some((row: any) => row.id === ticket.id)).toBe(
-      false,
-    );
+    expect(
+      (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id),
+    ).toMatchObject({
+      status: 'DISPENSARY_WAITING',
+      expiredAt: '2026-10-14T14:00:00.000Z',
+    });
+    expect((await clinic.request('/queue/display')).data).toEqual([]);
+    vi.setSystemTime(new Date('2026-10-14T16:00:00Z'));
+    expect((await clinic.request('/queue')).data).toEqual([]);
+    expect(
+      (await clinic.request('/invoices')).data.some((row: any) => row.encounterId === encounter.id),
+    ).toBe(true);
   });
 });

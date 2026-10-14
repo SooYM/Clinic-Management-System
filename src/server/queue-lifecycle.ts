@@ -6,7 +6,7 @@ export async function expireQueue(db: Database, ctx: Context) {
   await lock(db, [`queue-lifecycle:${ctx.actor.tenantId}:${ctx.branchId}`]);
   const expired = (
     await db.query(
-      "SELECT id,status FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND expired_at IS NULL AND status NOT IN ('COMPLETED','SKIPPED') AND created_at<=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) ORDER BY id FOR UPDATE",
+      "SELECT id,status,service_date<DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)) day_ended FROM queue_tickets WHERE tenant_id=$1 AND branch_id=$2 AND expired_at IS NULL AND status NOT IN ('COMPLETED','SKIPPED') AND (created_at<=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR) OR service_date<DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))) ORDER BY id FOR UPDATE",
       [ctx.actor.tenantId, ctx.branchId],
     )
   ).rows;
@@ -23,7 +23,11 @@ export async function expireQueue(db: Database, ctx: Context) {
         ctx.actor.id,
         ticket.id,
         ctx.requestId,
-        JSON.stringify({ status: ticket.status, lifetimeHours: 12 }),
+        JSON.stringify({
+          status: ticket.status,
+          lifetimeHours: 12,
+          reason: ticket.day_ended ? 'SERVICE_DAY_ENDED' : 'LIFETIME_ELAPSED',
+        }),
       ],
     );
   }

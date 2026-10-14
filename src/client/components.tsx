@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { AlertCircle, ArrowRight, RefreshCw } from 'lucide-react';
 import { api } from './api';
+import { SearchBox } from './SearchBox';
 import { useConfirm } from './Confirmation';
 import { humanize, type Patient, type Reference } from './types';
 export const RoleContext = createContext('');
@@ -36,6 +37,8 @@ export function useResource<T>(path: string, refreshInterval = 0) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(true);
+  const [settledPath, setSettledPath] = useState('');
   const [revision, setRevision] = useState(0);
   const loaded = useRef(false);
   useEffect(() => {
@@ -58,9 +61,11 @@ export function useResource<T>(path: string, refreshInterval = 0) {
     let active = true;
     if (!path) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     setLoading(!loaded.current);
+    setRefreshing(true);
     setError('');
     api
       .get<T>(path)
@@ -74,13 +79,23 @@ export function useResource<T>(path: string, refreshInterval = 0) {
         if (active) setError(e.message);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setRefreshing(false);
+          setSettledPath(path);
+        }
       });
     return () => {
       active = false;
     };
   }, [path, revision]);
-  return { data, error, loading, refresh: () => setRevision((v) => v + 1) };
+  return {
+    data,
+    error,
+    loading,
+    refreshing: !!path && (refreshing || settledPath !== path),
+    refresh: () => setRevision((v) => v + 1),
+  };
 }
 export function ErrorNotice({ children }: { children: ReactNode }) {
   return (
@@ -230,7 +245,7 @@ export function PatientSelect({ patients }: { patients: Patient[] }) {
     </Field>
   );
 }
-/** Debounced server lookup follows the reference CustomerSearch pattern; selection stays native and keyboard accessible. */
+/** Search results choose the same stable patient ID as the native selection below. */
 export function SearchablePatientSelect() {
   const [query, setQuery] = useState('');
   const [term, setTerm] = useState('');
@@ -250,13 +265,26 @@ export function SearchablePatientSelect() {
     <div className="patient-picker">
       <Field
         label="Search patient"
-        hint="Search name, IC, passport, or phone. Then select the matching patient."
+        hint="Search name, IC, passport, or phone. Choose a matching patient below the search box."
       >
-        <input
-          type="search"
+        <SearchBox
+          ariaLabel="Search patient"
           value={query}
           placeholder="e.g. Ahmad or 900101-14-5678"
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={setQuery}
+          suggestions={options.map((patient) => ({
+            id: patient.id,
+            label: patient.name,
+            description: `Patient ID #${patient.id} · ${patient.nationalId} · ${patient.phone || ''}`,
+          }))}
+          loading={resource.refreshing || query.trim() !== term}
+          error={resource.error}
+          filterSuggestions={false}
+          emptyMessage="No matching patient. Register the patient before starting this workflow."
+          onSelect={(suggestion) => {
+            const patient = options.find((entry) => entry.id === suggestion.id);
+            if (patient) setSelected(patient);
+          }}
         />
       </Field>
       {resource.error && <ErrorNotice>{resource.error}</ErrorNotice>}

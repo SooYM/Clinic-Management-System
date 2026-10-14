@@ -791,7 +791,6 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     const request = {
       patientId: p.id,
       practitionerId: doctor,
-      roomId: room,
       startsAt: '2030-01-01T10:00:00Z',
       endsAt: '2030-01-01T11:00:00Z',
       reason: 'QA',
@@ -802,12 +801,105 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
   });
+  it('suggests due appointments to queue-only staff and atomically links confirmed arrivals', async () => {
+    const p = await patient();
+    const booking = await service.schedule(ctx, {
+      patientId: p.id,
+      practitionerId: doctor,
+      startsAt: new Date(Date.now() - 1000).toISOString(),
+      endsAt: new Date(Date.now() + 60000).toISOString(),
+      reason: 'Arrival regression',
+    });
+    expect(booking.roomId).toBeNull();
+    const original = (await (await adminHttp('/admin/role-modules')).json()).roles.find(
+      (r: any) => r.role === 'RECEPTIONIST',
+    ).modules;
+    try {
+      await adminHttp('/admin/role-modules', 'PUT', { role: 'RECEPTIONIST', modules: ['queue'] });
+      expect((await settingsHttp('/appointments')).status).toBe(403);
+      const arrivals = await (await settingsHttp('/queue/appointment-arrivals')).json();
+      expect(arrivals.data).toContainEqual(
+        expect.objectContaining({ id: booking.id, patientId: p.id, patientName: p.name }),
+      );
+      expect(
+        (await settingsHttp('/queue', 'POST', { patientId: p.id, appointmentId: booking.id }))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await settingsHttp('/queue', 'POST', {
+            patientId: p.id,
+            appointmentId: booking.id,
+            appointmentVersion: booking.version + 1,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await settingsHttp(
+            '/queue',
+            'POST',
+            { patientId: p.id, appointmentId: booking.id, appointmentVersion: booking.version },
+            { 'X-Branch-ID': String(otherBranch) },
+          )
+        ).status,
+      ).toBe(403);
+      const payload = {
+        patientId: p.id,
+        appointmentId: booking.id,
+        appointmentVersion: booking.version,
+      };
+      const requests = await Promise.all([
+        settingsHttp('/queue', 'POST', payload),
+        settingsHttp('/queue', 'POST', payload),
+      ]);
+      expect(requests.map((r) => r.status).sort()).toEqual([201, 409]);
+      const ticket = await requests.find((r) => r.status === 201)!.json();
+      expect(ticket).toMatchObject({
+        patientId: p.id,
+        appointmentId: booking.id,
+        practitionerId: doctor,
+        status: 'REGISTERED',
+        roomId: null,
+      });
+      expect(
+        (await rows('SELECT status,version FROM appointments WHERE id=?', [booking.id]))[0],
+      ).toMatchObject({ status: 'CHECKED_IN', version: booking.version + 1 });
+      expect(
+        (await (await settingsHttp('/queue/appointment-arrivals')).json()).data.some(
+          (a: any) => a.id === booking.id,
+        ),
+      ).toBe(false);
+      await service.transitionQueue(ctx, ticket.id, { status: 'SKIPPED', version: ticket.version });
+      expect((await service.appointmentArrivals(ctx)).some((a: any) => a.id === booking.id)).toBe(
+        false,
+      );
+    } finally {
+      await adminHttp('/admin/role-modules', 'PUT', { role: 'RECEPTIONIST', modules: original });
+    }
+    const nextPatient = await patient();
+    const later = await service.schedule(ctx, {
+      patientId: nextPatient.id,
+      practitionerId: doctor,
+      startsAt: new Date(Date.now() + 120000).toISOString(),
+      endsAt: new Date(Date.now() + 180000).toISOString(),
+    });
+    await expect(
+      service.checkIn(ctx, {
+        patientId: nextPatient.id,
+        appointmentId: later.id,
+        appointmentVersion: later.version,
+      }),
+    ).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_DUE' });
+    expect((await service.appointmentArrivals(ctx)).some((a: any) => a.id === later.id)).toBe(
+      false,
+    );
+  });
   it('allows adjacent appointments and returns UTC timestamps', async () => {
     const p = await patient();
     const booked = await service.schedule(ctx, {
       patientId: p.id,
       practitionerId: doctor,
-      roomId: room,
       startsAt: '2030-01-01T11:00:00Z',
       endsAt: '2030-01-01T12:00:00Z',
       reason: 'QA',
@@ -1084,25 +1176,55 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     ).rejects.toMatchObject({ code: 'PAYMENT_MISMATCH' });
     expect((await rows('SELECT id FROM invoices WHERE patient_id=?', [p.id])).length).toBe(0);
   });
-  it('prevents concurrent overspending of deposit', async () => {
+  it('retires deposit endpoints and blocks new deposit checkout without changing historical balances', async () => {
     const p = await patient();
-    await service.addDeposit(ctx, { patientId: p.id, amountCents: 1000, reference: 'QA' });
-    const request = () =>
-      invoice(p.id, randomUUID(), {
-        payments: [{ method: 'DEPOSIT', amountCents: 1000, reference: '' }],
-      });
-    const results = await Promise.allSettled([
-      service.createInvoice(ctx, request()),
-      service.createInvoice(ctx, request()),
-    ]);
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    await sql.query(
+      'INSERT INTO patient_deposits(tenant_id,branch_id,patient_id,amount_cents,reference) VALUES(?,?,?,?,?)',
+      [tenant, branch, p.id, 1000, 'Historical deposit'],
+    );
+    for (const [path, method, body] of [
+      ['/deposits', 'POST', { patientId: p.id, amountCents: 1000, reference: 'QA' }],
+      [`/patients/${p.id}/deposit-balance`, 'GET', undefined],
+    ] as const) {
+      const response = await settingsAdminHttp(path, method, body);
+      expect(response.status).toBe(410);
+      expect(await response.json()).toMatchObject({ code: 'FEATURE_RETIRED' });
+    }
+    const request = invoice(p.id, randomUUID(), {
+      payments: [{ method: 'DEPOSIT', amountCents: 1000, reference: '' }],
+    });
+    expect((await settingsAdminHttp('/invoices', 'POST', request)).status).toBe(400);
+    await expect(service.createInvoice(ctx, request)).rejects.toMatchObject({
+      code: 'FEATURE_RETIRED',
+      status: 410,
+    });
+    expect(await rows('SELECT id FROM invoices WHERE patient_id=?', [p.id])).toHaveLength(0);
     expect(
       Number(
         (
           await rows('SELECT SUM(amount_cents) n FROM patient_deposits WHERE patient_id=?', [p.id])
         )[0].n,
       ),
-    ).toBe(0);
+    ).toBe(1000);
+  });
+  it('still previews and renders receipts containing historical deposit payments', async () => {
+    const p = await patient();
+    const bill = await service.createInvoice(
+      ctx,
+      invoice(p.id, randomUUID(), {
+        payments: [{ method: 'CASH', amountCents: 1000, reference: 'Historical receipt' }],
+      }),
+    );
+    await sql.query("UPDATE payments SET method='DEPOSIT' WHERE invoice_id=?", [bill.id]);
+    const response = await settingsAdminHttp(`/invoices/${bill.id}/receipt-view`);
+    expect(response.status).toBe(200);
+    expect((await response.json()).payments).toEqual([
+      { method: 'DEPOSIT', amountCents: 1000, reference: 'Historical receipt' },
+    ]);
+    const pdf = await settingsAdminHttp(`/invoices/${bill.id}/receipt`);
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get('Content-Type')).toBe('application/pdf');
+    expect(pdfText(Buffer.from(await pdf.arrayBuffer()))).toContain('Patient deposit: RM 10.00');
   });
   it('allows only one final package session under concurrency', async () => {
     const p = await patient(),
@@ -1407,9 +1529,19 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(alerts.map((a) => a.patient_id).sort()).toEqual([ids[0], ids[2], ids[4]].sort());
   });
   it('requires five observations before estimating branch queue clearance', async () => {
+    const todayCount = Number(
+      (
+        await rows(
+          'SELECT COUNT(*) count FROM queue_tickets WHERE tenant_id=? AND branch_id=? AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))',
+          [tenant, branch],
+        )
+      )[0].count,
+    );
     const insufficient = await http('/queue/estimate');
     expect(insufficient.status).toBe(200);
-    expect((await insufficient.json()).estimatedMinutes).toBeNull();
+    const insufficientBody = await insufficient.json();
+    expect(insufficientBody.estimatedMinutes).toBeNull();
+    expect(insufficientBody.visitsToday).toBe(todayCount);
     const p = await patient();
     for (let index = 0; index < 5; index++) {
       const observation = await encounter(p.id);
@@ -1758,11 +1890,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     const booking = await service.schedule(ctx, {
       patientId: p.id,
       practitionerId: doctor,
-      roomId: created.id,
       startsAt: '2034-07-01T01:00:00Z',
       endsAt: '2034-07-01T01:30:00Z',
       reason: '',
     });
+    // Historical room reservations remain referentially valid; new bookings have no room.
+    await sql.query('UPDATE appointments SET room_id=? WHERE id=?', [created.id, booking.id]);
     expect((await adminHttp(path, 'PUT', { active: false })).status).toBe(409);
     expect(
       (
@@ -1782,16 +1915,18 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect((await (await http('/bootstrap')).json()).rooms.map((r: any) => r.id)).not.toContain(
       created.id,
     );
-    await expect(
-      service.schedule(ctx, {
-        patientId: p.id,
-        practitionerId: doctor,
-        roomId: created.id,
-        startsAt: '2034-07-02T01:00:00Z',
-        endsAt: '2034-07-02T01:30:00Z',
-        reason: '',
-      }),
-    ).rejects.toMatchObject({ code: 'INVALID_ROOM' });
+    expect(
+      (
+        await settingsHttp('/appointments', 'POST', {
+          patientId: p.id,
+          practitionerId: doctor,
+          roomId: created.id,
+          startsAt: '2034-07-02T01:00:00Z',
+          endsAt: '2034-07-02T01:30:00Z',
+          reason: '',
+        })
+      ).status,
+    ).toBe(400);
   });
   it('persists structured prescriptions and exposes only eligible signed dispensing work', async () => {
     const { schemas } = await import('../src/server/validation');
@@ -3737,7 +3872,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       (replacements.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason,
     ).toMatchObject({ code: 'PATIENT_ALREADY_CHECKED_IN', status: 409 });
   });
-  it('keeps recent prior-date visits visible and frees expired rooms without expiring another branch', async () => {
+  it('hides prior-date visits and frees their rooms without expiring another branch', async () => {
     const roomId = fixtureId(),
       foreignRoom = fixtureId(),
       a = await patient(),
@@ -3765,7 +3900,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       [old.id],
     );
     await sql.query(
-      'UPDATE queue_tickets SET service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY) WHERE id=?',
+      'UPDATE queue_tickets SET ticket_number=CONCAT("OLD-",id),service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY) WHERE id=?',
       [recent.id],
     );
     const foreignPatient = await service.savePatient(otherCtx, {
@@ -3789,12 +3924,22 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       [foreign.id],
     );
     const list = await service.list(ctx, 'queue');
-    expect(list.some((q: any) => q.id === recent.id)).toBe(true);
-    expect(list.some((q: any) => q.id === old.id)).toBe(false);
+    expect(list.some((q: any) => q.id === recent.id)).toBe(false);
+    expect(list.some((q: any) => q.id === old.id)).toBe(true);
+    expect(list.find((q: any) => q.id === old.id).expiredAt).toBeTruthy();
+    await expect(
+      service.transitionQueue(ctx, recent.id, {
+        version: 1,
+        status: 'CALLED_TO_ROOM',
+        roomId,
+        practitionerId: doctor,
+      }),
+    ).rejects.toMatchObject({ code: 'QUEUE_EXPIRED' });
+    const replacement = await service.checkIn(ctx, { patientId: b.id, priority: 'NORMAL' });
     expect(
       (await rows('SELECT expired_at FROM queue_tickets WHERE id=?', [foreign.id]))[0].expired_at,
     ).toBeNull();
-    const called = await service.transitionQueue(ctx, recent.id, {
+    const called = await service.transitionQueue(ctx, replacement.id, {
       version: 1,
       status: 'CALLED_TO_ROOM',
       roomId,
@@ -3804,6 +3949,116 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(
       (await rows('SELECT occupied_room_id,status FROM queue_tickets WHERE id=?', [old.id]))[0],
     ).toMatchObject({ occupied_room_id: null, status: 'CALLED_TO_ROOM' });
+  });
+  it('enforces temperature limits at the API boundary without rewriting history', async () => {
+    const p = await patient();
+    const payload = {
+      patientId: p.id,
+      subjective: 'Fictional',
+      objective: 'Fictional',
+      assessment: 'Fictional',
+      plan: 'Fictional',
+      prescriptions: [],
+    };
+    for (const temperature of [28, 40]) {
+      const response = await settingsHttp(
+        '/encounters',
+        'POST',
+        { ...payload, vitals: { temperature } },
+        { Cookie: `cms_session=${doctorToken}` },
+      );
+      expect(response.status).toBe(201);
+      expect((await response.json()).vitals.temperature).toBe(temperature);
+    }
+    for (const temperature of [27.9, 40.1]) {
+      const response = await settingsHttp(
+        '/encounters',
+        'POST',
+        { ...payload, vitals: { temperature } },
+        { Cookie: `cms_session=${doctorToken}` },
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(await rows('SELECT id FROM encounters WHERE patient_id=?', [p.id])).toHaveLength(2);
+  });
+  it('keeps all ten current-day visits visible and resets only the live view at Malaysia midnight', async () => {
+    const tickets: any[] = [];
+    for (let index = 0; index < 10; index++) {
+      const p = await patient();
+      tickets.push(await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' }));
+    }
+    await sql.query("UPDATE queue_tickets SET status='COMPLETED' WHERE id=?", [tickets[0].id]);
+    await sql.query("UPDATE queue_tickets SET status='SKIPPED' WHERE id=?", [tickets[1].id]);
+    await sql.query(
+      'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR) WHERE id=?',
+      [tickets[2].id],
+    );
+    await sql.query(
+      "UPDATE queue_tickets SET status='CALLED_TO_ROOM',practitioner_id=? WHERE id=?",
+      [doctor, tickets[3].id],
+    );
+    const ids = tickets.map((ticket) => ticket.id);
+    const visible = (await service.list(ctx, 'queue')).filter((ticket: any) =>
+      ids.includes(ticket.id),
+    );
+    expect(visible).toHaveLength(10);
+    const dailyCount = Number(
+      (
+        await rows(
+          'SELECT COUNT(*) count FROM queue_tickets WHERE tenant_id=? AND branch_id=? AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))',
+          [tenant, branch],
+        )
+      )[0].count,
+    );
+    expect((await (await settingsAdminHttp('/queue/estimate')).json()).visitsToday).toBe(
+      dailyCount,
+    );
+    expect(visible.find((ticket: any) => ticket.id === tickets[2].id).expiredAt).toBeTruthy();
+    const deadline = (
+      await rows(
+        "SELECT DATE_FORMAT(LEAST(DATE_ADD(created_at,INTERVAL 12 HOUR),DATE_SUB(DATE_ADD(service_date,INTERVAL 1 DAY),INTERVAL 8 HOUR)), '%Y-%m-%d %H:%i:%s') deadline FROM queue_tickets WHERE id=?",
+        [tickets[3].id],
+      )
+    )[0].deadline;
+    expect(
+      new Date(visible.find((ticket: any) => ticket.id === tickets[3].id).expiresAt)
+        .toISOString()
+        .slice(0, 19)
+        .replace('T', ' '),
+    ).toBe(deadline);
+    expect(
+      (await service.queueSuggestions(ctx)).data.some(
+        (ticket: any) => ticket.queueTicketId === tickets[3].id,
+      ),
+    ).toBe(true);
+    await sql.query(
+      'UPDATE queue_tickets SET ticket_number=CONCAT("OLD-",id),service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY) WHERE id IN (?)',
+      [ids],
+    );
+    expect(
+      (await service.list(ctx, 'queue')).filter((ticket: any) => ids.includes(ticket.id)),
+    ).toHaveLength(0);
+    expect(
+      (await service.queueSuggestions(ctx)).data.some(
+        (ticket: any) => ticket.queueTicketId === tickets[3].id,
+      ),
+    ).toBe(false);
+    expect(await rows('SELECT id FROM queue_tickets WHERE id IN (?)', [ids])).toHaveLength(10);
+    expect(
+      (await rows('SELECT status,expired_at FROM queue_tickets WHERE id=?', [tickets[0].id]))[0],
+    ).toMatchObject({ status: 'COMPLETED', expired_at: null });
+    const expiry = (
+      await rows(
+        "SELECT metadata FROM audit_logs WHERE entity_type='queue' AND entity_id=? AND action='QUEUE_EXPIRED'",
+        [tickets[3].id],
+      )
+    )[0].metadata;
+    expect(typeof expiry === 'string' ? JSON.parse(expiry) : expiry).toMatchObject({
+      reason: 'SERVICE_DAY_ENDED',
+    });
+    await expect(
+      service.transitionQueue(ctx, tickets[3].id, { status: 'IN_CONSULTATION', version: 1 }),
+    ).rejects.toMatchObject({ code: 'QUEUE_EXPIRED' });
   });
   it('suggests assigned visits for clinical-only GPs and atomically starts one consultation', async () => {
     const p = await patient(),
@@ -4636,7 +4891,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     });
     const chart = await encounter(p.id, [rx(drug.id)], { queueTicketId: ticket.id });
     await sql.query(
-      'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR) WHERE id=?',
+      'UPDATE queue_tickets SET ticket_number=CONCAT("OLD-",id),service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY) WHERE id=?',
       [ticket.id],
     );
     await service.list(ctx, 'queue');
@@ -4650,5 +4905,163 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         await rows('SELECT status,version,expired_at FROM queue_tickets WHERE id=?', [ticket.id])
       )[0],
     ).toEqual(before);
+  });
+  it('lists only active public display branches without staff or private configuration', async () => {
+    const publicTenant = fixtureId(),
+      activeBranch = fixtureId(),
+      inactiveBranch = fixtureId();
+    await sql.query('INSERT INTO tenants(id,name) VALUES(?,?)', [publicTenant, 'QA Public Clinic']);
+    await sql.query('INSERT INTO branches(id,tenant_id,name,active) VALUES(?,?,?,1),(?,?,?,0)', [
+      activeBranch,
+      publicTenant,
+      'QA Public Main',
+      inactiveBranch,
+      publicTenant,
+      'QA Private Disabled',
+    ]);
+    const response = await settingsHttp('/public/display/branches', 'GET', undefined, {
+      Cookie: '',
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    const payload = await response.json();
+    expect(payload.data).toContainEqual({
+      id: activeBranch,
+      name: 'QA Public Main',
+      clinicName: 'QA Public Clinic',
+    });
+    expect(payload.data.some((row: any) => row.id === inactiveBranch)).toBe(false);
+    for (const row of payload.data)
+      expect(Object.keys(row).sort()).toEqual(['clinicName', 'id', 'name']);
+    expect(
+      (
+        await settingsHttp(`/public/display/queue?branchId=${inactiveBranch}`, 'GET', undefined, {
+          Cookie: '',
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await settingsHttp(`/public/display/queue?branchId=${activeBranch}`, 'GET', undefined, {
+          Cookie: '',
+        })
+      ).status,
+    ).toBe(200);
+    for (const path of ['/queue', '/queue/display', '/queue/events']) {
+      expect((await settingsHttp(path, 'GET', undefined, { Cookie: '' })).status).toBe(401);
+    }
+  });
+  it('serves anonymous branch-selected current waiting tickets without patient or practitioner data', async () => {
+    const patients = await Promise.all([patient(), patient(), patient(), patient()]);
+    const tickets: any[] = [];
+    for (const p of patients)
+      tickets.push(await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' }));
+    const publicRoom = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?)', [
+      publicRoom,
+      tenant,
+      branch,
+      'QA Public Room',
+    ]);
+    await service.transitionQueue(ctx, tickets[0].id, {
+      status: 'CALLED_TO_ROOM',
+      version: 1,
+      roomId: publicRoom,
+      practitionerId: doctor,
+    });
+    await sql.query("UPDATE queue_tickets SET ticket_number='PUBLIC-CALL' WHERE id=?", [
+      tickets[0].id,
+    ]);
+    await sql.query(
+      "UPDATE queue_tickets SET ticket_number='PUBLIC-OLD',service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY) WHERE id=?",
+      [tickets[1].id],
+    );
+    await sql.query(
+      "UPDATE queue_tickets SET ticket_number='PUBLIC-DONE',status='COMPLETED' WHERE id=?",
+      [tickets[2].id],
+    );
+    await sql.query(
+      "UPDATE queue_tickets SET ticket_number='PUBLIC-EXPIRED',created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR) WHERE id=?",
+      [tickets[3].id],
+    );
+    const foreignPatient = await service.savePatient(otherCtx, {
+      name: 'QA Foreign Private Name',
+      nationalId: randomUUID(),
+      dateOfBirth: '1990-01-01',
+      sex: 'OTHER',
+      phone: '+60123456789',
+      email: 'private@example.invalid',
+      bloodGroup: '',
+      allergies: [],
+      conditions: [],
+      notificationConsent: false,
+    });
+    const foreign = await service.checkIn(otherCtx, {
+      patientId: foreignPatient.id,
+      priority: 'NORMAL',
+    });
+    await sql.query("UPDATE queue_tickets SET ticket_number='PUBLIC-FOREIGN' WHERE id=?", [
+      foreign.id,
+    ]);
+    const response = await settingsHttp(
+      `/public/display/queue?branchId=${branch}`,
+      'GET',
+      undefined,
+      {
+        Cookie: '',
+        'X-Branch-ID': String(otherBranch),
+      },
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.branch).toEqual({ id: branch, name: 'QA Main', clinicName: 'QA Tenant' });
+    expect(payload.data).toContainEqual({
+      ticketNumber: 'PUBLIC-CALL',
+      status: 'CALLED_TO_ROOM',
+      roomName: 'QA Public Room',
+    });
+    expect(
+      payload.data.some((row: any) =>
+        ['PUBLIC-OLD', 'PUBLIC-DONE', 'PUBLIC-EXPIRED', 'PUBLIC-FOREIGN'].includes(
+          row.ticketNumber,
+        ),
+      ),
+    ).toBe(false);
+    for (const row of payload.data)
+      expect(Object.keys(row).sort()).toEqual(['roomName', 'status', 'ticketNumber']);
+    expect(JSON.stringify(payload)).not.toMatch(
+      /patient|practitioner|nationalId|phone|email|tenantId|password|csrfToken|calledAt|version/i,
+    );
+    const other = await settingsHttp(
+      `/public/display/queue?branchId=${otherBranch}`,
+      'GET',
+      undefined,
+      {
+        Cookie: '',
+      },
+    );
+    expect((await other.json()).data).toContainEqual({
+      ticketNumber: 'PUBLIC-FOREIGN',
+      status: 'REGISTERED',
+      roomName: null,
+    });
+    expect(
+      (await settingsHttp('/public/display/queue', 'GET', undefined, { Cookie: '' })).status,
+    ).toBe(400);
+    expect(
+      (await settingsHttp('/public/display/queue?branchId=no', 'GET', undefined, { Cookie: '' }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await settingsHttp(`/public/display/queue?branchId=${fixtureId()}`, 'GET', undefined, {
+          Cookie: '',
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await settingsHttp(`/public/display/queue?branchId=${branch}`, 'POST', {}, { Cookie: '' }))
+        .status,
+    ).toBe(401);
   });
 });

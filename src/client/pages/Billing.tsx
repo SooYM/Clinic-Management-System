@@ -72,7 +72,6 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
   const patients = useResource<Patient[]>('/references/patients');
   const [section, setSection] = useState('checkout');
   const [previewInvoice, setPreviewInvoice] = useState<number>();
-  const [depositRevision, setDepositRevision] = useState(0);
   const [lines, setLines] = useState<Line[]>([
     { description: '', quantity: 1, unitPriceCents: 0, category: 'SERVICE' },
   ]);
@@ -375,7 +374,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           value={p.method}
                           onChange={(e) => updatePayment(i, { method: e.target.value })}
                         >
-                          {['CASH', 'CARD', 'QR', 'DEPOSIT'].map((m) => (
+                          {['CASH', 'CARD', 'QR'].map((m) => (
                             <option key={m}>{m}</option>
                           ))}
                         </select>
@@ -439,8 +438,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                 </div>
                 <p className="form-help">
                   Full payment fills the invoice total using that row's payment method. Payment
-                  amounts must match the invoice. Deposit payments require sufficient patient
-                  balance.
+                  amounts must match the invoice.
                 </p>
               </MutationForm>
             </div>
@@ -510,39 +508,6 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                 />
               )}
             </ResourceState>
-          </Panel>
-        </WorkspaceSection>
-        <WorkspaceSection
-          id="deposits"
-          label="Patient deposits"
-          description="Record prepaid patient funds with a payment reference."
-        >
-          <Panel title="Patient deposit">
-            <MutationForm
-              key={depositRevision}
-              label="Record deposit"
-              onSuccess={() => {
-                setSection('invoices');
-                setDepositRevision((value) => value + 1);
-              }}
-              onSubmit={(f) =>
-                api.post('/deposits', {
-                  patientId: Number(formText(f, 'patientId')),
-                  amountCents: Math.round(Number(f.get('amount')) * 100),
-                  reference: formText(f, 'reference'),
-                })
-              }
-            >
-              <div className="form-grid">
-                <PatientSelect patients={patients.data || []} />
-                <Field label="Amount (MYR)">
-                  <input name="amount" type="number" min="0.01" step="0.01" required />
-                </Field>
-                <Field label="Payment reference">
-                  <input name="reference" required />
-                </Field>
-              </div>
-            </MutationForm>
           </Panel>
         </WorkspaceSection>
       </WorkspaceSections>

@@ -26,14 +26,13 @@ export async function effectiveModules(
 function routeModule(path: string): ModuleId | undefined {
   if (/^\/encounters\/[^/]+\/prescription-log$/.test(path)) return undefined;
   if (path === '/dispensary/history') return undefined;
-  if (/^\/patients\/[^/]+\/deposit-balance$/.test(path)) return 'billing';
   if (/^\/patients\/[^/]+\/encounters$/.test(path)) return 'clinical';
   if (/^\/(queue|dashboard)(\/|$)/.test(path)) return 'queue';
   if (/^\/patients(\/|$)/.test(path)) return 'patients';
   if (/^\/appointments(\/|$)/.test(path)) return 'appointments';
   if (/^\/(encounters|documents|clinical)(\/|$)/.test(path)) return 'clinical';
   if (/^\/(inventory|dispensary|dispenses)(\/|$)/.test(path)) return 'inventory';
-  if (/^\/(invoices|deposits|billing)(\/|$)/.test(path)) return 'billing';
+  if (/^\/(invoices|billing)(\/|$)/.test(path)) return 'billing';
   if (/^\/(notifications|reports)(\/|$)/.test(path)) return 'reports';
   return undefined;
 }
@@ -48,7 +47,8 @@ export async function authorizeModules(req: Request, _res: Response, next: NextF
     if (req.path.startsWith('/admin/') && req.context.actor.role !== 'ADMIN')
       throw new DomainError('FORBIDDEN', 'Administration requires an administrator.', 403);
     if (
-      /^\/(packages|commissions|photos)(\/|$)/.test(req.path) ||
+      /^\/(packages|commissions|photos|deposits)(\/|$)/.test(req.path) ||
+      /^\/patients\/[^/]+\/deposit-balance$/.test(req.path) ||
       /^\/encounters\/[^/]+\/photos(\/|$)/.test(req.path) ||
       req.path.startsWith('/admin/commission-policy') ||
       /^\/reports\/commissions(?:\.|\/|$)/.test(req.path)

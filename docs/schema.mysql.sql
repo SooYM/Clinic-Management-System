@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-021, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-022, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -498,16 +498,20 @@ CREATE TABLE `queue_tickets` (
   `expired_at` datetime(3) DEFAULT NULL,
   `active_patient_id` bigint unsigned GENERATED ALWAYS AS ((case when ((`expired_at` is null) and (`status` not in (_utf8mb4'COMPLETED',_utf8mb4'SKIPPED'))) then `patient_id` else NULL end)) STORED,
   `occupied_room_id` bigint unsigned GENERATED ALWAYS AS ((case when ((`expired_at` is null) and (`status` in (_utf8mb4'CALLED_TO_ROOM',_utf8mb4'IN_CONSULTATION'))) then `room_id` else NULL end)) STORED,
+  `appointment_id` bigint unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `branch_id_2` (`branch_id`,`service_date`,`ticket_number`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
   UNIQUE KEY `queue_active_patient` (`branch_id`,`active_patient_id`),
   UNIQUE KEY `queue_occupied_room` (`occupied_room_id`),
+  UNIQUE KEY `queue_appointment_once` (`appointment_id`),
   KEY `queue_live` (`branch_id`,`service_date`,`status`,`created_at`),
   KEY `queue_tickets_ibfk_2` (`tenant_id`,`patient_id`),
   KEY `queue_tickets_ibfk_3` (`tenant_id`,`practitioner_id`),
   KEY `queue_tickets_ibfk_4` (`tenant_id`,`branch_id`,`room_id`),
   KEY `queue_expiry` (`tenant_id`,`branch_id`,`expired_at`,`created_at`),
+  KEY `queue_appointment_scope` (`tenant_id`,`branch_id`,`appointment_id`),
+  CONSTRAINT `queue_appointment_scope` FOREIGN KEY (`tenant_id`, `branch_id`, `appointment_id`) REFERENCES `appointments` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `queue_tickets_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `queue_tickets_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
   CONSTRAINT `queue_tickets_ibfk_3` FOREIGN KEY (`tenant_id`, `practitioner_id`) REFERENCES `users` (`tenant_id`, `id`),

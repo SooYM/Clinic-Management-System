@@ -241,7 +241,7 @@ export default function PatientForm({
           <Field label="Country of nationality" hint="Country recorded on the identity document.">
             <select
               required={nationality === 'NON_MALAYSIAN'}
-              disabled={nationality === 'MALAYSIAN'}
+              disabled={nationality !== 'NON_MALAYSIAN'}
               value={nationality === 'MALAYSIAN' ? 'MY' : countryCode}
               onChange={(event) => setCountryCode(event.target.value)}
             >

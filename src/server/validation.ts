@@ -152,7 +152,6 @@ export const schemas = {
     .object({
       patientId: id,
       practitionerId: id,
-      roomId: id.optional(),
       startsAt: z.string().datetime({ offset: true }),
       endsAt: z.string().datetime({ offset: true }),
       reason: z.string().max(500).default(''),
@@ -164,8 +163,17 @@ export const schemas = {
       'Appointment date must be today or later.',
     ),
   queue: z
-    .object({ patientId: id, priority: z.enum(['NORMAL', 'URGENT']).default('NORMAL') })
-    .strict(),
+    .object({
+      patientId: id,
+      priority: z.enum(['NORMAL', 'URGENT']).default('NORMAL'),
+      appointmentId: id.optional(),
+      appointmentVersion: integer.optional(),
+    })
+    .strict()
+    .refine(
+      (v) => !!v.appointmentId === !!v.appointmentVersion,
+      'Appointment and version must be supplied together.',
+    ),
   transition: z
     .object({
       status: z.enum(queueStatuses),
@@ -187,6 +195,15 @@ export const schemas = {
         .record(z.string(), z.union([z.string().max(100), z.number()]))
         .default({})
         .superRefine((value, ctx) => {
+          if (value.temperature !== undefined && value.temperature !== '') {
+            const temperature = Number(value.temperature);
+            if (!Number.isFinite(temperature) || temperature < 28 || temperature > 40)
+              ctx.addIssue({
+                code: 'custom',
+                path: ['temperature'],
+                message: 'Temperature must be between 28°C and 40°C.',
+              });
+          }
           try {
             parseBloodPressure(value.bloodPressure);
           } catch (error) {
@@ -299,7 +316,7 @@ export const schemas = {
         .array(
           z
             .object({
-              method: z.enum(['CASH', 'CARD', 'QR', 'DEPOSIT']),
+              method: z.enum(['CASH', 'CARD', 'QR']),
               amountCents: cents.refine((v) => v > 0),
               reference: z.string().max(200).default(''),
             })
@@ -335,7 +352,7 @@ export const schemas = {
         .array(
           z
             .object({
-              method: z.enum(['CASH', 'CARD', 'QR', 'DEPOSIT']),
+              method: z.enum(['CASH', 'CARD', 'QR']),
               amountCents: cents.refine((v) => v > 0),
               reference: z.string().max(200).default(''),
             })
@@ -345,9 +362,6 @@ export const schemas = {
         .max(10),
       idempotencyKey: z.string().min(8).max(100),
     })
-    .strict(),
-  deposit: z
-    .object({ patientId: id, amountCents: cents.refine((v) => v > 0), reference: text })
     .strict(),
   document: z
     .object({

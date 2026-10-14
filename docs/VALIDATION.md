@@ -207,3 +207,11 @@ Full regression passed: 385 tests across 22 files, including 136 guarded real My
 Checkout scroll verified on desktop and 320px phone, including same-patient repeat and reduced-motion. The form appears below sticky navigation without horizontal overflow. Demo build and typecheck passed; fictional browser fixtures only.
 
 Full payment passed fictional desktop/320px browser checks: zero-total guard, MYR100.05 exact allocation, QR/Card/reference preservation, split cancel/confirm and no premature invoice. Demo build and typecheck passed. No backend schema or payment method change.
+
+## Public waiting-room API validation — 2026-10-14
+
+Two guarded disposable MySQL/HTTP regressions passed. Anonymous branch listing returned only active public branding fields. Queue responses contained exactly ticket number, status and room name. Explicit branch scope remained correct despite a conflicting staff branch header. Prior-day, completed and lifetime-expired visits were absent. Missing/malformed IDs returned 400; unavailable branches returned 404. Staff queue/display/events remained 401 without login, and no public POST mutation route was enabled. These checks do not prove Render deployment or replace browser acceptance.
+
+## Arrival, search, daily queue and public display validation — 2026-10-14
+
+All 414 tests across 24 files passed, including 138 guarded MySQL workflow cases and four database-reset cases. Production and demo builds, typecheck and formatting passed. Fictional browser checks covered room-free due-appointment arrival, booked GP suggestion, registration shortcuts, search dropdowns, retained registration drafts and module restrictions. Anonymous local /display opened without auth/bootstrap requests and fit a 390px phone. Demo branch switching and branch selection after reload passed. Public routes expose only clinic/branch labels and anonymous ticket stages/rooms. Migration022 followed a guarded backup: rows remained intact across 32 tables and 26 numeric entity IDs, with 22 migrations applied. No live reset was executed. Render deployment was not verified.

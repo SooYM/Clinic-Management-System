@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `021_checkout_encounter.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `022_appointment_arrivals.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -45,7 +45,7 @@ All active clinical/operational entity tables carry organization scope where req
 | stock_movements           | Numeric id, batch_id, optional dispense_id or usage_id, actor_id, signed quantity_delta, reason                                                                                    | Nonzero movement, transactional receipt/dispense/usage ledger                      |
 | invoices                  | Numeric id, patient_id, practitioner_id, invoice_number, lines JSON, total_cents, status, idempotency_key, request_hash                                                            | Unique number and branch/retry key; positive total; current checkout creates PAID  |
 | payments                  | Numeric id, invoice_id, method, amount_cents, reference                                                                                                                            | Positive integer amount; CASH/CARD/QR/DEPOSIT                                      |
-| patient_deposits          | Numeric id, patient_id, signed amount_cents, reference                                                                                                                             | Nonzero ledger amount; spending validated under transaction lock                   |
+| patient_deposits          | Numeric id, patient_id, signed amount_cents, reference                                                                                                                             | Historical ledger retained; deposit creation/spending retired                   |
 | clinical_documents        | Numeric id, encounter/patient/practitioner IDs, kind, document_number, payload JSON, dates, redaction, verification_hash, signature_hash, revoke data                              | Unique document/verification keys; MC date consistency; snapshot integrity checked |
 | notification_outbox       | Numeric id, patient_id, channel, template, recipient, payload JSON, state, attempts, available_at, errors/provider reference, deduplication_key                                    | Unique dedup key; explicit asynchronous state                                      |
 | audit_logs                | Numeric id, tenant/branch/actor IDs, action, entity_type, optional entity_id, request_id, metadata JSON, created_at                                                                | Polymorphic entity reference has no universal entity FK                            |
@@ -75,7 +75,7 @@ Membership FKs do not alone guarantee tenant membership consistency; administrat
 Generated queue columns equal patient ID for active statuses and room ID for called/in-consultation statuses.
 Their unique indexes prevent duplicate active branch visits and simultaneous room occupation.
 `CHECK` constraints validate row-local quantities, enum values, dates and amounts.
-Overlaps, FEFO, deposit balances and payment sums require locked service transactions; MySQL does not provide row-level security here.
+Overlaps, FEFO and payment sums require locked service transactions; MySQL does not provide row-level security here.
 
 Timestamps use `datetime(3)` and API UTC ISO representation. Civil dates use `date`; clinic service dates follow Asia/Kuala_Lumpur.
 MC periods are inclusive. Appointment intervals are half-open, permitting adjacent slots.
@@ -157,7 +157,7 @@ Migration 015 adds branch active/version/update time and nullable invoices.recei
 
 ## Migration 018 queue lifetime
 
-Queue check-ins last at most 12 hours from created_at, across Malaysia midnight. Before queue reads, check-in, room transitions and GP suggestions, scoped lifecycle cleanup marks old unfinished tickets expired_at, increments version and audits QUEUE_EXPIRED. Original status and chart references remain preserved. Active patient and occupied-room uniqueness excludes expired tickets. A fresh duplicate check-in returns a specific existing-ticket 409; an expired patient can check in again. Completed/skipped visits retain their existing terminal behavior. Estimates, room occupancy and queue-near notifications exclude expired visits. The expiry column is nullable to retain original data; generated active_patient_id and occupied_room_id include expired_at IS NULL. No patient, encounter or payment row is deleted. Existing applied migrations remain immutable.
+Operational check-ins last at most 12 hours from created_at or until Malaysia midnight, whichever comes first. The live queue shows only today's service-date records, including completed, skipped and expired visits; it starts fresh at midnight without deleting history. Before queue reads, check-in, room transitions and GP suggestions, scoped lifecycle cleanup marks old unfinished tickets expired_at, increments version and audits QUEUE_EXPIRED. Original status and chart references remain preserved. Active patient and occupied-room uniqueness excludes expired tickets. A fresh duplicate check-in returns a specific existing-ticket 409; an expired patient can check in again. Completed/skipped visits retain their existing terminal behavior. Estimates, room occupancy and queue-near notifications exclude expired visits. The expiry column is nullable to retain original data; generated active_patient_id and occupied_room_id include expired_at IS NULL. No patient, encounter or payment row is deleted. Existing applied migrations remain immutable.
 
 
 ## Migrations 019 and 020
@@ -166,3 +166,9 @@ Queue check-ins last at most 12 hours from created_at, across Malaysia midnight.
 
 ## Migration 021: consultation-linked checkout
 `invoices.encounter_id` is nullable unsigned BIGINT, uniquely indexed, with scoped `(tenant_id,branch_id,encounter_id)` foreign key to encounters. Existing invoices remain unchanged with NULL linkage. No new table or entity ID is introduced. One consultation may have at most one linked invoice. Deployment must run migration 021 before serving this version.
+
+## Migration 022: appointment-linked arrival
+
+queue_tickets.appointment_id is nullable unsigned BIGINT with a tenant/branch-scoped foreign key to appointments and a unique index. One scheduled appointment can create at most one linked ticket. Existing tickets retain NULL linkage; existing appointment room_id values remain historical, and new bookings use NULL. Reset deletion order removes queue_tickets before appointments after dependent encounters. The 32-table/26-numeric-entity layout remains. patient_deposits and DEPOSIT payment enum values remain historical storage only.
+
+Daily queue reset uses existing service_date/expired_at fields and lifecycle auditing; no migration, deletion or sequence reset is required. Vitals temperature validation changes application rules only; existing JSON histories remain stored unchanged.

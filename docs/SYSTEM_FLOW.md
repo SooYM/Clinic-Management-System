@@ -19,9 +19,9 @@ flowchart TD
   Identity -->|No| Correct[Correct fields; no patient saved]
   Correct --> Patient
   Identity -->|Yes| Visit{Appointment or walk-in?}
-  Visit -->|Appointment| Book[Select active GP and optional room]
+  Visit -->|Appointment| Book[Select active GP and appointment times]
   Book --> Conflict{Overlapping booking?}
-  Conflict -->|Yes| Reschedule[Choose another time/room/GP]
+  Conflict -->|Yes| Reschedule[Choose another time/GP]
   Reschedule --> Book
   Conflict -->|No| CheckIn[Staff queue check-in]
   Visit -->|Walk-in| CheckIn
@@ -38,19 +38,19 @@ flowchart TD
   Stock -->|No| Receive[No partial depletion; receive suitable batches or review prescription]
   Receive --> Pending
   Stock -->|Yes| Dispense[Close own holds; atomic physical dispense and movement ledger]
-  Rx -->|No| Payment[Staff moves visit to payment]
+  Rx -->|No| Payment[Linked visit moves to payment]
   Dispense --> Payment
   Payment --> Checkout[Itemized invoice and split tender]
-  Checkout --> Balanced{Tender exact and deposit sufficient?}
+  Checkout --> Balanced{Tender equals invoice total?}
   Balanced -->|No| FixTender[Reject transaction; correct amounts]
   FixTender --> Checkout
   Balanced -->|Yes| Receipt[Persist paid invoice and print receipt]
-  Receipt --> Complete[Staff completes queue visit]
+  Receipt --> Complete[Linked paid visit completes]
   Sign --> Docs[Attending GP optionally issues MC/referral/lab document]
   Docs --> Verify[PDF and minimal public verification]
 ```
 
-Appointment check-in and completion statuses are not advertised as automatic synchronization with queue actions.
+Confirmed due-appointment arrival links the appointment to one queue ticket and marks it checked in.
 The API supports booking cancellation; the current booking screen requires separate API handling for that operation.
 See [staff guide](USER_GUIDE.md) for screen-level steps.
 
@@ -167,7 +167,7 @@ Directory → patient row/Open profile → full demographics/contact/address and
 
 ## Single-entry task and consent flow
 
-Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout or Patient deposits. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Valid form → popup → Cancel/Escape (no mutation, preserve draft), or Confirm → existing API → success/error. Direct persistent actions use the same popup. Invalid native required fields prevent form submission before the popup.
+Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout. Patient registration retains a prominent header shortcut; other duplicate actions are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Valid form → popup → Cancel/Escape (no mutation, preserve draft), or Confirm → existing API → success/error. Direct persistent actions use the same popup. Invalid native required fields prevent form submission before the popup.
 
 
 ## Simplified arrivals and room calls
@@ -177,7 +177,7 @@ Check in patient → Waiting for doctor → Call to room beside that patient →
 
 ## Check-in expiry and nurse-to-GP flow
 
-Check in → active visit for 12 hours → nurse calls assigned doctor/room → GP Assigned patients → Start consultation → prefilled SOAP form → consented save, linked encounter and atomic start. If nurse already started consultation, suggestion is still shown. Existing encounter → Open consultation. Exact 12-hour cutoff → mark expired/release operational locks → new check-in; prior clinical history retained. Duplicate before cutoff → clear existing-ticket error.
+Check in → active visit until 12 hours or Malaysia midnight → nurse calls assigned doctor/room → GP Assigned patients → Start consultation → prefilled SOAP form → consented save, linked encounter and atomic start. If nurse already started consultation, suggestion is still shown. Existing encounter → Open consultation. Exact 12-hour cutoff → mark expired/release operational locks → new check-in; prior clinical history retained. Duplicate before cutoff → clear existing-ticket error.
 
 
 ## Signed consultation to dispensary
@@ -204,3 +204,17 @@ flowchart LR
 Drafts remain editable without stock holds. Signing rejects insufficient eligible stock atomically. Dispensing and payment preserve idempotency. Automatic transitions apply only to the linked active queue ticket; expired visits stay expired.
 
 Prepare checkout → confirm replacement if needed → prefill patient/GP/charges → scroll to checkout below sticky navigation. Cancel → retain entries and scroll position.
+
+## Appointment to waiting queue
+
+Book patient/GP/times without room → scheduled time arrives on Malaysia date → Clinic overview suggests check-in → staff confirms arrival → one linked waiting ticket, booked GP retained, no room yet → staff calls into an available room → GP assigned suggestion → existing consultation/dispensary/billing flow. Canceled, removed, future, previous-day and already checked-in appointments are excluded. Canceling check-in consent creates no ticket. No automated check-in merely because time passes.
+
+Check-in → Register patient shortcut → Patients registration and scroll → explicit save consent → searchable patient directory. Patient search → loading or matching dropdown → pointer/keyboard selection → profile or workflow patient selection. No result → explicit guidance. Canceling unsaved-edit replacement preserves the original form.
+
+## Public display flow
+
+Open `/display` → load active branches without sign-in → choose branch → load anonymous current waiting/called tickets → refresh every 15 seconds. Clinic names distinguish identical branch names. Show room names but no patient or practitioner names. Expired, completed/skipped and prior-day visits leave this public screen. Staff workflows remain authenticated.
+
+## Daily queue and temperature flow
+
+Today’s ten visits remain ten after completion or expiry → Malaysia midnight → previous-day rows leave the live queue/count → unfinished visits expire → fresh check-in starts Q-001 with a new numeric ID. Stored clinical, prescription and payment history remains available. Temperature entry → optional blank or numeric 28°C–40°C inclusive → save; outside range → reject before mutation.

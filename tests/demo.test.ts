@@ -804,7 +804,8 @@ describe('browser-session demo simulation', () => {
     ).rejects.toMatchObject({ status: 403 });
   });
   it('deletes unused rooms but archives historical rooms without losing appointments', async () => {
-    const clinic = new DemoClinic(new MemoryStorage());
+    const storage = new MemoryStorage();
+    let clinic = new DemoClinic(storage);
     await login(clinic);
     const unused = await request(clinic, '/admin/rooms', 'POST', {
       name: 'Unused QA Room',
@@ -824,11 +825,15 @@ describe('browser-session demo simulation', () => {
     const visit = await request(clinic, '/appointments', 'POST', {
       patientId: 1,
       practitionerId: 2,
-      roomId: historic.id,
       startsAt: '2036-01-01T01:00:00Z',
       endsAt: '2036-01-01T01:30:00Z',
       reason: 'Fictional historical visit',
     });
+    const [stateKey, raw] = [...storage.entries.entries()][0];
+    const historicalState = JSON.parse(raw);
+    historicalState.rows.appointments.find((row: any) => row.id === visit.id).roomId = historic.id;
+    storage.setItem(stateKey, JSON.stringify(historicalState));
+    clinic = new DemoClinic(storage);
     await request(clinic, '/appointments/' + visit.id + '/cancel', 'POST', {
       version: visit.version,
     });
@@ -854,16 +859,21 @@ describe('browser-session demo simulation', () => {
     });
   });
   it('rejects removing booked or occupied rooms without changing history', async () => {
-    const clinic = new DemoClinic(new MemoryStorage());
+    const storage = new MemoryStorage();
+    let clinic = new DemoClinic(storage);
     await login(clinic);
-    await request(clinic, '/appointments', 'POST', {
+    const visit = await request(clinic, '/appointments', 'POST', {
       patientId: 1,
       practitionerId: 2,
-      roomId: 1,
       startsAt: '2035-02-01T01:00:00Z',
       endsAt: '2035-02-01T01:30:00Z',
       reason: 'Fictional future room booking',
     });
+    const [stateKey, raw] = [...storage.entries.entries()][0];
+    const historicalState = JSON.parse(raw);
+    historicalState.rows.appointments.find((row: any) => row.id === visit.id).roomId = 1;
+    storage.setItem(stateKey, JSON.stringify(historicalState));
+    clinic = new DemoClinic(storage);
     await expect(request(clinic, '/admin/rooms/1', 'DELETE')).rejects.toMatchObject({
       status: 409,
     });
@@ -1271,6 +1281,87 @@ describe('browser-session demo simulation', () => {
       );
       await unlink(join(directory, 'index.html'));
       await rmdir(directory);
+    }
+  });
+});
+
+describe('anonymous demo queue display', () => {
+  it('lists active branch names and shows only anonymous live tickets for the selected branch', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-14T00:00:00Z'));
+    try {
+      const storage = new MemoryStorage();
+      const setup = new DemoClinic(storage);
+      await login(setup);
+      const storedKey = [...storage.entries.keys()][0];
+      const state = JSON.parse(storage.getItem(storedKey)!);
+      state.rows.queue.push({
+        id: 2,
+        tenantId: 1,
+        branchId: 2,
+        patientId: 1,
+        ticketNumber: 'Q-001',
+        serviceDate: '2026-10-14',
+        status: 'CALLED_TO_ROOM',
+        roomId: 4,
+        createdAt: '2026-10-14T00:00:00.000Z',
+        expiredAt: null,
+        version: 1,
+      });
+      for (const [id, status, expiredAt, serviceDate] of [
+        [3, 'COMPLETED', null, '2026-10-14'],
+        [4, 'SKIPPED', null, '2026-10-14'],
+        [5, 'REGISTERED', '2026-10-14T00:00:00.000Z', '2026-10-14'],
+        [6, 'CALLED_TO_ROOM', null, '2026-10-13'],
+      ])
+        state.rows.queue.push({
+          ...state.rows.queue[0],
+          id,
+          status,
+          expiredAt,
+          serviceDate,
+          ticketNumber: `Q-00${id}`,
+        });
+      state.rows.branches.push({ id: 3, tenantId: 1, name: 'Archived branch', active: false });
+      state.counters.branches = 3;
+      state.counters.queue = 6;
+      state.userId = null;
+      storage.setItem(storedKey, JSON.stringify(state));
+      const clinic = new DemoClinic(storage);
+      const branches = await clinic.request('/public/display/branches');
+      expect(branches.data.map((row: any) => row.id)).toEqual([1, 2]);
+      expect(Object.keys(branches.data[0]).sort()).toEqual(['clinicName', 'id', 'name']);
+      const first = await clinic.request('/public/display/queue?branchId=1');
+      const second = await clinic.request('/public/display/queue?branchId=2');
+      expect(first.data).toEqual([{ ticketNumber: 'Q-001', status: 'REGISTERED', roomName: null }]);
+      expect(second.data).toEqual([
+        { ticketNumber: 'Q-001', status: 'CALLED_TO_ROOM', roomName: null },
+      ]);
+      expect(Object.keys(second.data[0]).sort()).toEqual(['roomName', 'status', 'ticketNumber']);
+      await expect(clinic.request('/patients')).rejects.toMatchObject({ status: 401 });
+      await expect(clinic.request('/queue/display')).rejects.toMatchObject({ status: 401 });
+      await expect(
+        clinic.request('/public/display/queue?branchId=1', 'POST', { status: 'SKIPPED' }),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(clinic.request('/public/display/branches', 'DELETE')).rejects.toMatchObject({
+        status: 404,
+      });
+      for (const branchId of ['', '0', '-1', 'abc', '1.5'])
+        await expect(
+          clinic.request('/public/display/queue?branchId=' + branchId),
+        ).rejects.toMatchObject({ status: 400 });
+      await expect(clinic.request('/public/display/queue?branchId=3')).rejects.toMatchObject({
+        status: 404,
+      });
+      await expect(clinic.request('/public/display/queue?branchId=999')).rejects.toMatchObject({
+        status: 404,
+      });
+      vi.setSystemTime(new Date('2026-10-14T16:00:00Z'));
+      expect((await clinic.request('/public/display/queue?branchId=1')).data).toEqual([]);
+      expect((await clinic.request('/public/display/queue?branchId=2')).data).toEqual([]);
+      expect(JSON.parse(storage.getItem(storedKey)!).rows.queue).toHaveLength(6);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
