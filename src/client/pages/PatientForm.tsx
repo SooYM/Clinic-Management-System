@@ -5,6 +5,7 @@ import { type Patient } from '../types';
 import { formatMalaysianIc, parseMalaysianIc } from '../../shared/patient-identity';
 import PhoneInput from '../PhoneInput';
 import { countryOptions } from '../../shared/countries';
+import { registrationPatientFields } from '../../shared/public-registration';
 const states = [
   'Johor',
   'Kedah',
@@ -28,12 +29,19 @@ const currentYear = Number(
     new Date(),
   ),
 );
+export type RegistrationPatient = Pick<Patient, (typeof registrationPatientFields)[number]>;
+type Locality = { postcode: string; city: string; state: string };
 export default function PatientForm({
   initial,
   onSaved,
+  publicRegistration,
 }: {
   initial?: Patient;
   onSaved: (patient: Patient) => void;
+  publicRegistration?: {
+    submit: (patient: RegistrationPatient) => Promise<void>;
+    lookupPostcode: (postcode: string, signal: AbortSignal) => Promise<Locality[]>;
+  };
 }) {
   const [nationality, setNationality] = useState<Patient['nationality']>(
     initial?.nationality || 'MALAYSIAN',
@@ -108,10 +116,12 @@ export default function PatientForm({
     setPostcodeStatus('Looking up city and state…');
     const timer = window.setTimeout(async () => {
       try {
-        const matches = await api.get<{ postcode: string; city: string; state: string }[]>(
-          `/references/postcodes/${encodeURIComponent(postcode)}`,
-          controller.signal,
-        );
+        const matches = publicRegistration
+          ? await publicRegistration.lookupPostcode(postcode, controller.signal)
+          : await api.get<{ postcode: string; city: string; state: string }[]>(
+              `/references/postcodes/${encodeURIComponent(postcode)}`,
+              controller.signal,
+            );
         if (controller.signal.aborted) return;
         setLocalities(matches);
         if (matches.length === 1) {
@@ -138,7 +148,7 @@ export default function PatientForm({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [postcode, nationality]);
+  }, [postcode, nationality, publicRegistration?.lookupPostcode]);
   function updateIdentity(value: string) {
     const formatted = formatMalaysianIc(value);
     setNationalId(formatted);
@@ -155,7 +165,13 @@ export default function PatientForm({
   }
   return (
     <MutationForm
-      label={initial ? 'Save patient details' : 'Register patient'}
+      label={
+        publicRegistration
+          ? 'Send to reception'
+          : initial
+            ? 'Save patient details'
+            : 'Register patient'
+      }
       onSubmit={async (f) => {
         let canonical = nationalId;
         if (nationality === 'MALAYSIAN') {
@@ -200,6 +216,15 @@ export default function PatientForm({
           notificationConsent: f.get('notificationConsent') === 'on',
           ...(initial ? { version: initial.version } : {}),
         };
+        if (publicRegistration) {
+          if (f.get('registrationConsent') !== 'on')
+            throw new Error('Consent is required to send your details to reception.');
+          const demographics = Object.fromEntries(
+            registrationPatientFields.map((field) => [field, body[field]]),
+          ) as RegistrationPatient;
+          await publicRegistration.submit(demographics);
+          return;
+        }
         const saved = initial
           ? await api.put<Patient>(`/patients/${initial.id}`, body)
           : await api.post<Patient>('/patients', body);
@@ -410,28 +435,32 @@ export default function PatientForm({
             ))}
           </datalist>
         </Field>
-        <Field label="Blood group">
-          <select name="bloodGroup" defaultValue={initial?.bloodGroup || ''}>
-            <option value="">Unknown</option>
-            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((v) => (
-              <option key={v}>{v}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Allergies" hint="Separate each allergy with a comma.">
-          <input
-            name="allergies"
-            defaultValue={initial?.allergies?.join(', ')}
-            placeholder="e.g. Penicillin, aspirin"
-          />
-        </Field>
-        <Field label="Chronic conditions">
-          <input
-            name="conditions"
-            defaultValue={initial?.conditions?.join(', ')}
-            placeholder="e.g. Hypertension"
-          />
-        </Field>
+        {!publicRegistration && (
+          <>
+            <Field label="Blood group">
+              <select name="bloodGroup" defaultValue={initial?.bloodGroup || ''}>
+                <option value="">Unknown</option>
+                {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((v) => (
+                  <option key={v}>{v}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Allergies" hint="Separate each allergy with a comma.">
+              <input
+                name="allergies"
+                defaultValue={initial?.allergies?.join(', ')}
+                placeholder="e.g. Penicillin, aspirin"
+              />
+            </Field>
+            <Field label="Chronic conditions">
+              <input
+                name="conditions"
+                defaultValue={initial?.conditions?.join(', ')}
+                placeholder="e.g. Hypertension"
+              />
+            </Field>
+          </>
+        )}
       </div>
       {postcodeStatus && (
         <p className="form-help" role="status">
@@ -439,14 +468,21 @@ export default function PatientForm({
         </p>
       )}
       {identityError && <ErrorNotice>{identityError}</ErrorNotice>}
-      <label className="checkbox">
-        <input
-          name="notificationConsent"
-          type="checkbox"
-          defaultChecked={initial?.notificationConsent}
-        />
-        Patient consents to appointment and queue notifications
-      </label>
+      {publicRegistration ? (
+        <label className="checkbox">
+          <input name="registrationConsent" type="checkbox" required />I consent to this clinic
+          receiving my details for registration and reception identity verification.
+        </label>
+      ) : (
+        <label className="checkbox">
+          <input
+            name="notificationConsent"
+            type="checkbox"
+            defaultChecked={initial?.notificationConsent}
+          />
+          Patient consents to appointment and queue notifications
+        </label>
+      )}
     </MutationForm>
   );
 }

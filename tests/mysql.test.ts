@@ -5254,4 +5254,363 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ]),
     ).rejects.toMatchObject({ code: 'ER_CHECK_CONSTRAINT_VIOLATED' });
   });
+  const registrationBody = (nationalId = randomUUID()) => ({
+    submissionKey: randomUUID(),
+    consent: true,
+    patient: {
+      firstName: 'Fictional QR',
+      lastName: 'Registrant',
+      nationality: 'NON_MALAYSIAN',
+      countryCode: 'SG',
+      nationalId,
+      dateOfBirth: '1990-01-01',
+      sex: 'OTHER',
+      phone: '+65 8123 4567',
+      addressLine1: 'Fictional street',
+    },
+  });
+  const publicRegistration = (path: string, method = 'GET', body?: any) =>
+    settingsHttp('/public/registration' + path, method, body, { Cookie: '' });
+  it('public registration defaults disabled and restricts QR settings to admins with CSRF and version checks', async () => {
+    await sql.query('UPDATE branches SET public_registration_enabled=FALSE WHERE id=?', [branch]);
+    expect((await publicRegistration('/branches/' + branch)).status).toBe(200);
+    expect((await (await publicRegistration('/branches/' + branch)).json()).enabled).toBe(false);
+    expect(
+      (await publicRegistration('/branches/' + branch, 'POST', registrationBody())).status,
+    ).toBe(404);
+    expect((await settingsHttp('/admin/registration-settings')).status).toBe(403);
+    const initial = await (await settingsAdminHttp('/admin/registration-settings')).json();
+    expect(initial.qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(initial.url).toBe('http://clinic.example.invalid/register?branchId=1');
+    expect(
+      (
+        await settingsHttp(
+          '/admin/registration-settings',
+          'PUT',
+          { enabled: true, version: initial.version },
+          { Cookie: `cms_session=${adminToken}`, 'X-CSRF-Token': 'invalid' },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await settingsAdminHttp('/admin/registration-settings', 'PUT', {
+          enabled: true,
+          version: initial.version,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await settingsAdminHttp('/admin/registration-settings', 'PUT', {
+          enabled: false,
+          version: initial.version,
+        })
+      ).status,
+    ).toBe(409);
+    expect((await publicRegistration('/branches/' + branch + '/postcodes/50000')).status).toBe(200);
+  });
+  it('public registration reserves unique real numbers across simultaneous staff and QR arrivals without creating profiles', async () => {
+    await sql.query('UPDATE branches SET public_registration_enabled=TRUE WHERE id=?', [branch]);
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const registrations = new PublicRegistrationService(),
+      body = registrationBody(),
+      otherBody = registrationBody(),
+      p = await patient();
+    const before = Number((await rows('SELECT COUNT(*) n FROM patients'))[0].n);
+    const [first, retry, second, ordinary] = await Promise.all([
+      registrations.submit(branch, body),
+      registrations.submit(branch, body),
+      registrations.submit(branch, otherBody),
+      service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' }),
+    ]);
+    expect(retry).toEqual(first);
+    expect(new Set([first.ticketNumber, second.ticketNumber, ordinary.ticketNumber]).size).toBe(3);
+    expect(first.status).toBe('PENDING');
+    expect(Object.keys(first).sort()).toEqual(
+      ['reference', 'ticketNumber', 'status', 'expiresAt', 'branchName', 'receiptToken'].sort(),
+    );
+    expect(first.receiptToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(Number((await rows('SELECT COUNT(*) n FROM patients'))[0].n)).toBe(before);
+    const stored = (
+      await rows('SELECT * FROM pending_registrations WHERE submission_key=?', [body.submissionKey])
+    )[0];
+    expect(stored.receipt_token_hash).not.toBe(first.receiptToken);
+    expect(stored.payload.firstName).toBe('Fictional QR');
+    expect(
+      await rows(
+        'SELECT id FROM queue_tickets WHERE branch_id=? AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)) AND ticket_number=?',
+        [branch, first.ticketNumber],
+      ),
+    ).toHaveLength(0);
+    const { receiptToken: _, ...safeReceipt } = first;
+    expect(await registrations.status(first.receiptToken)).toEqual(safeReceipt);
+    await expect(
+      registrations.submit(branch, {
+        ...body,
+        patient: { ...body.patient, firstName: 'Different' },
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    expect((await publicRegistration('/receipts/' + body.submissionKey)).status).not.toBe(200);
+    const estimate = await (await settingsAdminHttp('/queue/estimate')).json();
+    const actual = (
+      await rows(
+        'SELECT COUNT(*) n FROM queue_tickets WHERE branch_id=? AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))',
+        [branch],
+      )
+    )[0].n;
+    expect(estimate.visitsToday).toBe(Number(actual));
+    const display = await (
+      await settingsHttp('/public/display/queue?branchId=' + branch, 'GET', undefined, {
+        Cookie: '',
+      })
+    ).json();
+    expect(display.data.some((r: any) => r.ticketNumber === first.ticketNumber)).toBe(false);
+  });
+  it('public registration confirmation creates patient and activates the same number atomically and idempotently', async () => {
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const registrations = new PublicRegistrationService(),
+      body = registrationBody();
+    const publicResult = await publicRegistration('/branches/' + branch, 'POST', body);
+    expect(publicResult.status).toBe(202);
+    const receipt = await publicResult.json();
+    const adminCtx = {
+      ...ctx,
+      actor: { ...ctx.actor, id: administrator, role: 'ADMIN' },
+      modules: ['patients', 'queue'],
+    };
+    const pending = (await registrations.list(adminCtx)).find(
+      (r: any) => r.reference === receipt.reference,
+    );
+    expect(pending.ticketNumber).toBe(receipt.ticketNumber);
+    expect(
+      (
+        await settingsHttp(
+          '/registrations/' + pending.id + '/confirm',
+          'POST',
+          { version: pending.version, identityVerified: true },
+          { Cookie: `cms_session=${adminToken}`, 'X-CSRF-Token': 'invalid' },
+        )
+      ).status,
+    ).toBe(403);
+    const results = await Promise.all([
+      registrations.confirm(adminCtx, pending.id, {
+        version: pending.version,
+        identityVerified: true,
+      }),
+      registrations.confirm(adminCtx, pending.id, {
+        version: pending.version,
+        identityVerified: true,
+      }),
+    ]);
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0].ticketNumber).toBe(receipt.ticketNumber);
+    expect(
+      await rows('SELECT id FROM patients WHERE tenant_id=? AND national_id=?', [
+        tenant,
+        body.patient.nationalId,
+      ]),
+    ).toHaveLength(1);
+    expect(
+      await rows('SELECT id FROM queue_tickets WHERE patient_id=?', [results[0].patientId]),
+    ).toHaveLength(1);
+    expect(
+      (await rows('SELECT payload FROM pending_registrations WHERE id=?', [pending.id]))[0].payload,
+    ).toBeNull();
+    expect((await registrations.status(receipt.receiptToken)).status).toBe('ACCEPTED');
+    await expect(
+      registrations.confirm({ ...adminCtx, branchId: otherBranch }, pending.id, {
+        version: pending.version,
+        identityVerified: true,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+  it('public registration review requires both modules and explicit existing identity linking without overwriting records', async () => {
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const registrations = new PublicRegistrationService(),
+      p = await patient(),
+      body = registrationBody(p.nationalId);
+    const before = (await rows('SELECT * FROM patients WHERE id=?', [p.id]))[0];
+    const receipt = await registrations.submit(branch, body);
+    const adminCtx = {
+      ...ctx,
+      actor: { ...ctx.actor, id: administrator, role: 'ADMIN' },
+      modules: ['patients', 'queue'],
+    };
+    const pending = (await registrations.list(adminCtx)).find(
+      (r: any) => r.reference === receipt.reference,
+    );
+    expect(pending.possibleMatch.id).toBe(p.id);
+    await expect(registrations.list({ ...adminCtx, modules: ['queue'] })).rejects.toMatchObject({
+      code: 'MODULE_FORBIDDEN',
+    });
+    await expect(
+      registrations.confirm(adminCtx, pending.id, {
+        version: pending.version,
+        identityVerified: true,
+      }),
+    ).rejects.toMatchObject({ code: 'IDENTITY_REVIEW_REQUIRED' });
+    const result = await registrations.confirm(adminCtx, pending.id, {
+      version: pending.version,
+      identityVerified: true,
+      existingPatientId: p.id,
+    });
+    expect(result.patientId).toBe(p.id);
+    expect((await rows('SELECT * FROM patients WHERE id=?', [p.id]))[0]).toEqual(before);
+    await expect(
+      registrations.confirm({ ...adminCtx, modules: ['patients'] }, pending.id, {
+        version: pending.version,
+        identityVerified: true,
+        existingPatientId: p.id,
+      }),
+    ).rejects.toMatchObject({ code: 'MODULE_FORBIDDEN' });
+  });
+  it('public registration expires pending personal data and retains reserved numbers without reuse', async () => {
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const registrations = new PublicRegistrationService(),
+      body = registrationBody(),
+      receipt = await registrations.submit(branch, body);
+    await sql.query(
+      'UPDATE pending_registrations SET expires_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 1 SECOND) WHERE submission_key=?',
+      [body.submissionKey],
+    );
+    expect((await registrations.status(receipt.receiptToken)).status).toBe('EXPIRED');
+    expect(
+      (
+        await rows('SELECT payload FROM pending_registrations WHERE submission_key=?', [
+          body.submissionKey,
+        ])
+      )[0].payload,
+    ).toBeNull();
+    const p = await patient(),
+      ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
+    expect(Number(ticket.ticketNumber.slice(2))).toBeGreaterThan(
+      Number(receipt.ticketNumber.slice(2)),
+    );
+    const expired = (
+      await rows('SELECT id,version FROM pending_registrations WHERE submission_key=?', [
+        body.submissionKey,
+      ])
+    )[0];
+    await expect(
+      registrations.confirm({ ...ctx, modules: ['patients', 'queue'] }, expired.id, {
+        version: expired.version,
+        identityVerified: true,
+      }),
+    ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+  });
+  it('public registration rejects clinical injection, missing consent and incorrect staff identity linking', async () => {
+    const body = registrationBody();
+    for (const malicious of [
+      { ...body, consent: false },
+      { ...body, patient: { ...body.patient, allergies: ['fake'] } },
+      { ...body, patient: { ...body.patient, version: 1 } },
+      { ...body, patientId: doctor },
+    ])
+      expect((await publicRegistration('/branches/' + branch, 'POST', malicious)).status).toBe(400);
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const registrations = new PublicRegistrationService(),
+      receipt = await registrations.submit(branch, body);
+    const adminCtx = {
+      ...ctx,
+      actor: { ...ctx.actor, id: administrator, role: 'ADMIN' },
+      modules: ['patients', 'queue'],
+    };
+    const pending = (await registrations.list(adminCtx)).find(
+      (r: any) => r.reference === receipt.reference,
+    );
+    await expect(
+      registrations.confirm(adminCtx, pending.id, {
+        version: pending.version,
+        identityVerified: true,
+        existingPatientId: fixtureId(),
+      }),
+    ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
+    const rejected = await registrations.reject(adminCtx, pending.id, {
+      version: pending.version,
+      reason: 'Synthetic invalid submission',
+    });
+    expect(rejected.status).toBe('REJECTED');
+    expect(
+      (await rows('SELECT payload FROM pending_registrations WHERE id=?', [pending.id]))[0].payload,
+    ).toBeNull();
+    expect((await registrations.status(receipt.receiptToken)).status).toBe('REJECTED');
+  });
+  it('public registration review enforces both live module grants over HTTP and anonymous receipt access never grants staff access', async () => {
+    const original = (await (await settingsAdminHttp('/admin/role-modules')).json()).roles.find(
+      (r: any) => r.role === 'RECEPTIONIST',
+    ).modules;
+    try {
+      expect((await settingsHttp('/registrations', 'GET', undefined, { Cookie: '' })).status).toBe(
+        401,
+      );
+      for (const modules of [['queue'], ['patients'], ['clinical']]) {
+        await settingsAdminHttp('/admin/role-modules', 'PUT', { role: 'RECEPTIONIST', modules });
+        expect((await settingsHttp('/registrations')).status).toBe(403);
+      }
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: ['queue', 'patients'],
+      });
+      expect((await settingsHttp('/registrations')).status).toBe(200);
+    } finally {
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: original,
+      });
+    }
+  });
+  it('public registration submission rate limiting rejects abuse without storing invalid patient details', async () => {
+    const before = Number((await rows('SELECT COUNT(*) n FROM pending_registrations'))[0].n);
+    let limited = false;
+    for (let attempt = 0; attempt < 31; attempt++) {
+      const response = await publicRegistration('/branches/' + branch, 'POST', {
+        ...registrationBody(),
+        consent: false,
+      });
+      if (response.status === 429) {
+        limited = true;
+        break;
+      }
+      expect(response.status).toBe(400);
+    }
+    expect(limited).toBe(true);
+    expect(Number((await rows('SELECT COUNT(*) n FROM pending_registrations'))[0].n)).toBe(before);
+  });
+  it('public registration and normal check-in roll back if Malaysian midnight passes after number allocation', async () => {
+    const { transaction } = await import('../src/server/db');
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const { ClinicService } = await import('../src/server/service');
+    const oldDay = (
+      await rows(
+        "SELECT DATE_FORMAT(DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY),'%Y-%m-%d') day",
+      )
+    )[0].day;
+    const crossedDayTransaction: any = (work: any) =>
+      transaction(async (db: any) =>
+        work({
+          query: (statement: string, values: any[]) =>
+            statement === 'SELECT DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)) service_date'
+              ? Promise.resolve({ rows: [{ service_date: oldDay }], rowCount: 1 })
+              : db.query(statement, values),
+        }),
+      );
+    const input = registrationBody();
+    await expect(
+      new PublicRegistrationService(applicationPool, crossedDayTransaction).submit(branch, input),
+    ).rejects.toMatchObject({ code: 'SERVICE_DAY_CHANGED' });
+    expect(
+      await rows('SELECT id FROM pending_registrations WHERE submission_key=?', [
+        input.submissionKey,
+      ]),
+    ).toHaveLength(0);
+    const p = await patient();
+    await expect(
+      new ClinicService(applicationPool, crossedDayTransaction).checkIn(ctx, {
+        patientId: p.id,
+        priority: 'NORMAL',
+      }),
+    ).rejects.toMatchObject({ code: 'SERVICE_DAY_CHANGED' });
+    expect(await rows('SELECT id FROM queue_tickets WHERE patient_id=?', [p.id])).toHaveLength(0);
+  });
 });

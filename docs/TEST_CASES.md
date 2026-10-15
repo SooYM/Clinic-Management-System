@@ -1,5 +1,11 @@
 # Version 2 test cases
 
+## Patient QR registration acceptance
+
+Automated coverage: `tests/mysql.test.ts` exercises the actual MySQL service and HTTP permissions; `tests/public-registration.test.ts` covers shared validation and isolated demo lifecycle behavior. Reset suites must retain no pending registration rows after resetting a disposable database.
+
+Verify disabled branches reject submissions; public metadata/postcodes disclose no patient data; strict fields reject clinical data, IDs and queue controls. Matching submission retries retain one ticket/capability; altered retries reject. Concurrent counter arrivals and QR submissions receive distinct numbers. Pending tickets remain absent from callable queues, GP suggestions and public displays. Reception requires both patient/queue grants, CSRF, current version and explicit identity verification. Confirmation creates a profile or explicitly links a same-branch matching identity without overwrite, activates the same ticket, clears submitted JSON and survives exact retries. Other-branch matches require staff resolution. Rejected/expired forms clear JSON and never reuse their number; midnight starts the next day's sequence. Browser acceptance must exercise phone form submission, real ticket confirmation, reception activation, receipt polling, role denial and persisted SQL state.
+
 Latest country/list gate: 322 passing tests across eighteen files, zero skips (8 October 2026, 09:06 MYT).
 Country cases cover recognized/invalid/MY-conflicting codes, legacy omission, scoped MySQL roundtrip, migration preservation and demo parity (`tests/patient-country.test.ts`, `tests/patient-country-migration.test.ts`, `tests/mysql.test.ts`).
 List cases cover combined filters/search, stable numeric/case-insensitive sorting, blanks last, original order and immutable arrays (`tests/list-controls.test.ts`). Browser `countrylistqa` checks country selection and desktop/320px record controls without changing local business data.

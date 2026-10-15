@@ -16,6 +16,7 @@ import {
 } from '../components';
 import { type Reference, type User, dateTime } from '../types';
 import AdminCatalogs from '../AdminCatalogs';
+import RegistrationSettings from '../RegistrationSettings';
 import RoleModules from './RoleModules';
 import DatabaseReset from './DatabaseReset';
 import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
@@ -608,6 +609,13 @@ export default function Admin({
           description="Manage the active choices available to clinic staff."
         >
           <AdminCatalogs />
+        </WorkspaceSection>
+        <WorkspaceSection
+          id="registration"
+          label="Patient registration QR"
+          description="Open or close phone registration and share this branch’s QR code."
+        >
+          <RegistrationSettings />
         </WorkspaceSection>
         <WorkspaceSection
           id="access"

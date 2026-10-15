@@ -24,6 +24,7 @@ import {
 } from '../types';
 import { useListControls } from '../ListControls';
 import { useConfirm } from '../Confirmation';
+import RegistrationInbox from '../RegistrationInbox';
 export default function Queue({
   rooms,
   practitioners,
@@ -248,6 +249,7 @@ export default function Queue({
               ? 'Queue clearance estimate needs more consultation history and an active practitioner.'
               : `Approximate queue clearance: ${estimate.data.estimatedMinutes} minutes · ${estimate.data.waiting} waiting · based on ${estimate.data.sampleCount} consultations and ${estimate.data.practitionerCount} practitioners. Individual waiting times may vary.`}
       </p>
+      <RegistrationInbox />
       <Panel title="Appointments ready for check-in">
         <p className="form-help">
           Today's appointments appear when their scheduled time arrives. Confirm arrival to add the

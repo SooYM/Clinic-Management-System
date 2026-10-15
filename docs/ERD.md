@@ -1,6 +1,33 @@
 # Entity relationship diagrams
 
-These diagrams describe the final MySQL 8.4 schema after migrations 001–024, including numeric conversion, general supplies and prescription reservations.
+These diagrams describe the final MySQL 8.4 schema after migrations 001–025, including numeric conversion, general supplies and prescription reservations.
+
+```mermaid
+erDiagram
+  tenants ||--o{ pending_registrations : owns
+  branches ||--o{ pending_registrations : reserves
+  patients o|--o{ pending_registrations : confirmed_profile
+  queue_tickets o|--o{ pending_registrations : activated_ticket
+  users o|--o{ pending_registrations : reviews
+  pending_registrations {
+    bigint id PK
+    bigint tenant_id FK
+    bigint branch_id FK
+    varchar reference UK
+    char submission_key "unique per branch"
+    char request_hash
+    char receipt_token_hash UK
+    varchar ticket_number "unique per branch and service date"
+    date service_date
+    json payload "pending demographics only"
+    varchar status "PENDING ACCEPTED REJECTED EXPIRED"
+    datetime expires_at
+    bigint patient_id FK "nullable until confirmed"
+    bigint queue_ticket_id FK "nullable until confirmed"
+    bigint reviewed_by FK "nullable until reviewed"
+    int version
+  }
+```
 Every displayed entity `id` is `BIGINT UNSIGNED AUTO_INCREMENT`; referenced IDs are unsigned BIGINT.
 Mermaid `bigint` labels omit unsigned/auto-increment syntax for readability. Exact SQL remains authoritative.
 Letter previews reuse `clinical_documents.payload`; prescription activity joins encounters, reservations, dispenses and stock movements. Neither read projection adds an entity.

@@ -1,3 +1,4 @@
+import { allocateQueueNumber } from './queue-numbering.js';
 import { randomBytes, createHash, createHmac } from 'node:crypto';
 import { pool, transaction, lock, camel, type Database } from './db.js';
 import {
@@ -404,7 +405,7 @@ export class ClinicService {
       return camel(rows);
     });
   }
-  async checkIn(ctx: Context, input: any) {
+  async checkIn(ctx: Context, input: any, registrationId?: number) {
     input = schemas.queue.parse(input);
     return this.transact(async (db) => {
       await expireQueue(db, ctx);
@@ -444,23 +445,44 @@ export class ClinicService {
           `Patient already checked in. Use existing ticket ${active.ticket_number} (ID ${active.id}).`,
           409,
         );
-      await lock(db, [`queue:${ctx.branchId}:${today()}`]);
-      const { rows: counts } = await db.query(
-        `SELECT count(*) n FROM queue_tickets WHERE branch_id=$1 AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))`,
-        [ctx.branchId],
-      );
+      let allocation: { ticketNumber: string; serviceDate: string };
+      if (registrationId) {
+        const reservation = (
+          await db.query(
+            "SELECT ticket_number,service_date FROM pending_registrations WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND status='PENDING' AND expires_at>UTC_TIMESTAMP(3) AND service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)) FOR UPDATE",
+            [registrationId, ctx.actor.tenantId, ctx.branchId],
+          )
+        ).rows[0];
+        if (!reservation)
+          throw new DomainError(
+            'REGISTRATION_EXPIRED',
+            'Registration ticket is no longer available.',
+            409,
+          );
+        allocation = {
+          ticketNumber: reservation.ticket_number,
+          serviceDate: reservation.service_date,
+        };
+      } else allocation = await allocateQueueNumber(db, ctx.branchId);
       const { rows } = await db.query(
-        `INSERT INTO queue_tickets(tenant_id,branch_id,patient_id,ticket_number,priority,service_date,appointment_id,practitioner_id) VALUES($1,$2,$3,$4,$5,DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)),$6,$7) RETURNING *`,
+        `INSERT INTO queue_tickets(tenant_id,branch_id,patient_id,ticket_number,priority,service_date,appointment_id,practitioner_id) SELECT $1,$2,$3,$4,$5,$8,$6,$7 FROM DUAL WHERE $8=DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)) RETURNING *`,
         [
           ctx.actor.tenantId,
           ctx.branchId,
           input.patientId,
-          `Q-${String(counts[0].n + 1).padStart(3, '0')}`,
+          allocation.ticketNumber,
           input.priority,
           appointment?.id || null,
           appointment?.practitioner_id || null,
+          allocation.serviceDate,
         ],
       );
+      if (!rows[0])
+        throw new DomainError(
+          'SERVICE_DAY_CHANGED',
+          'Clinic day changed. Refresh and check in again.',
+          409,
+        );
       if (appointment)
         await db.query(
           "UPDATE appointments SET status='CHECKED_IN',version=version+1 WHERE id=$1",

@@ -1,5 +1,7 @@
 # Clinic system flow
 
+QR arrival: admin enables branch QR → patient scans → completes demographics and consent → confirms submission → reserved ticket appears as Awaiting reception confirmation → patient proceeds to counter → staff verifies IC/passport and creates or explicitly links profile → same ticket enters active queue → call to room. Pending reservations never appear in GP/callable suggestions. The receipt updates after confirmation; rejected/expired tickets direct patients to reception. Counter check-in and QR reservation allocate numbers under the same branch/day lock.
+
 Billing category management: Administration → Catalog choices → Billing categories → add/edit/order/remove/restore → confirm → persist scoped versioned choice → billing refresh. Prepare checkout → choose active category → confirm payment → validate category and save invoice atomically. Rename/remove after payment → historical invoice unchanged; a pending draft requires reselection. Renamed SERVICE/PRODUCT defaults retain automatic consultation/medicine assignment through their immutable default marker.
 
 Local startup: `webapp clinic` → validate registry/configuration → reject occupied application ports → verify owned MySQL instance → start if needed → authenticated readiness → API3101 and Vite3100. Progress uses its own startup script on3001/MySQL3307. Ctrl+C stops the foreground app; databases remain running. Startup never initializes, migrates, seeds or resets data. See [harness instructions](LOCAL_HARNESS.md).

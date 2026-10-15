@@ -1,5 +1,9 @@
 # V2 architecture
 
+## Public registration boundary
+
+Public registration is a separate router before staff authentication, with strict demographic validation, dedicated rate limits and no patient lookup endpoint. `PublicRegistrationService` stores pending forms separately from real profiles/queue tickets. An HMAC-derived receipt capability permits exact submission retries while only its hash persists. A shared branch/day allocator serializes numbering across reservations and counter arrivals. Authenticated reception review owns patient creation or explicit existing-profile linkage and reserved-ticket activation in one transaction. Pending forms are never callable and never appear in GP suggestions or anonymous waiting-room projections. Rejection/expiry clears demographics; an unref'ed periodic cleanup also removes expired payloads without page visits. Branch settings default closed. Demo uses isolated browser state and cannot coordinate different devices.
+
 The optional global launcher reads fixed reservations and delegates to project `start.ps1`. Clinic verifies configuration, listener ownership and authenticated MySQL readiness before starting Vite3100 and Express3101. Existing local MySQL data stays on3310. Viewer3102, explicit demo3103 and QA3110–3114 have separate reservations. Unknown listeners fail closed; metadata-only logs retain lifecycle history. See [workstation harness](LOCAL_HARNESS.md). New PHP/MySQL hosting defaults do not rewrite this existing Node backend.
 
 ## Deployment shape

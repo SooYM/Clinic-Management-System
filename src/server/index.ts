@@ -1,3 +1,4 @@
+import { expirePublicRegistrations } from './public-registration-service.js';
 import 'dotenv/config';
 import { createApp } from './app.js';
 import { pool } from './db.js';
@@ -18,6 +19,31 @@ if (process.env.NODE_ENV === 'production') {
   if (pending.length)
     throw new Error(`Apply pending database migrations before starting API: ${pending.join(', ')}`);
 }
+// Expired anonymous form payloads are removed even when nobody opens a registration page.
+let expiryRunning = false;
+async function cleanupRegistrationPayloads() {
+  if (expiryRunning) return;
+  expiryRunning = true;
+  try {
+    await expirePublicRegistrations();
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        event: 'registration_expiry_failed',
+        code: (error as { code?: string }).code || 'INTERNAL',
+      }),
+    );
+  } finally {
+    expiryRunning = false;
+  }
+}
+await cleanupRegistrationPayloads();
+const registrationExpiryTimer = setInterval(
+  () => void cleanupRegistrationPayloads(),
+  5 * 60 * 1000,
+);
+registrationExpiryTimer.unref();
 const server = createApp().listen(config.port, config.host, () =>
   console.log(
     JSON.stringify({
@@ -31,6 +57,7 @@ let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
+  clearInterval(registrationExpiryTimer);
   server.close(async () => {
     await pool.end();
     process.exit(0);

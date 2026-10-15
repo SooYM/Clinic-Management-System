@@ -1,12 +1,16 @@
 # Clinic Management System V2 — System Specification
 
+## QR registration and reception confirmation
+
+Administrators can enable a branch-specific public registration link and QR code. Patients scan it without signing in, submit demographics with consent, and immediately receive a unique branch/day queue ticket marked **Awaiting reception confirmation**. A pending reservation does not enter the callable queue, GP suggestions or public waiting-room display. Reception verifies identity and confirms the submission, creating a patient profile or explicitly linking an existing branch patient without overwriting that profile. Confirmation activates the same ticket atomically. Public receipt polling shows status and ticket only, never patient details. Reservations expire after 12 hours or at Malaysia midnight, whichever occurs first. Expired/rejected numbers are not reused that day. Normal counter check-ins and QR reservations share one serialized numbering sequence. Existing duplicate identities require staff review; public endpoints never disclose matching profiles.
+
 ## 1. Scope and authority
 
 This specification describes the implemented GP clinic application replacing the earlier V1 demonstration.
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–024.
+All 27 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–025.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -193,7 +197,7 @@ It uses OOP where behavior needs invariants rather than adding empty entity wrap
 Shared identity, module and identifier contracts reduce duplicated validation.
 Reusable UI forms and minimal reference endpoints support independent module grants.
 
-The final schema has 26 entity tables, composite membership/policy keys, secret-keyed sessions and resource locks.
+The final schema has 27 entity tables, composite membership/policy keys, secret-keyed sessions and resource locks.
 Unsigned numeric keys support long-term growth, while API inputs remain within JavaScript's positive safe-integer range.
 Composite foreign keys enforce tenant/branch relationships; generated queue keys protect active-patient and room uniqueness.
 JSON captures prescriptions, vitals and immutable snapshots; typed references inside JSON require application validation.

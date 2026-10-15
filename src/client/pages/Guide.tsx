@@ -40,6 +40,7 @@ const topics = [
     module: 'queue',
     steps: [
       'Use Clinic overview to check in a registered patient and set normal or urgent priority.',
+      'For QR arrivals, open Online registrations awaiting reception. Check the IC or passport, explicitly link an existing profile when shown, and confirm arrival to activate the same reserved ticket. A pending QR ticket is not ready to be called.',
       'A checked-in patient is waiting for a doctor. Choose Call to room beside that patient, select an available room and doctor, then confirm the call.',
       'Start consultation, send to dispensary or payment, then complete the visit.',
       'Use Skip, Undo skip, or Undo call to correct a waiting-room action.',

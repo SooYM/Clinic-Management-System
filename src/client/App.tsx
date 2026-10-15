@@ -37,6 +37,7 @@ const Clinical = lazy(() => import('./pages/Clinical'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Billing = lazy(() => import('./pages/Billing'));
 const Guide = lazy(() => import('./pages/Guide'));
+const PublicRegistration = lazy(() => import('./PublicRegistration'));
 const navigation = [
   { id: 'queue', label: 'Clinic overview', icon: Activity },
   { id: 'patients', label: 'Patients', icon: Users },
@@ -416,6 +417,10 @@ function Application() {
   const content =
     location.pathname === '/display' ? (
       <QueueDisplay />
+    ) : location.pathname === '/register' ? (
+      <Suspense fallback={<Loading />}>
+        <PublicRegistration />
+      </Suspense>
     ) : location.pathname.startsWith('/verify') ? (
       <VerifyCertificate />
     ) : (

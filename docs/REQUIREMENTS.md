@@ -1,5 +1,7 @@
 # V2 requirement traceability
 
+QR registration must issue a unique ticket immediately while retaining reception identity verification as the activation gate. Public submissions cannot expose or overwrite existing profiles. Pending reservations remain outside callable queues and GP suggestions. Reception explicitly confirms or rejects; successful confirmation activates the reserved number atomically. Phone forms, branch settings, public capability receipts, daily expiry and simultaneous counter arrivals require real backend/database acceptance.
+
 Patient country of nationality is stored separately as nullable ISO `countryCode` or OTHER with custom `countryName` (migration 016). Malaysian records derive MY; non-Malaysian forms require a country selection. API compatibility preserves omitted historical foreign countries as unknown. Shared list controls provide view search, relevant filters and ascending/descending sorting across operational record lists, with loaded-record counts and original-order defaults.
 
 This matrix documents active delivered behavior and explicit gaps. It supersedes specialty, PostgreSQL and UUID proposals from the earlier specification.

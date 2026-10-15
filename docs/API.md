@@ -1,5 +1,18 @@
 # HTTP API contract
 
+## Public registration and reception review
+
+- `GET /api/public/registration/branches/:branchId` returns active branch branding and registration availability.
+- `GET /api/public/registration/branches/:branchId/postcodes/:postcode` returns public postcode localities only when branch registration is enabled.
+- `POST /api/public/registration/branches/:branchId` accepts `{submissionKey, patient, consent:true}`. Patient fields are a strict demographic/notification-consent allowlist validated by the shared patient rules. It returns 202 with `reference`, `receiptToken`, `ticketNumber`, `status`, `expiresAt` and `branchName`. The initial status is PENDING. Matching retries return the same reservation; changed payloads with the same key return 409.
+- `GET /api/public/registration/receipts/:token` returns reference, ticket, status, expiry and branch only. Invalid/unknown capabilities expose no patient data.
+- `GET /api/registrations` returns pending submissions and private identity-match hints to staff with both patients and queue access.
+- `POST /api/registrations/:id/confirm` requires `{version,identityVerified:true,existingPatientId?}`. Staff must explicitly select a matching existing branch profile; confirmation never overwrites it. The operation creates/links the profile and activates the same ticket in one transaction. Exact accepted retries return the prior result.
+- `POST /api/registrations/:id/reject` requires version, with optional reason, and clears submitted demographics.
+- `GET/PUT /api/admin/registration-settings` reads/updates branch availability with optimistic version. GET includes the registration URL and QR data URL. Only ADMIN may change settings.
+
+Authenticated writes retain CSRF and origin checks. Public writes retain origin validation, body limits and dedicated rate limits. Reservations expire after 12 hours or Malaysia midnight and do not join callable queues before reception confirmation.
+
 Usability update: appointments reject start dates before today in Malaysia time (today remains allowed). `DELETE /api/appointments/:id` accepts `{version}` under existing scoped appointment permissions and CSRF. It marks BOOKED/CANCELLED rows cancelled with `deleted_at`, hides them from active reads/conflicts, and audits REMOVE; attended/status-changed bookings reject with 409. Historical rows remain stored.
 
 `GET /api/encounters/:id` returns a scoped full consultation for clinical history review. `GET /api/admin/clinic` returns `{id,name}`; `PUT` accepts `{name,expectedName}` for administrators, audits the change and returns 409 on stale names. Future receipt snapshots use the saved name; previous snapshots remain unchanged.

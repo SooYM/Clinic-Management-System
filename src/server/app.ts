@@ -1,3 +1,4 @@
+import { publicRegistrationRouter, registrationStaffRouter } from './public-registration-router.js';
 import { publicDisplayRouter } from './public-display.js';
 import { readReceipt } from './receipt-service.js';
 import { databaseResetRouter } from './database-reset.js';
@@ -140,6 +141,7 @@ export function createApp(service = new ClinicService()) {
     }),
   );
   app.use('/api/public/display', publicDisplayRouter());
+  app.use('/api/public/registration', publicRegistrationRouter());
   const api = express.Router();
   api.use(authenticate);
   api.use(authorizeModules);
@@ -148,6 +150,7 @@ export function createApp(service = new ClinicService()) {
   api.use(administrationRouter());
   api.use(databaseResetRouter());
   api.use(catalogRouter());
+  api.use(registrationStaffRouter());
   api.get('/auth/me', (req, res) =>
     res.json({
       user: req.context.actor,
@@ -498,7 +501,10 @@ export function createApp(service = new ClinicService()) {
         level: 'error',
         requestId: res.locals.requestId,
         method: req.method,
-        path: req.path,
+        path: req.path.replace(
+          /^\/api\/public\/registration\/receipts\/[^/]+$/,
+          '/api/public/registration/receipts/[redacted]',
+        ),
         code: error.code || 'INTERNAL',
       }),
     );

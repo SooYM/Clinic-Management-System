@@ -2,6 +2,8 @@
 
 These documents replace V1 Next.js/Supabase documentation. Git history retains the earlier design. Full-system documents describe MySQL operation; free-demo differences are documented separately.
 
+Patient QR registration requires the full persistent backend for cross-device reception handoff. The browser demo simulates submissions only within its own session. See [user workflow](USER_GUIDE.md), [public API](API.md) and [security boundary](SECURITY.md).
+
 | Document                                                             | Purpose                                                           |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | [System specification](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md) | Functional/nonfunctional scope and acceptance requirements        |
@@ -13,7 +15,7 @@ These documents replace V1 Next.js/Supabase documentation. Git history retains t
 | [ERD](ERD.md)                                                        | Entity relationships and retained legacy tables                   |
 | [Database schema](DATABASE.md)                                       | Tables, keys, constraints, indexes and migrations                 |
 | [Complete column dictionary](DATA_DICTIONARY.md)                     | Every column, type, nullability, default and generated expression |
-| [Final schema SQL](schema.mysql.sql)                                 | Schema-only reference snapshot after migration 009; no records    |
+| [Final schema SQL](schema.mysql.sql)                                 | Schema-only reference snapshot after migration 025; no records    |
 | [API contracts](API.md)                                              | Routes, authorization, errors and payloads                        |
 | [Requirements traceability](REQUIREMENTS.md)                         | Scope mapped to implementation and evidence                       |
 | [Test cases](TEST_CASES.md)                                          | Preconditions, actions, expected results and coverage             |

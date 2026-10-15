@@ -1,5 +1,13 @@
 # Clinic staff user guide
 
+## Patient QR registration
+
+In Administration, open **Patient registration QR**, enable registration for the selected branch, confirm, and display or share its QR code/link. A phone needs the clinic's reachable HTTPS address; `127.0.0.1` or `localhost` points to the phone itself. Localhost links can be tested on the same computer. The Render browser demo simulates this workflow within one browser session and does not share registrations across devices.
+
+Patients scan, complete registration details and consent, then confirm submission. The screen immediately shows their queue ticket and **Awaiting reception confirmation**. They must proceed to reception with IC/passport. Keep the confirmation screen open; it updates after staff confirmation. A reserved number does not mean the patient is ready to be called.
+
+Reception opens the registration inbox in Clinic overview, verifies identity, reviews any existing patient match, and confirms check-in. Link an existing profile explicitly; submitted details never overwrite it automatically. Confirmation activates the same ticket in the live queue. Reject incorrect/duplicate submissions after confirmation. Unconfirmed tickets expire after 12 hours or at Malaysia midnight, whichever occurs first; patients then speak to reception for a fresh visit.
+
 This guide covers the current clinic workflows. Use **User guide** in the application for help while working. Guide topics use the expandable-help approach reviewed in the Car Loan reference project, adapted to clinic screens and permissions.
 
 ## Visual walkthroughs and phone use

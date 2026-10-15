@@ -1,5 +1,9 @@
 # Clinic operations
 
+## QR registration operations
+
+Enable the selected branch's QR registration only after verifying its reachable HTTPS `APP_ORIGIN`. Print/display the generated QR and test it from a phone. Patients receive a reserved ticket immediately and must proceed to the counter. Reception verifies IC/passport, reviews existing identity matches, and confirms the same ticket into the active queue. Reject duplicate/incorrect submissions explicitly. The API clears expired pending demographics at startup, every five minutes and during registration operations. Expiry is the earlier of 12 hours and Malaysia midnight; daily reserved numbers are not reused. Keep number/reference and audit records for reconciliation; do not include receipt capabilities in support logs. Monitor cleanup failures and investigate failed confirmation transactions without manually editing clinical rows.
+
 1. Sign in using assigned account. Select authorized branch before creating or editing records.
 2. Search patient by name or national identifier. Check existing record before creating another. Record known allergies explicitly.
 3. Book practitioner and room within available interval, or check patient into today's queue. Resolve conflict prompts before retrying.

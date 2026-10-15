@@ -1,0 +1,75 @@
+.public-registration {
+  width: min(100% - 32px, 880px);
+  margin: 32px auto;
+  color: var(--ink, #0f172a);
+}
+.public-registration > header {
+  margin-bottom: 24px;
+}
+.public-registration h1 {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  margin-bottom: 8px;
+}
+.public-registration h2 {
+  font-size: 1.25rem;
+}
+.public-registration p {
+  max-width: 70ch;
+  overflow-wrap: anywhere;
+}
+.public-registration .registration-ticket {
+  font-size: clamp(2.5rem, 12vw, 4rem);
+  font-weight: 700;
+  margin-block: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.registration-review {
+  margin-block: 16px;
+}
+.registration-review summary {
+  cursor: pointer;
+  padding-block: 12px;
+  font-weight: 600;
+}
+.registration-details {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
+  gap: 8px 16px;
+  margin-block: 16px;
+}
+.registration-details dt {
+  color: #475569;
+}
+.registration-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.registration-qr {
+  display: block;
+  width: min(240px, 100%);
+  height: auto;
+  margin-block: 16px;
+}
+.registration-link {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .public-registration {
+    width: calc(100% - 24px);
+    margin-block: 20px;
+  }
+  .public-registration .panel {
+    padding: 20px 16px;
+  }
+  .public-registration .form-grid,
+  .public-registration .nationality-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .registration-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .registration-details dd {
+    margin-bottom: 8px;
+  }
+}

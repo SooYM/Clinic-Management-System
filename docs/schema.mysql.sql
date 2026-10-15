@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-024, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-025, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -59,10 +59,13 @@ CREATE TABLE `branches` (
   `active` tinyint(1) NOT NULL DEFAULT '1',
   `version` int NOT NULL DEFAULT '1',
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `public_registration_enabled` tinyint(1) NOT NULL DEFAULT '0',
+  `public_registration_version` int NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`id`),
   CONSTRAINT `branches_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
-  CONSTRAINT `branches_chk_1` CHECK ((`version` > 0))
+  CONSTRAINT `branches_chk_1` CHECK ((`version` > 0)),
+  CONSTRAINT `branches_chk_2` CHECK ((`public_registration_version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `clinical_documents` (
@@ -427,6 +430,46 @@ CREATE TABLE `payments` (
   CONSTRAINT `payments_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `invoice_id`) REFERENCES `invoices` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `payments_chk_1` CHECK ((`method` in (_utf8mb4'CASH',_utf8mb4'CARD',_utf8mb4'QR',_utf8mb4'DEPOSIT'))),
   CONSTRAINT `payments_chk_2` CHECK ((`amount_cents` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `pending_registrations` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint unsigned NOT NULL,
+  `branch_id` bigint unsigned NOT NULL,
+  `reference` varchar(24) NOT NULL,
+  `submission_key` char(36) NOT NULL,
+  `request_hash` char(64) NOT NULL,
+  `receipt_token_hash` char(64) NOT NULL,
+  `ticket_number` varchar(20) NOT NULL,
+  `service_date` date NOT NULL,
+  `payload` json DEFAULT NULL,
+  `status` varchar(10) NOT NULL DEFAULT 'PENDING',
+  `expires_at` datetime(3) NOT NULL,
+  `patient_id` bigint unsigned DEFAULT NULL,
+  `queue_ticket_id` bigint unsigned DEFAULT NULL,
+  `reviewed_by` bigint unsigned DEFAULT NULL,
+  `decision_hash` char(64) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `reference` (`reference`),
+  UNIQUE KEY `receipt_token_hash` (`receipt_token_hash`),
+  UNIQUE KEY `registration_submission` (`branch_id`,`submission_key`),
+  UNIQUE KEY `registration_ticket` (`branch_id`,`service_date`,`ticket_number`),
+  KEY `registration_pending` (`tenant_id`,`branch_id`,`status`,`expires_at`,`id`),
+  KEY `registration_expiry` (`status`,`expires_at`),
+  KEY `tenant_id` (`tenant_id`,`patient_id`),
+  KEY `tenant_id_2` (`tenant_id`,`branch_id`,`queue_ticket_id`),
+  KEY `tenant_id_3` (`tenant_id`,`reviewed_by`),
+  CONSTRAINT `pending_registrations_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
+  CONSTRAINT `pending_registrations_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
+  CONSTRAINT `pending_registrations_ibfk_3` FOREIGN KEY (`tenant_id`, `branch_id`, `queue_ticket_id`) REFERENCES `queue_tickets` (`tenant_id`, `branch_id`, `id`),
+  CONSTRAINT `pending_registrations_ibfk_4` FOREIGN KEY (`tenant_id`, `reviewed_by`) REFERENCES `users` (`tenant_id`, `id`),
+  CONSTRAINT `pending_registrations_chk_1` CHECK ((`status` in (_utf8mb4'PENDING',_utf8mb4'ACCEPTED',_utf8mb4'REJECTED',_utf8mb4'EXPIRED'))),
+  CONSTRAINT `pending_registrations_chk_2` CHECK ((`version` > 0)),
+  CONSTRAINT `pending_registrations_chk_3` CHECK ((((`status` = _utf8mb4'PENDING') and (`payload` is not null)) or ((`status` <> _utf8mb4'PENDING') and (`payload` is null)))),
+  CONSTRAINT `pending_registrations_chk_4` CHECK (((`status` <> _utf8mb4'ACCEPTED') or ((`patient_id` is not null) and (`queue_ticket_id` is not null) and (`reviewed_by` is not null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `prescription_dose_logs` (

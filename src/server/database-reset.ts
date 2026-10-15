@@ -25,6 +25,7 @@ export const RESET_TABLES = [
   'treatment_packages',
   'invoices',
   'encounters',
+  'pending_registrations',
   'queue_tickets',
   'appointments',
   'inventory_batches',

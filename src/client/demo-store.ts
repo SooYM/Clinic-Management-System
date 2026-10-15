@@ -1,3 +1,4 @@
+import { publicRegistrationInput } from '../server/public-registration-validation';
 import { catalogKinds, defaultBillingCategories } from '../shared/catalogs';
 import { malaysiaDate } from '../shared/clinic-dates';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
@@ -224,6 +225,7 @@ function seed(): State {
     users,
     patients,
     catalogs: sampleCatalogs(),
+    registrations: [],
     rooms: [
       { id: 1, tenantId: 1, branchId: 1, name: 'Room 01', active: true },
       { id: 2, tenantId: 1, branchId: 1, name: 'Room 02', active: true },
@@ -486,7 +488,7 @@ export class DemoClinic {
       patient.countryCode ??= patient.nationality === 'MALAYSIAN' ? 'MY' : null;
       patient.countryName ??= null;
     }
-    for (const table of ['reservations', 'usages', 'medicationDoses']) {
+    for (const table of ['reservations', 'usages', 'medicationDoses', 'registrations']) {
       this.state.rows[table] ||= [];
       this.state.counters[table] ??= Math.max(0, ...this.state.rows[table].map((r) => r.id));
     }
@@ -496,6 +498,8 @@ export class DemoClinic {
     }
     for (const branch of this.state.rows.branches) {
       this.ensureBillingCategories(branch.id);
+      branch.publicRegistrationEnabled ??= false;
+      branch.publicRegistrationVersion ??= 1;
       branch.active ??= true;
       branch.version ??= 1;
     }
@@ -839,9 +843,12 @@ export class DemoClinic {
   ): Promise<any> {
     // Expiry is a lifecycle change, retained even when the requested action fails.
     if (this.expireQueue()) this.storage.setItem(key, JSON.stringify(this.state));
+    if (this.expireRegistrations()) this.storage.setItem(key, JSON.stringify(this.state));
     const previous = structuredClone(this.state);
     try {
       const response = this.dispatch(path, method.toUpperCase(), body, branchId);
+      if (path === '/admin/registration-settings' && response.url)
+        response.qrCodeDataUrl = await (await import('qrcode')).default.toDataURL(response.url);
       if (method.toUpperCase() !== 'GET') {
         this.storage.setItem(key, JSON.stringify(this.state));
       }
@@ -854,6 +861,70 @@ export class DemoClinic {
   private dispatch(path: string, method: string, body: any, branchId?: number): any {
     const url = new URL(path, 'https://demo.invalid'),
       route = url.pathname;
+    if (route.startsWith('/public/registration')) {
+      const receiptMatch = route.match(/^\/public\/registration\/receipts\/([a-f0-9]{64})$/);
+      if (receiptMatch && method === 'GET') {
+        const row =
+          this.state.rows.registrations.find((r) => r.receiptToken === receiptMatch[1]) ||
+          fail('Registration receipt not found.', 404);
+        return this.registrationReceipt(row);
+      }
+      const match = route.match(
+        /^\/public\/registration\/branches\/(\d+)(?:\/postcodes\/(\d{5}))?$/,
+      );
+      if (!match) fail('Registration route not found.', 404);
+      const publicBranch =
+        this.state.rows.branches.find((b) => b.id === Number(match![1]) && b.active) ||
+        fail('Registration branch unavailable.', 404);
+      if (method === 'GET' && !match![2])
+        return {
+          branch: {
+            id: publicBranch.id,
+            name: publicBranch.name,
+            clinicName: this.state.rows.tenants[0].name,
+          },
+          enabled: Boolean(publicBranch.publicRegistrationEnabled),
+        };
+      if (!publicBranch.publicRegistrationEnabled) fail('Public registration is unavailable.', 404);
+      if (method === 'GET' && match![2])
+        return {
+          data: ((postcodes as Record<string, string[][]>)[match![2]] || []).map(
+            ([city, state]) => ({ postcode: match![2], city, state: stateLabels[state] || state }),
+          ),
+        };
+      if (method !== 'POST' || match![2]) fail('Registration route not found.', 404);
+      const input = publicRegistrationInput.parse(body),
+        requestHash = JSON.stringify(input);
+      const prior = this.scoped('registrations', publicBranch.id).find(
+        (r) => r.submissionKey === input.submissionKey,
+      );
+      if (prior) {
+        if (prior.requestHash !== requestHash) fail('Submission key has already been used.', 409);
+        return { ...this.registrationReceipt(prior), receiptToken: prior.receiptToken };
+      }
+      const token = (crypto.randomUUID() + crypto.randomUUID()).replaceAll('-', '');
+      const row = this.add(
+        'registrations',
+        {
+          reference: 'REG-' + crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase(),
+          submissionKey: input.submissionKey,
+          requestHash,
+          receiptToken: token,
+          ticketNumber: this.nextQueueNumber(publicBranch.id),
+          serviceDate: today(),
+          payload: input.patient,
+          status: 'PENDING',
+          expiresAt: new Date(
+            Math.min(
+              Date.now() + 12 * 3600000,
+              new Date(today() + 'T00:00:00+08:00').getTime() + 24 * 3600000,
+            ),
+          ).toISOString(),
+        },
+        publicBranch.id,
+      );
+      return { ...this.registrationReceipt(row), receiptToken: token };
+    }
     if (route.startsWith('/public/display')) {
       if (method !== 'GET') fail('Public display is read-only.', 404);
       const branches = this.state.rows.branches
@@ -982,6 +1053,130 @@ export class DemoClinic {
         },
         branch,
       );
+    if (route === '/admin/registration-settings') {
+      if (user.role !== 'ADMIN') fail('Only administrators can configure registration.', 403);
+      const current = this.state.rows.branches.find((b) => b.id === branch)!;
+      if (method === 'PUT') {
+        const input = z
+          .object({ enabled: z.boolean(), version: z.number().int().positive() })
+          .strict()
+          .parse(body);
+        if (input.version !== (current.publicRegistrationVersion || 1))
+          fail('Settings changed. Refresh before saving.', 409);
+        current.publicRegistrationEnabled = input.enabled;
+        current.publicRegistrationVersion = (current.publicRegistrationVersion || 1) + 1;
+      } else if (method !== 'GET') fail('Route not found.', 404);
+      return {
+        enabled: Boolean(current.publicRegistrationEnabled),
+        version: current.publicRegistrationVersion || 1,
+        branchId: branch,
+        branchName: current.name,
+        url: new URL(
+          '/register?branchId=' + branch,
+          typeof location === 'undefined' ? 'https://demo.invalid' : location.origin,
+        ).href,
+        qrCodeDataUrl: '',
+        mobileReady: false,
+        simulated: true,
+      };
+    }
+    if (route === '/registrations' || /^\/registrations\/\d+\/(confirm|reject)$/.test(route)) {
+      if (!modules.includes('patients') || !modules.includes('queue'))
+        fail('Registration review requires patient and queue access.', 403);
+      if (method === 'GET' && route === '/registrations')
+        return {
+          data: this.scoped('registrations', branch)
+            .filter((r) => r.status === 'PENDING')
+            .map((r) => {
+              const match = this.state.rows.patients.find(
+                (p) => p.tenantId === user.tenantId && p.nationalId === r.payload.nationalId,
+              );
+              return {
+                id: r.id,
+                reference: r.reference,
+                ticketNumber: r.ticketNumber,
+                patient: r.payload,
+                version: r.version,
+                createdAt: r.createdAt,
+                expiresAt: r.expiresAt,
+                possibleMatch:
+                  match?.branchId === branch
+                    ? {
+                        id: match.id,
+                        name: match.name,
+                        nationalId: match.nationalId,
+                        phone: match.phone,
+                      }
+                    : null,
+                identityConflict: Boolean(match && match.branchId !== branch),
+              };
+            }),
+        };
+      const row = this.record('registrations', id!, branch);
+      if (route.endsWith('/reject') && method === 'POST') {
+        const input = z
+          .object({
+            version: z.number().int().positive(),
+            reason: z.string().trim().max(500).optional(),
+          })
+          .strict()
+          .parse(body);
+        if (row.status !== 'PENDING' || row.version !== input.version)
+          fail('Registration changed.', 409);
+        Object.assign(row, { status: 'REJECTED', payload: null, version: row.version + 1 });
+        return { id: row.id, status: row.status, version: row.version };
+      }
+      if (!route.endsWith('/confirm') || method !== 'POST') fail('Route not found.', 404);
+      const input = z
+        .object({
+          version: z.number().int().positive(),
+          identityVerified: z.literal(true),
+          existingPatientId: idSchema.optional(),
+        })
+        .strict()
+        .parse(body);
+      const decisionHash = JSON.stringify({ existingPatientId: input.existingPatientId ?? null });
+      if (row.status === 'ACCEPTED' && row.decisionHash === decisionHash)
+        return {
+          id: row.id,
+          status: row.status,
+          ticketNumber: row.ticketNumber,
+          patientId: row.patientId,
+          version: row.version,
+        };
+      if (row.status !== 'PENDING' || row.version !== input.version)
+        fail('Registration changed or expired.', 409);
+      const match = this.state.rows.patients.find(
+        (p) => p.tenantId === user.tenantId && p.nationalId === row.payload.nationalId,
+      );
+      if (match && (match.branchId !== branch || match.id !== input.existingPatientId))
+        fail('Verify existing patient with reception.', 409);
+      if (!match && input.existingPatientId) fail('Selected patient does not match identity.', 409);
+      const patient = match || this.dispatch('/patients', 'POST', row.payload, branch);
+      const queue = this.dispatch(
+        '/queue',
+        'POST',
+        { patientId: patient.id, priority: 'NORMAL' },
+        branch,
+      );
+      const saved = this.state.rows.queue.find((q) => q.id === queue.id)!;
+      saved.ticketNumber = row.ticketNumber;
+      Object.assign(row, {
+        status: 'ACCEPTED',
+        payload: null,
+        patientId: patient.id,
+        queueTicketId: queue.id,
+        decisionHash,
+        version: row.version + 1,
+      });
+      return {
+        id: row.id,
+        status: row.status,
+        ticketNumber: row.ticketNumber,
+        patientId: patient.id,
+        version: row.version,
+      };
+    }
     if (route === '/auth/me')
       return {
         user: this.publicUser(user),
@@ -1454,11 +1649,7 @@ export class DemoClinic {
         },
         branch,
       );
-      q.ticketNumber =
-        'Q-' +
-        String(
-          this.scoped('queue', branch).filter((ticket) => ticket.serviceDate === today()).length,
-        ).padStart(3, '0');
+      q.ticketNumber = this.nextQueueNumber(branch);
       if (appointment) {
         appointment.status = 'CHECKED_IN';
         appointment.version++;
@@ -2446,6 +2637,34 @@ export class DemoClinic {
     );
     if (!doctor) fail('Choose an active GP in this branch.');
     return doctor!;
+  }
+  private registrationReceipt(row: Row) {
+    return {
+      reference: row.reference,
+      ticketNumber: row.ticketNumber,
+      status: row.status,
+      expiresAt: row.expiresAt,
+      branchName: this.state.rows.branches.find((b) => b.id === row.branchId)?.name,
+      simulated: true,
+    };
+  }
+  private expireRegistrations() {
+    let changed = false;
+    for (const row of this.state.rows.registrations || [])
+      if (row.status === 'PENDING' && Date.parse(row.expiresAt) <= Date.now()) {
+        Object.assign(row, { status: 'EXPIRED', payload: null, version: row.version + 1 });
+        changed = true;
+      }
+    return changed;
+  }
+  private nextQueueNumber(branch: number) {
+    const rows = [...this.scoped('queue', branch), ...this.scoped('registrations', branch)].filter(
+      (r) => r.serviceDate === today() && typeof r.ticketNumber === 'string',
+    );
+    return (
+      'Q-' +
+      String(Math.max(0, ...rows.map((r) => Number(r.ticketNumber.slice(2)))) + 1).padStart(3, '0')
+    );
   }
   private ensureBillingCategories(branch: number) {
     if (this.scoped('catalogs', branch).some((entry) => entry.kind === 'BILLING_CATEGORY')) return;

@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–024. No records or credentials are included.
+Schema-only reference after migrations001–025. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -39,15 +39,17 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## branches
 
-| Column     | Type            | Nullable | Default              | Extra / generated expression |
-| ---------- | --------------- | -------- | -------------------- | ---------------------------- |
-| id         | bigint unsigned | NO       | NULL                 | auto_increment               |
-| tenant_id  | bigint unsigned | NO       | NULL                 |                              |
-| name       | varchar(200)    | NO       | NULL                 |                              |
-| address    | varchar(2000)   | NO       |                      |                              |
-| active     | tinyint(1)      | NO       | 1                    |                              |
-| version    | int             | NO       | 1                    |                              |
-| updated_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| Column                      | Type            | Nullable | Default              | Extra / generated expression |
+| --------------------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id                          | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id                   | bigint unsigned | NO       | NULL                 |                              |
+| name                        | varchar(200)    | NO       | NULL                 |                              |
+| address                     | varchar(2000)   | NO       |                      |                              |
+| active                      | tinyint(1)      | NO       | 1                    |                              |
+| version                     | int             | NO       | 1                    |                              |
+| updated_at                  | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| public_registration_enabled | tinyint(1)      | NO       | 0                    |                              |
+| public_registration_version | int             | NO       | 1                    |                              |
 
 ## clinical_documents
 
@@ -307,6 +309,30 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | amount_cents | int             | NO       | NULL                 |                              |
 | reference    | varchar(200)    | NO       |                      |                              |
 | created_at   | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+
+## pending_registrations
+
+| Column             | Type            | Nullable | Default              | Extra / generated expression |
+| ------------------ | --------------- | -------- | -------------------- | ---------------------------- |
+| id                 | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id          | bigint unsigned | NO       | NULL                 |                              |
+| branch_id          | bigint unsigned | NO       | NULL                 |                              |
+| reference          | varchar(24)     | NO       | NULL                 |                              |
+| submission_key     | char(36)        | NO       | NULL                 |                              |
+| request_hash       | char(64)        | NO       | NULL                 |                              |
+| receipt_token_hash | char(64)        | NO       | NULL                 |                              |
+| ticket_number      | varchar(20)     | NO       | NULL                 |                              |
+| service_date       | date            | NO       | NULL                 |                              |
+| payload            | json            | YES      | NULL                 |                              |
+| status             | varchar(10)     | NO       | PENDING              |                              |
+| expires_at         | datetime(3)     | NO       | NULL                 |                              |
+| patient_id         | bigint unsigned | YES      | NULL                 |                              |
+| queue_ticket_id    | bigint unsigned | YES      | NULL                 |                              |
+| reviewed_by        | bigint unsigned | YES      | NULL                 |                              |
+| decision_hash      | char(64)        | YES      | NULL                 |                              |
+| version            | int             | NO       | 1                    |                              |
+| created_at         | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| updated_at         | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
 ## prescription_dose_logs
 

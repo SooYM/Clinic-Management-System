@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `024_billing_categories.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `025_public_registration.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -10,7 +10,7 @@ Migration 017 adds nullable `appointments.deleted_at` for audited removal withou
 
 Migration 016 adds nullable `patients.country_code` for ISO country of nationality. Only explicitly Malaysian historical records receive MY. Unknown foreign countries remain NULL; recognized-country validation is centralized in the application. No extra entity or ID is introduced.
 
-There are 26 entity tables with `BIGINT UNSIGNED AUTO_INCREMENT` primary keys.
+There are 27 entity tables with `BIGINT UNSIGNED AUTO_INCREMENT` primary keys.
 Entity foreign keys are matching unsigned BIGINT values, including audit actor/entity references and generated queue references.
 API IDs are positive JavaScript-safe integers. Sequences are independent per table and may contain gaps.
 `tenantNumber`, `branchNumber` and `patientNumber` are response aliases for actual IDs, not extra stored counters.
@@ -20,7 +20,9 @@ Migration bookkeeping is infrastructure, not a clinical entity. See the [ERD](ER
 
 ## Data dictionary
 
-The [complete column dictionary](DATA_DICTIONARY.md) lists every column in all 32 tables. A [schema-only SQL snapshot](schema.mysql.sql) records final types, indexes and constraints without data or allocated sequence values. These are references; install through migrations, not the snapshot.
+The [complete column dictionary](DATA_DICTIONARY.md) lists every column in all 33 tables. A [schema-only SQL snapshot](schema.mysql.sql) records final types, indexes and constraints without data or allocated sequence values. These are references; install through migrations, not the snapshot.
+
+Migration025 adds branch registration availability/version and `pending_registrations`: numeric ID, tenant/branch foreign keys, unique reference, branch/submission idempotency key, request hash, hashed receipt capability, reserved ticket/service date, nullable demographic JSON, status, expiry, patient/queue/reviewer links and optimistic version. Unique branch/date/ticket reservations share application allocation locks with normal arrivals. CHECKs require pending payloads and clear them for every terminal status; accepted rows require patient, queue and reviewer links. Rejection/expiry clears personal data while preserving number history. Reset removes reservations before queue/patient/staff dependencies.
 
 All active clinical/operational entity tables carry organization scope where required. Exact defaults, indexes and bounds remain executable in migrations.
 

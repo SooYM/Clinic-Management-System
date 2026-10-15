@@ -141,6 +141,11 @@ const sectionGuides: Record<string, [string, string, string][]> = {
       'Maintain billing categories, drugs, inventory units, lab panels, specimen types and referral destinations. Archived choices remain in history and disappear from new selections.',
     ],
     [
+      'registration',
+      'Patient registration QR',
+      'Enable phone registration for this branch and share its QR code. Patients receive a reserved ticket and must visit reception for identity verification before entering the active queue.',
+    ],
+    [
       'access',
       'Role access',
       'Choose which visible modules each role can access. Branch scope and clinical permissions remain enforced independently.',

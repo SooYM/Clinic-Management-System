@@ -1,5 +1,7 @@
 # Prerequisites
 
+QR registration requires migration025, a configured document signing key, and a reachable HTTPS application origin for patient phones. The existing `qrcode` dependency generates branch links; no external QR service is required. Loopback development links work only on the same computer. Staff reviewing submissions need both patient and queue module permissions; administrators enable each branch explicitly. The browser demo cannot share submissions across devices.
+
 ## Full-system development
 
 | Requirement       | Preparation                                                              |
