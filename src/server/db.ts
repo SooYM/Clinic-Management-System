@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import mysql, { type PoolConnection, type ResultSetHeader } from 'mysql2/promise';
 import { readFileSync } from 'node:fs';
 import { databaseUrl } from './deployment-config.js';

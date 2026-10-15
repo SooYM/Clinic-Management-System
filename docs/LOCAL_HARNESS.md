@@ -1,5 +1,7 @@
 # Workstation startup harness
 
+Server database configuration loads `.env` before creating the MySQL pool, including direct database-module imports. Entrypoints must load configuration before importing dependent application modules. The launcher checks the configured MySQL3310 connection; API startup must use that same explicit URL. A successful MySQL preflight alone does not prove API3101 is listening. Check `/api/health` through the frontend origin after startup. Never solve a configuration-loading failure by starting another database on3306.
+
 Run each app in its own PowerShell terminal, from any directory:
 
 ```powershell

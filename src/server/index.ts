@@ -1,5 +1,5 @@
-import { expirePublicRegistrations } from './public-registration-service.js';
 import 'dotenv/config';
+import { expirePublicRegistrations } from './public-registration-service.js';
 import { createApp } from './app.js';
 import { pool } from './db.js';
 import { validateDeploymentConfig } from './deployment-config.js';

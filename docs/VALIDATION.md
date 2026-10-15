@@ -1,5 +1,11 @@
 # Implementation validation
 
+## Environment loading before MySQL pool creation — 2026-10-15
+
+The QR cleanup import preceded `dotenv/config` in the API entrypoint, causing `db.ts` to create its pool from the localhost3306 fallback before `.env` supplied MySQL3310. An isolated process reproduced the wrong pool port through the API entrypoint, transitive registration service and direct database import. The database module now loads configuration before pool creation, and the entrypoint loads it first. Explicit environment database URLs retain precedence.
+
+All 459 tests across 32 files passed, including four isolated process regressions and guarded real MySQL workflows. TypeScript and changed-source formatting passed. The existing user watcher recovered API3101 automatically; both direct and frontend-proxied health requests returned200 with live MySQL connectivity. A fresh anonymous browser rendered the login page, received expected401 from auth/me, and observed no API5xx/proxy errors. No sign-in or live clinical data mutation was performed. The owned browser closed; user processes remained running. Readiness was recorded in the shared port lifecycle log. No port, credential, migration or database content change was required.
+
 ## QR registration and reception confirmation — 2026-10-15
 
 All 455 tests across 31 files passed. Production/demo builds, TypeScript, formatting, migration checksums and documentation links passed. Guarded real MySQL cases cover simultaneous QR/counter allocation, exact retry, scope/module/CSRF checks, explicit existing-patient linkage, no profile overwrite, expiry/payload clearing and midnight insertion rollback. The demo adapter is tested separately as simulation.
