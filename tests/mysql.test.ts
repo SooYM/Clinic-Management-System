@@ -5328,7 +5328,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(new Set([first.ticketNumber, second.ticketNumber, ordinary.ticketNumber]).size).toBe(3);
     expect(first.status).toBe('PENDING');
     expect(Object.keys(first).sort()).toEqual(
-      ['reference', 'ticketNumber', 'status', 'expiresAt', 'branchName', 'receiptToken'].sort(),
+      [
+        'reference',
+        'ticketNumber',
+        'status',
+        'expiresAt',
+        'branchName',
+        'receiptToken',
+        'visitStatus',
+        'roomName',
+      ].sort(),
     );
     expect(first.receiptToken).toMatch(/^[a-f0-9]{64}$/);
     expect(Number((await rows('SELECT COUNT(*) n FROM patients'))[0].n)).toBe(before);
@@ -5612,5 +5621,164 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       }),
     ).rejects.toMatchObject({ code: 'SERVICE_DAY_CHANGED' });
     expect(await rows('SELECT id FROM queue_tickets WHERE patient_id=?', [p.id])).toHaveLength(0);
+  });
+  it('public registration receipt follows every linked visit stage, undo and room change without exposing profile data', async () => {
+    await sql.query('UPDATE branches SET public_registration_enabled=TRUE WHERE id=?', [branch]);
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const registrations = new PublicRegistrationService(),
+      input = registrationBody(),
+      receipt = await registrations.submit(branch, input);
+    const reviewer = {
+      ...ctx,
+      actor: { ...ctx.actor, id: administrator, role: 'ADMIN' },
+      modules: ['patients', 'queue'],
+    };
+    const pending = (await registrations.list(reviewer)).find(
+      (r: any) => r.reference === receipt.reference,
+    );
+    const accepted = await registrations.confirm(reviewer, pending.id, {
+      version: pending.version,
+      identityVerified: true,
+    });
+    let ticket = (
+      await rows('SELECT id,version FROM queue_tickets WHERE patient_id=?', [accepted.patientId])
+    )[0];
+    const firstRoom = fixtureId(),
+      secondRoom = fixtureId();
+    await sql.query('INSERT INTO rooms(id,tenant_id,branch_id,name) VALUES(?,?,?,?),(?,?,?,?)', [
+      firstRoom,
+      tenant,
+      branch,
+      'QR Room 7',
+      secondRoom,
+      tenant,
+      branch,
+      'QR Room 8',
+    ]);
+    const read = async (stage: string, roomName: string | null = null) => {
+      const response = await publicRegistration('/receipts/' + receipt.receiptToken);
+      expect(response.status).toBe(200);
+      const view = await response.json();
+      expect(Object.keys(view).sort()).toEqual(
+        [
+          'reference',
+          'ticketNumber',
+          'status',
+          'expiresAt',
+          'branchName',
+          'visitStatus',
+          'roomName',
+        ].sort(),
+      );
+      expect(view).toMatchObject({
+        status: 'ACCEPTED',
+        ticketNumber: receipt.ticketNumber,
+        visitStatus: stage,
+        roomName,
+      });
+    };
+    const step = async (status: string, roomId?: number) => {
+      ticket = await service.transitionQueue(ctx, ticket.id, {
+        status,
+        version: ticket.version,
+        ...(roomId ? { roomId, practitionerId: doctor } : {}),
+      });
+    };
+    await read('REGISTERED');
+    await step('SKIPPED');
+    await read('SKIPPED');
+    await step('TRIAGE_WAITING');
+    await read('TRIAGE_WAITING');
+    await step('CALLED_TO_ROOM', firstRoom);
+    await read('CALLED_TO_ROOM', 'QR Room 7');
+    await step('TRIAGE_WAITING');
+    await read('TRIAGE_WAITING');
+    await step('CALLED_TO_ROOM', secondRoom);
+    await read('CALLED_TO_ROOM', 'QR Room 8');
+    await step('IN_CONSULTATION');
+    await read('IN_CONSULTATION', 'QR Room 8');
+    await step('DISPENSARY_WAITING');
+    await read('DISPENSARY_WAITING');
+    await step('PAYMENT_WAITING');
+    await read('PAYMENT_WAITING');
+    await step('COMPLETED');
+    await read('COMPLETED');
+    await sql.query(
+      'UPDATE queue_tickets SET created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR),service_date=DATE_SUB(service_date,INTERVAL 1 DAY) WHERE id=?',
+      [ticket.id],
+    );
+    await read('COMPLETED');
+    const replay = await registrations.submit(branch, input);
+    expect(replay.visitStatus).toBe('COMPLETED');
+    expect(replay.roomName).toBeNull();
+  });
+  it('public registration receipt derives expiry without changing queue history and never follows another patient or repeated ticket number', async () => {
+    const { PublicRegistrationService } = await import('../src/server/public-registration-service');
+    const registrations = new PublicRegistrationService(),
+      receipt = await registrations.submit(branch, registrationBody());
+    const reviewer = {
+      ...ctx,
+      actor: { ...ctx.actor, id: administrator, role: 'ADMIN' },
+      modules: ['patients', 'queue'],
+    };
+    const pending = (await registrations.list(reviewer)).find(
+      (r: any) => r.reference === receipt.reference,
+    );
+    const accepted = await registrations.confirm(reviewer, pending.id, {
+      version: pending.version,
+      identityVerified: true,
+    });
+    const q = (
+      await rows('SELECT * FROM queue_tickets WHERE patient_id=?', [accepted.patientId])
+    )[0];
+    for (const expiry of [
+      'created_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 13 HOUR)',
+      'service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY)',
+      'expired_at=UTC_TIMESTAMP(3)',
+    ]) {
+      await sql.query(
+        'UPDATE queue_tickets SET created_at=UTC_TIMESTAMP(3),service_date=DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),expired_at=NULL,' +
+          expiry +
+          ' WHERE id=?',
+        [q.id],
+      );
+      const before = (await rows('SELECT * FROM queue_tickets WHERE id=?', [q.id]))[0];
+      expect(await registrations.status(receipt.receiptToken)).toMatchObject({
+        status: 'ACCEPTED',
+        visitStatus: 'EXPIRED',
+        roomName: null,
+      });
+      expect((await rows('SELECT * FROM queue_tickets WHERE id=?', [q.id]))[0]).toEqual(before);
+    }
+    await sql.query(
+      'UPDATE queue_tickets SET service_date=DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),INTERVAL 1 DAY),expired_at=UTC_TIMESTAMP(3) WHERE id=?',
+      [q.id],
+    );
+    const other = await patient();
+    await sql.query(
+      "INSERT INTO queue_tickets(tenant_id,branch_id,patient_id,ticket_number,priority,service_date,status) VALUES(?,?,?,?, 'NORMAL',DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)),'TRIAGE_WAITING')",
+      [tenant, branch, other.id, receipt.ticketNumber],
+    );
+    expect((await registrations.status(receipt.receiptToken)).visitStatus).toBe('EXPIRED');
+    const wrong = (await rows('SELECT id FROM queue_tickets WHERE patient_id=?', [other.id]))[0];
+    await sql.query('UPDATE pending_registrations SET queue_ticket_id=? WHERE id=?', [
+      wrong.id,
+      pending.id,
+    ]);
+    expect(await registrations.status(receipt.receiptToken)).toMatchObject({
+      status: 'ACCEPTED',
+      visitStatus: null,
+      roomName: null,
+    });
+    await sql.query('UPDATE pending_registrations SET queue_ticket_id=? WHERE id=?', [
+      q.id,
+      pending.id,
+    ]);
+    await expect(
+      sql.query('UPDATE pending_registrations SET branch_id=? WHERE id=?', [
+        otherBranch,
+        pending.id,
+      ]),
+    ).rejects.toMatchObject({ code: 'ER_NO_REFERENCED_ROW_2' });
   });
 });

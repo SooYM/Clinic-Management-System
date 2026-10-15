@@ -1,5 +1,7 @@
 # Clinic system flow
 
+Patient ticket tracking: pending reception → checked in/waiting → called to assigned room → consultation → dispensary → payment → completed. The same capability receipt refreshes current queue progress every 10 seconds while visible, including room changes and undo/skip actions. Skipped/expired visits prompt reception assistance. Only the linked visit is projected; other patients' tickets and clinical records remain private.
+
 QR arrival: admin enables branch QR → patient scans → completes demographics and consent → confirms submission → reserved ticket appears as Awaiting reception confirmation → patient proceeds to counter → staff verifies IC/passport and creates or explicitly links profile → same ticket enters active queue → call to room. Pending reservations never appear in GP/callable suggestions. The receipt updates after confirmation; rejected/expired tickets direct patients to reception. Counter check-in and QR reservation allocate numbers under the same branch/day lock.
 
 Billing category management: Administration → Catalog choices → Billing categories → add/edit/order/remove/restore → confirm → persist scoped versioned choice → billing refresh. Prepare checkout → choose active category → confirm payment → validate category and save invoice atomically. Rename/remove after payment → historical invoice unchanged; a pending draft requires reselection. Renamed SERVICE/PRODUCT defaults retain automatic consultation/medicine assignment through their immutable default marker.

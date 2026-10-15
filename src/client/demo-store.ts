@@ -842,7 +842,9 @@ export class DemoClinic {
     branchId?: number,
   ): Promise<any> {
     // Expiry is a lifecycle change, retained even when the requested action fails.
-    if (this.expireQueue()) this.storage.setItem(key, JSON.stringify(this.state));
+    const receiptRead =
+      method.toUpperCase() === 'GET' && /^\/public\/registration\/receipts\//.test(path);
+    if (!receiptRead && this.expireQueue()) this.storage.setItem(key, JSON.stringify(this.state));
     if (this.expireRegistrations()) this.storage.setItem(key, JSON.stringify(this.state));
     const previous = structuredClone(this.state);
     try {
@@ -2639,12 +2641,39 @@ export class DemoClinic {
     return doctor!;
   }
   private registrationReceipt(row: Row) {
+    const ticket =
+      row.status === 'ACCEPTED'
+        ? this.state.rows.queue.find(
+            (q) =>
+              q.id === row.queueTicketId &&
+              q.tenantId === row.tenantId &&
+              q.branchId === row.branchId &&
+              q.patientId === row.patientId,
+          )
+        : undefined;
+    const visitStatus = ticket
+      ? !['COMPLETED', 'SKIPPED'].includes(ticket.status) &&
+        (ticket.expiredAt || queueExpiryTime(ticket) <= Date.now() || ticket.serviceDate < today())
+        ? 'EXPIRED'
+        : ticket.status
+      : null;
+    const room =
+      ticket && ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(visitStatus)
+        ? this.state.rows.rooms.find(
+            (room) =>
+              room.id === ticket.roomId &&
+              room.tenantId === row.tenantId &&
+              room.branchId === row.branchId,
+          )
+        : undefined;
     return {
       reference: row.reference,
       ticketNumber: row.ticketNumber,
       status: row.status,
       expiresAt: row.expiresAt,
       branchName: this.state.rows.branches.find((b) => b.id === row.branchId)?.name,
+      visitStatus,
+      roomName: room?.name ?? null,
       simulated: true,
     };
   }

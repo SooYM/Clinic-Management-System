@@ -80,7 +80,16 @@ describe('browser-only QR registration simulation', () => {
         await clinic.request('/public/registration/receipts/' + receipt.receiptToken),
       ).sort(),
     ).toEqual(
-      ['reference', 'ticketNumber', 'status', 'expiresAt', 'branchName', 'simulated'].sort(),
+      [
+        'reference',
+        'ticketNumber',
+        'status',
+        'expiresAt',
+        'branchName',
+        'simulated',
+        'visitStatus',
+        'roomName',
+      ].sort(),
     );
     await login(clinic);
     const before = (await clinic.request('/queue')).data;
@@ -134,6 +143,110 @@ describe('browser-only QR registration simulation', () => {
     const state = JSON.parse([...storage.entries.values()][0]);
     expect(
       state.rows.registrations.find((row: any) => row.receiptToken === second.receiptToken).payload,
+    ).toBeNull();
+  });
+  it('projects each linked visit stage and clears room labels outside the consultation', async () => {
+    const { clinic, storage } = await ready(),
+      receipt = await clinic.request('/public/registration/branches/1', 'POST', body());
+    expect(receipt).toMatchObject({ visitStatus: null, roomName: null });
+    const pending = (await clinic.request('/registrations')).data[0];
+    await clinic.request('/registrations/' + pending.id + '/confirm', 'POST', {
+      version: pending.version,
+      identityVerified: true,
+    });
+    const [key, raw] = [...storage.entries][0],
+      state = JSON.parse(raw),
+      registration = state.rows.registrations.find((r: any) => r.reference === receipt.reference),
+      ticket = state.rows.queue.find((q: any) => q.id === registration.queueTicketId);
+    for (const status of [
+      'REGISTERED',
+      'SKIPPED',
+      'TRIAGE_WAITING',
+      'CALLED_TO_ROOM',
+      'IN_CONSULTATION',
+      'DISPENSARY_WAITING',
+      'PAYMENT_WAITING',
+      'COMPLETED',
+    ]) {
+      ticket.status = status;
+      ticket.roomId = 1;
+      storage.setItem(key, JSON.stringify(state));
+      const view = await new DemoClinic(storage).request(
+        '/public/registration/receipts/' + receipt.receiptToken,
+      );
+      expect(view).toMatchObject({
+        status: 'ACCEPTED',
+        visitStatus: status,
+        roomName: ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(status) ? 'Room 01' : null,
+      });
+    }
+    ticket.status = 'CALLED_TO_ROOM';
+    ticket.roomId = 2;
+    storage.setItem(key, JSON.stringify(state));
+    expect(
+      (
+        await new DemoClinic(storage).request(
+          '/public/registration/receipts/' + receipt.receiptToken,
+        )
+      ).roomName,
+    ).toBe('Room 02');
+    ticket.status = 'TRIAGE_WAITING';
+    storage.setItem(key, JSON.stringify(state));
+    expect(
+      (
+        await new DemoClinic(storage).request(
+          '/public/registration/receipts/' + receipt.receiptToken,
+        )
+      ).roomName,
+    ).toBeNull();
+  });
+  it('derives expired linked visits without mutation and ignores mismatched queue links', async () => {
+    const { clinic, storage } = await ready(),
+      receipt = await clinic.request('/public/registration/branches/1', 'POST', body());
+    const pending = (await clinic.request('/registrations')).data[0];
+    await clinic.request('/registrations/' + pending.id + '/confirm', 'POST', {
+      version: pending.version,
+      identityVerified: true,
+    });
+    const [key, raw] = [...storage.entries][0],
+      state = JSON.parse(raw),
+      registration = state.rows.registrations.find((r: any) => r.reference === receipt.reference),
+      ticket = state.rows.queue.find((q: any) => q.id === registration.queueTicketId);
+    ticket.createdAt = new Date(Date.now() - 13 * 3600000).toISOString();
+    ticket.roomId = 1;
+    ticket.status = 'CALLED_TO_ROOM';
+    storage.setItem(key, JSON.stringify(state));
+    expect(
+      await new DemoClinic(storage).request(
+        '/public/registration/receipts/' + receipt.receiptToken,
+      ),
+    ).toMatchObject({ status: 'ACCEPTED', visitStatus: 'EXPIRED', roomName: null });
+    expect(storage.getItem(key)).toBe(JSON.stringify(state));
+    ticket.status = 'COMPLETED';
+    storage.setItem(key, JSON.stringify(state));
+    expect(
+      (
+        await new DemoClinic(storage).request(
+          '/public/registration/receipts/' + receipt.receiptToken,
+        )
+      ).visitStatus,
+    ).toBe('COMPLETED');
+    ticket.patientId++;
+    storage.setItem(key, JSON.stringify(state));
+    expect(
+      await new DemoClinic(storage).request(
+        '/public/registration/receipts/' + receipt.receiptToken,
+      ),
+    ).toMatchObject({ status: 'ACCEPTED', visitStatus: null, roomName: null });
+    ticket.patientId--;
+    ticket.branchId = 2;
+    storage.setItem(key, JSON.stringify(state));
+    expect(
+      (
+        await new DemoClinic(storage).request(
+          '/public/registration/receipts/' + receipt.receiptToken,
+        )
+      ).visitStatus,
     ).toBeNull();
   });
 });

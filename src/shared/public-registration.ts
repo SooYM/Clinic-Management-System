@@ -1,3 +1,4 @@
+import type { QueueStatus } from '../domain/models.js';
 export const registrationPatientFields = [
   'firstName',
   'lastName',
@@ -23,5 +24,7 @@ export interface RegistrationReceipt {
   status: RegistrationStatus;
   expiresAt: string;
   branchName: string;
+  visitStatus: QueueStatus | 'EXPIRED' | null;
+  roomName: string | null;
   receiptToken?: string;
 }

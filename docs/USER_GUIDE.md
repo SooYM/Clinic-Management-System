@@ -6,6 +6,10 @@ In Administration, open **Patient registration QR**, enable registration for the
 
 Patients scan, complete registration details and consent, then confirm submission. The screen immediately shows their queue ticket and **Awaiting reception confirmation**. They must proceed to reception with IC/passport. Keep the confirmation screen open; it updates after staff confirmation. A reserved number does not mean the patient is ready to be called.
 
+After check-in, keep the ticket page open. It refreshes every 10 seconds while visible and when returning to the page. A room call shows the assigned room prominently. Later updates show consultation, dispensary, payment and visit completion. A skipped or expired visit directs the patient to reception. The refresh button checks immediately; it does not change the visit. Room details disappear after consultation so patients are not sent back to an old room.
+
+After a completed or expired visit, **Start new registration** opens a fresh form only after confirmation. The previous visit remains in clinic records. Active and skipped visits must be resolved with reception before starting again.
+
 Reception opens the registration inbox in Clinic overview, verifies identity, reviews any existing patient match, and confirms check-in. Link an existing profile explicitly; submitted details never overwrite it automatically. Confirmation activates the same ticket in the live queue. Reject incorrect/duplicate submissions after confirmation. Unconfirmed tickets expire after 12 hours or at Malaysia midnight, whichever occurs first; patients then speak to reception for a fresh visit.
 
 This guide covers the current clinic workflows. Use **User guide** in the application for help while working. Guide topics use the expandable-help approach reviewed in the Car Loan reference project, adapted to clinic screens and permissions.

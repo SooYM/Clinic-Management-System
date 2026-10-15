@@ -29,6 +29,10 @@ function receipt(row: any) {
     status: row.status,
     expires_at: row.expires_at,
     branch_name: row.branch_name,
+    visit_status: row.visit_status ?? null,
+    room_name: ['CALLED_TO_ROOM', 'IN_CONSULTATION'].includes(row.visit_status)
+      ? (row.room_name ?? null)
+      : null,
   });
 }
 function staff(ctx: Context) {
@@ -97,7 +101,7 @@ export class PublicRegistrationService {
             'Submission key has already been used. Start a new submission.',
             409,
           );
-        return { ...receipt({ ...prior, branch_name: branch.name }), receiptToken: token };
+        return { ...(await this.receiptForToken(db, token)), receiptToken: token };
       }
       const allocation = await allocateQueueNumber(db, branchId);
       const count = (
@@ -145,9 +149,22 @@ export class PublicRegistrationService {
       .regex(/^[a-f0-9]{64}$/)
       .parse(token);
     await expirePublicRegistrations(this.db);
+    return this.receiptForToken(this.db, token);
+  }
+  private async receiptForToken(db: Database, token: string) {
     const row = (
-      await this.db.query(
-        'SELECT r.reference,r.ticket_number,r.status,r.expires_at,b.name branch_name FROM pending_registrations r JOIN branches b ON b.id=r.branch_id WHERE r.receipt_token_hash=$1 AND b.active=1',
+      await db.query(
+        `SELECT r.reference,r.ticket_number,r.status,r.expires_at,b.name branch_name,
+        CASE WHEN r.status<>'ACCEPTED' OR q.id IS NULL THEN NULL
+          WHEN q.status NOT IN ('COMPLETED','SKIPPED') AND (q.expired_at IS NOT NULL
+            OR q.created_at<=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 12 HOUR)
+            OR q.service_date<DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))) THEN 'EXPIRED'
+          ELSE q.status END visit_status,
+        room.name room_name
+        FROM pending_registrations r JOIN branches b ON b.id=r.branch_id AND b.tenant_id=r.tenant_id
+        LEFT JOIN queue_tickets q ON r.status='ACCEPTED' AND q.id=r.queue_ticket_id AND q.tenant_id=r.tenant_id AND q.branch_id=r.branch_id AND q.patient_id=r.patient_id
+        LEFT JOIN rooms room ON room.id=q.room_id AND room.tenant_id=q.tenant_id AND room.branch_id=q.branch_id
+        WHERE r.receipt_token_hash=$1 AND b.active=1`,
         [hashToken(token)],
       )
     ).rows[0];

@@ -12,6 +12,10 @@
 }
 .public-registration h2 {
   font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.public-registration .registration-call {
+  font-size: clamp(1.5rem, 6vw, 2rem);
 }
 .public-registration p {
   max-width: 70ch;

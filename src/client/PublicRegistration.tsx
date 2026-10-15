@@ -3,18 +3,16 @@ import { api, isDemo } from './api';
 import { useConfirm } from './Confirmation';
 import { ErrorNotice, Loading, Panel, ResourceState, useResource } from './components';
 import PatientForm, { type RegistrationPatient } from './pages/PatientForm';
+import type { RegistrationReceipt } from '../shared/public-registration';
+import RegistrationReceiptStatus, {
+  canStartNewRegistration,
+  latestRegistrationReceipt,
+} from './RegistrationReceiptStatus';
 import './PublicRegistration.css';
 
 interface RegistrationBranch {
   branch: { id: number; name: string; clinicName: string };
   enabled: boolean;
-}
-interface Receipt {
-  reference: string;
-  ticketNumber: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
-  expiresAt: string;
-  branchName: string;
 }
 export default function PublicRegistration() {
   const confirm = useConfirm();
@@ -27,13 +25,12 @@ export default function PublicRegistration() {
   const receiptKey = `clinic:registration-receipt:${branchId}`;
   const submissionKey = `clinic:registration-submission:${branchId}`;
   const [receiptToken, setReceiptToken] = useState(() => sessionStorage.getItem(receiptKey) || '');
-  const receipt = useResource<Receipt>(
+  const receipt = useResource<RegistrationReceipt>(
     receiptToken ? `/public/registration/receipts/${encodeURIComponent(receiptToken)}` : '',
     10000,
   );
-  const [sent, setSent] = useState<Receipt>();
-  const visibleReceipt =
-    receipt.data && (!sent || receipt.data.reference === sent.reference) ? receipt.data : sent;
+  const [sent, setSent] = useState<RegistrationReceipt>();
+  const visibleReceipt = latestRegistrationReceipt(receipt.data, sent);
   const lookupPostcode = useCallback(
     async (postcode: string, signal: AbortSignal) =>
       api.get<{ postcode: string; city: string; state: string }[]>(
@@ -48,7 +45,7 @@ export default function PublicRegistration() {
       key = crypto.randomUUID();
       sessionStorage.setItem(submissionKey, key);
     }
-    const result = await api.post<Receipt & { receiptToken: string }>(
+    const result = await api.post<RegistrationReceipt & { receiptToken: string }>(
       `/public/registration/branches/${branchId}`,
       { submissionKey: key, patient, consent: true },
     );
@@ -88,22 +85,7 @@ export default function PublicRegistration() {
           {visibleReceipt && (
             <>
               <p className="registration-ticket">{visibleReceipt.ticketNumber}</p>
-              <h2>
-                {visibleReceipt.status === 'PENDING'
-                  ? 'Awaiting reception confirmation'
-                  : visibleReceipt.status === 'ACCEPTED'
-                    ? 'Checked in — waiting to be called'
-                    : visibleReceipt.status === 'REJECTED'
-                      ? 'Please speak with reception'
-                      : 'This ticket has expired'}
-              </h2>
-              <p>
-                {visibleReceipt.status === 'PENDING'
-                  ? 'Go to reception with your IC or passport. Staff must verify your identity before you join the active queue.'
-                  : visibleReceipt.status === 'ACCEPTED'
-                    ? 'Your identity has been confirmed. Keep this ticket and watch the waiting-room display.'
-                    : 'Ask reception to help with your visit. This ticket cannot be called.'}
-              </p>
+              <RegistrationReceiptStatus receipt={visibleReceipt} />
               <p className="form-help">
                 {visibleReceipt.branchName} · Reference {visibleReceipt.reference}
               </p>
@@ -114,7 +96,7 @@ export default function PublicRegistration() {
               <button type="button" className="secondary" onClick={receipt.refresh}>
                 Refresh ticket status
               </button>
-              {['REJECTED', 'EXPIRED'].includes(visibleReceipt.status) && (
+              {canStartNewRegistration(visibleReceipt) && (
                 <button
                   type="button"
                   className="secondary"

@@ -1,5 +1,13 @@
 # Implementation validation
 
+## QR receipt follows live visit progress — 2026-10-15
+
+The receipt previously returned registration approval only, so ACCEPTED always rendered as waiting even after room calls and later transitions. Accepted receipts now project the exact scoped linked queue's current stage and call/consultation room. The client distinguishes approval from visit progress, clears old room labels after consultation, and permits confirmed new registration after completion/expiry. No schema migration or live clinical mutation is required.
+
+All 492 tests across 33 files passed, including scoped real MySQL lifecycle/privacy cases and 29 focused presentation/renewal cases. Production and demo builds, TypeScript and formatting passed. Automated checks cover every queue stage, changed rooms, skip/undo, read-derived expiry without queue mutation, completed-history retention, repeated ticket numbers, mismatched patient linkage and exact public response fields.
+
+Real MySQL browser acceptance verified an actual staff UI room call appearing on the anonymous 390px ticket page through normal 10-second polling, without manual refresh. Subsequent real queue-transition API calls automatically rendered consultation with room, dispensary, payment and completion; these later checks did not repeat the full clinical/dispensing/invoicing workflow. Old room details disappeared after consultation. Completed-visit new-registration cancel/confirm, skip/undo and a 13-hour-old visit's derived expiry passed. Layout fitted 390px and 1440px. SQL verified unchanged ACCEPTED registration state, durable linked queue history, exact seven-field public responses without patient identifiers, cleared terminal room labels and completed-history retention. The owned browser/server closed, guarded disposable database removal was verified, and port3110 was released with lifecycle logging. Live user data was not used for workflow testing; the configured frontend-proxied health endpoint remained healthy. Physical phone networking and Render deployment were not verified.
+
 ## Environment loading before MySQL pool creation — 2026-10-15
 
 The QR cleanup import preceded `dotenv/config` in the API entrypoint, causing `db.ts` to create its pool from the localhost3306 fallback before `.env` supplied MySQL3310. An isolated process reproduced the wrong pool port through the API entrypoint, transitive registration service and direct database import. The database module now loads configuration before pool creation, and the entrypoint loads it first. Explicit environment database URLs retain precedence.
