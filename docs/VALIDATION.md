@@ -1,5 +1,15 @@
 # Implementation validation
 
+## Fixed ports and global startup harness — 2026-10-15
+
+The full suite passed 436 tests across28 files. After adding registry checks and asynchronous lifecycle logging, all178 affected MySQL/reset/demo tests passed again. Startup/deployment focused checks, typecheck, production/demo builds, formatting and PowerShell parsing passed. Tests use fixed3110–3114 listeners and guarded disposable MySQL databases; no random application/test port remains.
+
+Actual `webapp clinic` started the existing MySQL data on3310, Express3101 and Vite3100. Authenticated readiness checked server port and real data-directory identity. Real browser actions loaded staff sign-in, proxied healthy API responses and anonymous display branches from MySQL; branch selection survived refresh. Clinic made no requests to Progress3001. Duplicate Clinic launch and occupied Progress3001 were refused without fallback or process termination. Existing Progress3001 browser access and MySQL3307 connectivity were verified without restarting its user-owned app.
+
+A stopped-database cold backup retained configuration and the complete data directory outside Git. Existing Clinic storage has32 tables and23 migrations; the patient data file's SHA-256 matched its pre-change backup. No reset or seed occurred. Verification application processes were stopped; MySQL3310 remained ready. Other applications remained untouched.
+
+Global instructions and `ENGINEERING.md`, a fixed registry, append-only port events, generic launcher and locked atomic registry writer are installed outside the repository. Registry validation permanently protects Progress3001, preserves history and rejects duplicate ownership. Status works with unregistered system listeners. The owner confirmed legacy PHP/MySQL hosting: new-project defaults reflect that target, while existing Node apps require compatible hosting or a separately authorized migration. Docker, actual Exabytes deployment and Render deployment remain unverified.
+
 ## Country and list controls — 2026-10-08
 
 - Full suite passed 322 tests across eighteen files with zero skips; actual MySQL used guarded disposable databases.

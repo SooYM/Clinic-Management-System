@@ -1,7 +1,7 @@
 x-runtime-environment: &runtime-environment
   NODE_ENV: production
   HOST: 0.0.0.0
-  PORT: 3001
+  PORT: 3101
   DATABASE_URL: ${DATABASE_URL:?Set URL-encoded non-root runtime MySQL URL with database host db}
   APP_ORIGIN: ${APP_ORIGIN:?Set exact HTTPS clinic origin}
   PUBLIC_URL: ${APP_ORIGIN:?Set exact HTTPS clinic origin}
@@ -77,7 +77,7 @@ services:
   app:
     <<: *application
     ports:
-      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:3101:3101"
     environment: *runtime-environment
     depends_on:
       db:

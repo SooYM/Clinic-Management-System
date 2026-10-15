@@ -1,3 +1,4 @@
+import { startTestServer } from './test-server';
 import 'dotenv/config';
 import { randomUUID, createHash } from 'node:crypto';
 import type { Server } from 'node:http';
@@ -181,12 +182,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ],
     );
     process.env.APP_ORIGIN = 'http://clinic.example.invalid';
-    server = (await import('../src/server/app')).createApp().listen(0, '127.0.0.1');
-    await new Promise<void>((resolve) => server.once('listening', resolve));
+    server = await startTestServer((await import('../src/server/app')).createApp(), 'main');
     baseUrl = `http://127.0.0.1:${(server.address() as any).port}`;
     // New settings cases use their own real app instance to retain the production per-IP rate limit.
-    settingsServer = (await import('../src/server/app')).createApp().listen(0, '127.0.0.1');
-    await new Promise<void>((resolve) => settingsServer.once('listening', resolve));
+    settingsServer = await startTestServer(
+      (await import('../src/server/app')).createApp(),
+      'settings',
+    );
     settingsBaseUrl = `http://127.0.0.1:${(settingsServer.address() as any).port}`;
     // Retained adapters are exercised only in this isolated historical test harness.
     // The deployed createApp must keep these modules retired.
@@ -207,8 +209,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         .status(error.status || (error.name === 'ZodError' ? 400 : 500))
         .json({ error: error.message }),
     );
-    legacyServer = legacyApp.listen(0, '127.0.0.1');
-    await new Promise<void>((resolve) => legacyServer.once('listening', resolve));
+    legacyServer = await startTestServer(legacyApp, 'legacy');
     legacyBaseUrl = `http://127.0.0.1:${(legacyServer.address() as any).port}`;
   });
   afterAll(async () => {

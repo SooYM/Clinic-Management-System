@@ -1,5 +1,7 @@
 # Clinic Management System — V2
 
+From any PowerShell directory, use `webapp clinic` to start local MySQL, API and frontend. Progress Tracker uses `webapp progress` in another terminal. See [one-command startup and global ports](docs/LOCAL_HARNESS.md).
+
 Malaysia-focused, multi-branch clinic application using MySQL 8.4/InnoDB, React, TypeScript, Vite and Express. V2 fully replaces the V1 Next.js/Supabase implementation while preserving repository history.
 
 Two deployment modes share the interface:
@@ -20,7 +22,7 @@ Read the [documentation index](docs/README.md) for system specification, archite
 - Malaysian/non-Malaysian registration, formatted IC, derived birth date/gender and postcode city/state lookup.
 - Searchable appointment booking, queue management, administrator-configured rooms and GP practitioner accounts.
 - Signed SOAP consultations, structured medication instructions, stock receipt and pending-prescription dispensing.
-- Full-system clinical documents, split payments, deposits, notifications and audit records.
+- Full-system clinical documents, split payments, notifications and audit records.
 - Role-to-module access and in-app staff guide.
 
 Commission, treatment-package and before/after-photo workflows are retired. Historical MySQL tables remain for migration compatibility. All entity keys are numeric auto-increment IDs; each table has its own sequence and gaps are valid. Security and verification tokens remain random.
@@ -36,17 +38,27 @@ npm run db:bootstrap
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. Set explicit bootstrap credentials and a random signing key first. Bootstrap creates the clinic, initial branch, rooms and administrator; it refuses an existing users table. Add staff through Administration. Never run synthetic `db:seed` in production.
+Open http://127.0.0.1:3100. Set explicit bootstrap credentials and a random signing key first. Bootstrap creates the clinic, initial branch, rooms and administrator; it refuses an existing users table. Add staff through Administration. Never run synthetic `db:seed` in production.
 
-MySQL must already be running before `npm run dev`; that command starts only the API and frontend. For this workspace's existing portable MySQL installation, start it after a Windows restart with PowerShell:
+After initial setup, start MySQL, API and frontend with one PowerShell command from this repository:
 
 ```powershell
-Start-Process -FilePath (Join-Path $PWD '.local/mysql-8.4.11-winx64/bin/mysqld.exe') -ArgumentList ('--defaults-file="' + (Join-Path $PWD '.local/mysql.ini') + '"') -WindowStyle Hidden
+.\start.ps1
 ```
 
-Run this only when that existing installation is stopped. `ECONNREFUSED 127.0.0.1:33079` means nothing is accepting connections at the configured database address. Start MySQL, then restart `npm run dev`. Keep the existing data directory; migration, bootstrap and seed commands are not needed just to restart services.
+From any folder, the installed global harness supports `webapp clinic`; `webapp progress` starts Progress Tracker. Use `.\start.ps1 -Check` or `webapp check clinic` to validate without starting services. Startup waits for MySQL authentication, preserves data, rejects unrelated listeners and never changes ports automatically. Keep the terminal open; Ctrl+C stops the application. MySQL remains available for the table viewer and later starts.
 
-The [local database viewer](docs/DATABASE_ACCESS.md) uses a separate SELECT-only account. Set `DB_VIEWER_DATABASE_URL` and `DB_VIEWER_PASSWORD`, then run `npm run db:view` and open http://127.0.0.1:3002. It is excluded from production hosting.
+| Clinic service | Fixed local port |
+| --- | --- |
+| Frontend and public display | 3100 |
+| API | 3101 |
+| MySQL | 3310 |
+| Read-only database viewer | 3102 |
+| Local browser demo | 3103 |
+
+Port 3001 belongs only to Progress Tracker. Global reservations live in `$HOME/.codex/harness/ports.json`. Existing installations must update private `.env` URLs and portable `.local/mysql.ini`, preserving credentials and data directories. Migration, bootstrap and seed commands are not needed to restart services. `npm run dev` remains available when MySQL already runs.
+
+The [local database viewer](docs/DATABASE_ACCESS.md) uses a separate SELECT-only account. Set `DB_VIEWER_DATABASE_URL` and `DB_VIEWER_PASSWORD`, then run `npm run db:view` and open http://127.0.0.1:3102. It is excluded from production hosting.
 
 ## Free demo and Render Blueprint
 
@@ -56,7 +68,7 @@ npm run build:demo
 npm run start:demo
 ```
 
-Demo builds write `dist-demo`; normal builds write `dist`. Demo hosting requires no database or private credentials. The login screen shows the public fictional accounts; each default demo password is `demo`. This does not change local MySQL credentials. The demo server serves static assets and an explicit unavailable page for features requiring the full backend.
+Local demo opens http://127.0.0.1:3103; hosted Render retains its assigned `PORT`. Demo builds write `dist-demo`; normal builds write `dist`. Demo hosting requires no database or private credentials. The login screen shows the public fictional accounts; each default demo password is `demo`. This does not change local MySQL credentials. The demo server serves static assets and an explicit unavailable page for features requiring the full backend.
 
 [render.yaml](render.yaml) reconfigures the existing **Clinic Management System** web service in its existing **Production** environment. It retains the service name, region and main branch, and uses the free demo build/start commands. See [Render upgrade](docs/RENDER_UPGRADE.md) before syncing. Git publication and Render Blueprint synchronization are separate operations; remote deployment remains unverified until its health and browser checks pass.
 

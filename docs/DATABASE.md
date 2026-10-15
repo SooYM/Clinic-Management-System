@@ -119,7 +119,7 @@ Encrypted backups, restore access and clinical/financial retention need explicit
 Audit table presence does not make database administrators unable to tamper with it.
 
 The optional localhost viewer uses a separate SELECT-only account and explicit `DB_VIEWER_DATABASE_URL`/`DB_VIEWER_PASSWORD`.
-It binds `127.0.0.1:3002`, uses Basic authentication and permits allowlisted table reads/pagination only.
+It binds `127.0.0.1:3102`, uses Basic authentication and permits allowlisted table reads/pagination only.
 Never mount it in the production API or expose its credentials. See [database access](DATABASE_ACCESS.md).
 
 Offline postcode data is application JSON, not a mutable database table or live postal verification service.

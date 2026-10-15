@@ -18,7 +18,7 @@ if (
 const database = decodeURIComponent(parsed.pathname.slice(1));
 if (!database || database.includes('/'))
   throw new Error('A database name is required in DB_VIEWER_DATABASE_URL.');
-const port = Number(process.env.DB_VIEWER_PORT || 3002);
+const port = Number(process.env.DB_VIEWER_PORT || 3102);
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error('DB_VIEWER_PORT must be a valid port.');
 const pool = createPool({

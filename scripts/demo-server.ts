@@ -47,7 +47,7 @@ export function createDemoServer(directory = join(process.cwd(), 'dist-demo')) {
   return app;
 }
 if (process.argv[1]?.endsWith('demo-server.ts')) {
-  const port = Number(process.env.PORT || 10000);
+  const port = Number(process.env.PORT || 3103);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('PORT must be a valid integer port.');
   const directory = join(process.cwd(), 'dist-demo');

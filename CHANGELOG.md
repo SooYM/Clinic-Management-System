@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reserve Progress Tracker3001 exclusively; move Clinic web/API/MySQL to3100/3101/3310, viewer3102 and explicit demo3103. Add checked one-command startup, global port history, fixed QA listeners and legacy-hosting stack rules. Preserve existing data and managed-host PORT behavior.
+
 - Add Others nationality country with validated custom label, profile/edit persistence and migration023 consistency checks.
 
 - Open `/display` without sign-in, with active branch selection and anonymous queue polling every 15 seconds.

@@ -297,3 +297,6 @@ Full payment: disabled for zero invoice; exact cent total filled; chosen method/
 - Branch switch, disable and unmount cancel timers and queued/active speech.
 - Unsupported or failed synthesis provides recovery guidance without breaking the visual queue or available chime.
 - Public announcements contain ticket and room only; no patient names or clinical fields.
+## Local startup and port reservations
+
+`tests/local-startup.test.ts` checks fixed Clinic ports, stale database/viewer/origin rejection, Progress Tracker port protection and global registry ownership conflicts. Checks use an isolated temporary harness directory and do not start services or connect to a database. PowerShell launcher validation must additionally verify an unrelated listener is rejected and the existing portable MySQL becomes ready before the application starts. A successful application health check must report live MySQL connectivity on the assigned ports.

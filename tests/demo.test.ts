@@ -1,3 +1,4 @@
+import { startTestServer } from './test-server';
 import { mkdtemp, writeFile, unlink, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1252,8 +1253,7 @@ describe('browser-session demo simulation', () => {
       join(directory, 'index.html'),
       '<!doctype html><title>Synthetic demo fixture</title>',
     );
-    const server = createDemoServer(directory).listen(0, '127.0.0.1');
-    await new Promise<void>((resolve) => server.once('listening', resolve));
+    const server = await startTestServer(createDemoServer(directory), 'demo');
     const origin = 'http://127.0.0.1:' + (server.address() as any).port;
     try {
       const health = await fetch(origin + '/healthz');

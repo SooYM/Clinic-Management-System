@@ -8,7 +8,7 @@ Run from the project directory:
 npm run db:view
 ```
 
-Open http://127.0.0.1:3002. Browser authentication username is `clinic_viewer`; password is the `DB_VIEWER_PASSWORD` value in private `.env`. Select a table to inspect its columns, exact row count and records. Use next/previous to page through every row. JSON fields remain structured; binary attachments are represented as byte counts and Base64. Password hashes and encrypted clinical payloads are database storage, not readable original passwords/photos.
+Open http://127.0.0.1:3102. Browser authentication username is `clinic_viewer`; password is the `DB_VIEWER_PASSWORD` value in private `.env`. Select a table to inspect its columns, exact row count and records. Use next/previous to page through every row. JSON fields remain structured; binary attachments are represented as byte counts and Base64. Password hashes and encrypted clinical payloads are database storage, not readable original passwords/photos.
 
 This utility binds only the local loopback interface. It requires a separate `DB_VIEWER_DATABASE_URL`; there is no fallback to application/root credentials. Its database account has SELECT only, and endpoints permit no SQL commands or modifications. Keep it local and stop with Ctrl+C when finished. It is not mounted inside the production application and is not copied into its Docker runtime image.
 
@@ -17,7 +17,7 @@ This utility binds only the local loopback interface. It requires a separate `DB
 Any MySQL-compatible client can use the same SELECT-only account:
 
 - Host: `127.0.0.1`
-- Port: `33079`
+- Port: `3310`
 - Database: `clinic_dev`
 - Username: `clinic_viewer`
 - Database password: the password component of `DB_VIEWER_DATABASE_URL` in private `.env`.

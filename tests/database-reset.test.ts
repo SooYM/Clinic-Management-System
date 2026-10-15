@@ -1,3 +1,4 @@
+import { startTestServer } from './test-server';
 import 'dotenv/config';
 import { randomUUID, createHash } from 'node:crypto';
 import mysql from 'mysql2/promise';
@@ -135,8 +136,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('guarded entire-database reset',
       );
     }
     reset = new (await import('../src/server/database-reset')).DatabaseResetService();
-    server = (await import('../src/server/app')).createApp().listen(0, '127.0.0.1');
-    await new Promise<void>((resolve) => server.once('listening', resolve));
+    server = await startTestServer((await import('../src/server/app')).createApp(), 'reset');
     base = `http://127.0.0.1:${(server.address() as any).port}`;
   }, 30000);
   afterAll(async () => {

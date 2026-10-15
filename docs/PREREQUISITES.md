@@ -14,7 +14,7 @@
 
 Create an empty database before migrations. `DATABASE_URL` does not create databases. Migration accounts require schema DDL/DML and the named migration lock. Production runtime accounts need SELECT, INSERT, UPDATE and DELETE only; no schema or user-management privileges.
 
-Use `mysql://user:encoded-password@host:port/database`, encoding reserved credential characters. Local origins default to `http://127.0.0.1:5173`. Supply a random `DOCUMENT_SIGNING_KEY` of at least 32 characters. Bootstrap email/password are explicit one-time values; passwords require 14 characters. Remove the bootstrap password afterward. Bootstrap never resets existing accounts.
+Use `mysql://user:encoded-password@host:port/database`, encoding reserved credential characters. Local origins default to `http://127.0.0.1:3100`. Supply a random `DOCUMENT_SIGNING_KEY` of at least 32 characters. Bootstrap email/password are explicit one-time values; passwords require 14 characters. Remove the bootstrap password afterward. Bootstrap never resets existing accounts.
 
 The repository excludes private `.env`, database files, credentials and `.local` development binaries. `scripts/start-local-mysql.ps1` supports the original Windows installation only. A fresh clone needs its own MySQL server or documented Docker installation.
 

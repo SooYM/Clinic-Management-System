@@ -1475,7 +1475,7 @@ export class ClinicService {
       await this.audit(db, ctx, 'ISSUE', 'document', inserted.rows[0].id);
       return {
         ...camel(inserted.rows[0]),
-        verificationUrl: `${process.env.PUBLIC_URL || 'http://localhost:5173'}/verify/${token}`,
+        verificationUrl: `${process.env.PUBLIC_URL || 'http://127.0.0.1:3100'}/verify/${token}`,
       };
     });
   }

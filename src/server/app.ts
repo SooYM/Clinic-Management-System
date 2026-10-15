@@ -61,7 +61,7 @@ export function createApp(service = new ClinicService()) {
     if (
       !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
       req.headers.origin &&
-      req.headers.origin !== (process.env.APP_ORIGIN || 'http://localhost:5173')
+      req.headers.origin !== (process.env.APP_ORIGIN || 'http://127.0.0.1:3100')
     )
       return res
         .status(403)
@@ -390,7 +390,7 @@ export function createApp(service = new ClinicService()) {
         revokedAt: d.revoked_at,
       });
       const qr = await QRCode.toBuffer(
-        `${process.env.PUBLIC_URL || process.env.APP_ORIGIN || 'http://localhost:5173'}/verify/${d.verification_hash}`,
+        `${process.env.PUBLIC_URL || process.env.APP_ORIGIN || 'http://127.0.0.1:3100'}/verify/${d.verification_hash}`,
       );
       const download = z.enum(['1']).optional().parse(req.query.download);
       const doc = new PDFDocument({ size: 'A4', margin: 55 });

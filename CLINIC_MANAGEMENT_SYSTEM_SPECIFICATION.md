@@ -319,6 +319,10 @@ Non-Malaysian Country of nationality includes Others. Choosing it requires a use
 
 Selecting a search suggestion fills its full visible label and retains the chosen entity ID. Pointer and keyboard selection do not submit the form. Cancelling an unsaved clinical patient switch restores the prior search and preserves the draft. The public waiting-room display unlocks and resumes one reusable audio context from Enable announcements, plays a sample, and sounds for newly called tickets or changed rooms, including the first call after an empty queue. Initial/branch snapshots, reordering, removals and consultation-stage changes remain silent. Audio failures provide retry guidance.
 
+## Fixed local infrastructure
+
+Local infrastructure uses fixed, registered ports: frontend3100, API3101, MySQL3310, viewer3102, explicit demo3103 and isolated QA3110–3114. Progress Tracker exclusively owns3001 and uses MySQL3307. Start apps with `webapp clinic` or `webapp progress`; collisions fail without fallback or process termination. See [startup harness](docs/LOCAL_HARNESS.md). Hosting-provided production PORT remains authoritative on its host. Legacy PHP-only hosting cannot run this Express backend unchanged.
+
 ## Spoken waiting-room calls
 
 Enable announcements activates the chime and browser speech with a sample. Each newly called ticket or changed room is read after the chime, for example: “Ticket Q zero zero one, please proceed to Room 2.” Ticket digits preserve leading zeros. Multiple calls are queued individually; unchanged/status-only/removed tickets and initial or branch snapshots do not repeat. Branch changes, disabling and page closure cancel pending/active speech. English browser voices are preferred; unsupported/failed speech shows recovery guidance while the chime remains available. Only anonymous ticket numbers and configured public room names are spoken.

@@ -217,7 +217,7 @@ Temperature accepts28°C–40°C inclusive. Leave it blank when no reading is be
 
 ## Waiting-room screen without sign-in
 
-Open `/display` on the clinic website; locally use `http://127.0.0.1:5173/display`. Choose the clinic branch from the dropdown. Calling/waiting ticket numbers and rooms refresh every 15 seconds. Patient names and medical details are hidden. Choose another branch to change the queue. Staff still sign in to manage visits; this screen only displays information.
+Open `/display` on the clinic website; locally use `http://127.0.0.1:3100/display`. Choose the clinic branch from the dropdown. Calling/waiting ticket numbers and rooms refresh every 15 seconds. Patient names and medical details are hidden. Choose another branch to change the queue. Staff still sign in to manage visits; this screen only displays information.
 
 ## Country not in the nationality list
 

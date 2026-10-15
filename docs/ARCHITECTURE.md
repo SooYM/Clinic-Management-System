@@ -1,5 +1,7 @@
 # V2 architecture
 
+The optional global launcher reads fixed reservations and delegates to project `start.ps1`. Clinic verifies configuration, listener ownership and authenticated MySQL readiness before starting Vite3100 and Express3101. Existing local MySQL data stays on3310. Viewer3102, explicit demo3103 and QA3110–3114 have separate reservations. Unknown listeners fail closed; metadata-only logs retain lifecycle history. See [workstation harness](LOCAL_HARNESS.md). New PHP/MySQL hosting defaults do not rewrite this existing Node backend.
+
 ## Deployment shape
 
 The system is a modular monolith: one React workspace, one Express API and a separate notification worker share MySQL 8.4.

@@ -1,5 +1,7 @@
 # Deployment and recovery
 
+The owner's future-project default is legacy Exabytes PHP/MySQL hosting. Static React/Angular assets fit that profile; the current Clinic Express backend and Progress Next.js server require verified Node hosting or separately scoped migration. Do not downgrade runtimes or remove persistent workflows to claim compatibility. Exabytes documents [provider-enabled Node applications](https://support.exabytes.com.my/en/support/solutions/articles/14000131600-node-js-for-cpanel); this does not certify the legacy account. Local startup and fixed allocations are documented in [the harness guide](LOCAL_HARNESS.md).
+
 The real application build and MySQL integration tests can be verified locally. Normal build/start uses MySQL; build:demo/start:demo serves the separate simulated browser demo. Docker is unavailable on this workstation, so the container build, HTTPS ingress and remote database TLS handshake remain deployment-host checks. No cloud deployment has been performed.
 
 For the free Render browser demo, follow [RENDER_UPGRADE.md](RENDER_UPGRADE.md) and [render.yaml](../render.yaml). It has no database or worker and preloads fictional sessionStorage examples only. The rest of this guide covers the separate real MySQL application.
@@ -48,7 +50,7 @@ docker compose --env-file .env.deploy ps
 docker compose --env-file .env.deploy logs --tail=100 app
 ```
 
-Place an HTTPS reverse proxy in front of `127.0.0.1:3001`. Preserve host and configured origin; forward client IP only through the trusted proxy. SSE queue connections require proxy buffering disabled and a read timeout exceeding the 20-second heartbeat. HTTP cookies are `Secure` in production, so browser sign-in must use HTTPS. Check `GET /api/health` through the deployed origin; it verifies live database connectivity. Startup migration checks run before this endpoint becomes available.
+Place an HTTPS reverse proxy in front of `127.0.0.1:3101`. Preserve host and configured origin; forward client IP only through the trusted proxy. SSE queue connections require proxy buffering disabled and a read timeout exceeding the 20-second heartbeat. HTTP cookies are `Secure` in production, so browser sign-in must use HTTPS. Check `GET /api/health` through the deployed origin; it verifies live database connectivity. Startup migration checks run before this endpoint becomes available.
 
 ## Notification worker
 

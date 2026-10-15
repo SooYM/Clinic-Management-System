@@ -1,5 +1,7 @@
 # Clinic system flow
 
+Local startup: `webapp clinic` → validate registry/configuration → reject occupied application ports → verify owned MySQL instance → start if needed → authenticated readiness → API3101 and Vite3100. Progress uses its own startup script on3001/MySQL3307. Ctrl+C stops the foreground app; databases remain running. Startup never initializes, migrates, seeds or resets data. See [harness instructions](LOCAL_HARNESS.md).
+
 ## Main staff workflow
 
 Queue movement, document issuance and checkout are explicit staff actions. Signing does not automatically complete a queue visit or collect payment.

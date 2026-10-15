@@ -25,7 +25,7 @@ describe('deployment configuration', () => {
   );
   it('accepts complete same-origin production configuration and encoded credentials', () => {
     expect(validateDeploymentConfig(production)).toEqual({
-      port: 3001,
+      port: 3101,
       host: '127.0.0.1',
       trustProxyHops: 0,
     });
@@ -116,7 +116,7 @@ describe('deployment configuration', () => {
         DATABASE_TLS: 'false',
         ALLOW_PRIVATE_DATABASE_PLAINTEXT: 'true',
       }).port,
-    ).toBe(3001));
+    ).toBe(3101));
   it('rejects misspelled TLS flag', () =>
     expect(() => validateDeploymentConfig({ ...production, DATABASE_TLS: 'yes' })).toThrow(
       'DATABASE_TLS must be',

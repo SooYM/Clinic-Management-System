@@ -21,7 +21,7 @@ export function validateDeploymentConfig(env: NodeJS.ProcessEnv): DeploymentConf
     throw new Error('NODE_ENV must be development, test, or production.');
   if (!env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
   const db = databaseUrl(env.DATABASE_URL),
-    port = Number(env.PORT || 3001),
+    port = Number(env.PORT || 3101),
     trustProxyHops = Number(env.TRUST_PROXY_HOPS || 0);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('PORT must be an integer between 1 and 65535.');
