@@ -363,7 +363,7 @@ export const schemas = {
               description: text,
               quantity: integer,
               unitPriceCents: cents,
-              category: z.enum(['SERVICE', 'PRODUCT']),
+              category: z.string().trim().min(1).max(200),
             })
             .strict(),
         )

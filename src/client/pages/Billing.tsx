@@ -7,6 +7,7 @@ import { api } from '../api';
 import { useConfirm } from '../Confirmation';
 import {
   Empty,
+  ErrorNotice,
   Field,
   MutationForm,
   PageTitle,
@@ -19,6 +20,7 @@ import {
   useResource,
 } from '../components';
 import { type Patient, type Reference, money } from '../types';
+import type { CatalogEntry } from '../../shared/catalogs';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 interface BillingSuggestion {
   id: number;
@@ -56,6 +58,14 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
   const checkoutForm = useRef<HTMLDivElement>(null);
   const invoices = useResource<Invoice[]>('/invoices', 15000);
   const suggestions = useResource<BillingSuggestion[]>('/billing/suggestions', 15000);
+  const categories = useResource<CatalogEntry[]>(
+    '/references/catalogs?kind=BILLING_CATEGORY',
+    15000,
+  );
+  const activeCategories = (categories.data || []).filter((entry) => entry.active);
+  const defaultCategory = (preferred: 'SERVICE' | 'PRODUCT') =>
+    activeCategories.find((entry) => entry.billingDefault === preferred)?.label || '';
+  const initialCategoriesLoaded = useRef(false);
   const [selectedVisit, setSelectedVisit] = useState<BillingSuggestion>();
   const handoffConsumed = useRef(false);
   const [handoffMissing, setHandoffMissing] = useState(false);
@@ -73,12 +83,20 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
   const [section, setSection] = useState('checkout');
   const [previewInvoice, setPreviewInvoice] = useState<number>();
   const [lines, setLines] = useState<Line[]>([
-    { description: '', quantity: 1, unitPriceCents: 0, category: 'SERVICE' },
+    { description: '', quantity: 1, unitPriceCents: 0, category: '' },
   ]);
   const [payments, setPayments] = useState<Payment[]>([
     { method: 'CASH', amountCents: 0, reference: '' },
   ]);
   const [checkoutKey, setCheckoutKey] = useState(crypto.randomUUID());
+  useEffect(() => {
+    if (!categories.data || initialCategoriesLoaded.current) return;
+    initialCategoriesLoaded.current = true;
+    if (!checkoutDirty.current)
+      setLines((current) =>
+        current.map((line) => ({ ...line, category: defaultCategory('SERVICE') })),
+      );
+  }, [categories.data]);
   const total = lines.reduce((sum, l) => sum + l.quantity * l.unitPriceCents, 0);
   const paid = payments.reduce((sum, p) => sum + p.amountCents, 0);
   const updateLine = (index: number, patch: Partial<Line>) =>
@@ -126,9 +144,16 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
             description: rx.itemName,
             quantity: rx.quantity,
             unitPriceCents: rx.unitPriceCents,
-            category: 'PRODUCT',
+            category: defaultCategory('PRODUCT'),
           }))
-        : [{ description: 'Consultation', quantity: 1, unitPriceCents: 0, category: 'SERVICE' }],
+        : [
+            {
+              description: 'Consultation',
+              quantity: 1,
+              unitPriceCents: 0,
+              category: defaultCategory('SERVICE'),
+            },
+          ],
     );
     setPayments([{ method: 'CASH', amountCents: 0, reference: '' }]);
     scrollToCheckout();
@@ -148,7 +173,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     });
   }
   useEffect(() => {
-    if (!suggestions.data || handoffConsumed.current) return;
+    if (!suggestions.data || !categories.data || handoffConsumed.current) return;
     handoffConsumed.current = true;
     const key = `clinic:billing-handoff:${api.getBranch() || 'default'}`;
     const encounterId = Number(sessionStorage.getItem(key));
@@ -157,7 +182,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     const visit = suggestions.data.find((row) => row.encounterId === encounterId);
     if (visit) chooseVisit(visit);
     else setHandoffMissing(true);
-  }, [suggestions.data]);
+  }, [suggestions.data, categories.data]);
   return (
     <>
       <PageTitle
@@ -219,13 +244,28 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   setSelectedVisit(undefined);
                   checkoutDirty.current = false;
                   setLines([
-                    { description: '', quantity: 1, unitPriceCents: 0, category: 'SERVICE' },
+                    {
+                      description: '',
+                      quantity: 1,
+                      unitPriceCents: 0,
+                      category: defaultCategory('SERVICE'),
+                    },
                   ]);
                   setPayments([{ method: 'CASH', amountCents: 0, reference: '' }]);
                   setSection('invoices');
                   setCheckoutKey(crypto.randomUUID());
                 }}
                 onSubmit={async (f) => {
+                  if (categories.loading || categories.error)
+                    throw new Error(
+                      'Billing categories could not be loaded. Refresh and try again.',
+                    );
+                  if (
+                    lines.some(
+                      (line) => !activeCategories.some((entry) => entry.label === line.category),
+                    )
+                  )
+                    throw new Error('Choose an active billing category for every invoice item.');
                   if (total <= 0 || paid !== total)
                     throw new Error(
                       'Payment total must equal the invoice total. Adjust the split amounts before checkout.',
@@ -269,7 +309,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                               description: '',
                               quantity: 1,
                               unitPriceCents: 0,
-                              category: 'SERVICE',
+                              category: defaultCategory('SERVICE'),
                             },
                           ]);
                           setPayments([{ method: 'CASH', amountCents: 0, reference: '' }]);
@@ -291,6 +331,24 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                 </div>
                 <fieldset>
                   <legend>Invoice items</legend>
+                  {categories.loading ? (
+                    <p className="form-help" role="status">
+                      Loading billing categories…
+                    </p>
+                  ) : categories.error ? (
+                    <>
+                      <ErrorNotice>{categories.error}</ErrorNotice>
+                      <button type="button" className="secondary" onClick={categories.refresh}>
+                        Retry billing categories
+                      </button>
+                    </>
+                  ) : (
+                    <p className="form-help">
+                      {activeCategories.length
+                        ? 'Administrators manage categories in Administration → Catalog choices. Removed or renamed categories must be selected again.'
+                        : 'No active billing categories. Ask an administrator to add or restore categories in Administration → Catalog choices.'}
+                    </p>
+                  )}
                   {lines.map((l, i) => (
                     <div className="invoice-line" key={i}>
                       <Field label="Description">
@@ -325,11 +383,23 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                       </Field>
                       <Field label="Category">
                         <select
+                          required
                           value={l.category}
+                          disabled={categories.loading || !!categories.error}
                           onChange={(e) => updateLine(i, { category: e.target.value })}
                         >
-                          <option>SERVICE</option>
-                          <option>PRODUCT</option>
+                          <option value="">Select category</option>
+                          {l.category &&
+                            !activeCategories.some((entry) => entry.label === l.category) && (
+                              <option value={l.category} disabled>
+                                {l.category} (unavailable — choose category)
+                              </option>
+                            )}
+                          {activeCategories.map((entry) => (
+                            <option key={entry.id} value={entry.label}>
+                              {entry.label}
+                            </option>
+                          ))}
                         </select>
                       </Field>
                       <button
@@ -353,7 +423,12 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                       checkoutDirty.current = true;
                       setLines((v) => [
                         ...v,
-                        { description: '', quantity: 1, unitPriceCents: 0, category: 'SERVICE' },
+                        {
+                          description: '',
+                          quantity: 1,
+                          unitPriceCents: 0,
+                          category: defaultCategory('SERVICE'),
+                        },
                       ]);
                     }}
                   >

@@ -1,3 +1,4 @@
+import { createBillingCategoryDefaults } from './db/billing-category-defaults.js';
 import { idSchema } from '../shared/identifiers.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
@@ -383,6 +384,7 @@ export function administrationRouter() {
           [req.context.actor.tenantId, input.name, input.address],
         );
         const id = inserted.insertId!;
+        await createBillingCategoryDefaults(db, req.context.actor.tenantId, id);
         await db.query('INSERT INTO user_branches(user_id,branch_id) VALUES($1,$2)', [
           req.context.actor.id,
           id,

@@ -1,5 +1,9 @@
 # Implementation validation
 
+## Editable billing categories — 2026-10-15
+
+All 442 tests across 30 files passed, including guarded MySQL category permissions, scope, archival, default-marker rename and historical idempotency cases. Production and demo builds passed. Real MySQL browser acceptance created/renamed/reordered/archived/restored a category, selected it during an actual fictional MYR25 checkout, previewed the receipt, verified the stored historical category after rename, and confirmed five audited catalogue changes. A billing-only account could read choices and received 403 on admin writes. The 390px layout fitted without horizontal overflow. Product default-marker autocharges were covered by code/API checks, not browser acceptance. Disposable browser databases, sessions and owned server were cleaned up. Migration024 followed a local backup; all prior rows remained across 32 tables and 26 numeric entity IDs, with 24 migrations applied. Render deployment was not verified.
+
 ## Fixed ports and global startup harness — 2026-10-15
 
 The full suite passed 436 tests across28 files. After adding registry checks and asynchronous lifecycle logging, all178 affected MySQL/reset/demo tests passed again. Startup/deployment focused checks, typecheck, production/demo builds, formatting and PowerShell parsing passed. Tests use fixed3110–3114 listeners and guarded disposable MySQL databases; no random application/test port remains.

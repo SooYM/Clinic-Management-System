@@ -173,6 +173,10 @@ Appointment-arrival reads use minimal queue-authorized projections, not appointm
 
 Shared SearchBox owns accessible combobox/listbox behavior, bounded suggestions and keyboard/pointer selection. useResource exposes pending refresh state and settled path to hide stale query results without remounting drafts. Shared patient lookup preserves selected numeric IDs; generic ListControls suggests only loaded matching records. Custom patient, medicine, prescription and stock lookups use authorized API projections. Registration handoff intent is one-time and branch-scoped; it grants no module access.
 
+## Billing category boundary
+
+Billing categories reuse `CatalogService`, scoped `reference_catalogs` and the existing admin editor. Shared category types and invoice validation serve both MySQL and demo adapters. Branch creation and bootstrap share the default initializer; migration024 initializes existing branches. Immutable default markers survive label edits so automatic medicine handoff remains correctly classified. Checkout reads active references independently of clinical permissions, refreshes without replacing drafts, and blocks stale labels until reselection. Invoice creation validates locked scoped choices after idempotency replay lookup; historical invoice/receipt snapshots remain unchanged.
+
 ## Anonymous display boundary
 
 `public-display.ts` provides a separate read-only router mounted before staff authentication and after shared API security/rate-limit middleware. It returns active public branch branding and a deliberately small anonymous queue projection. Explicit branch selection resolves tenant scope in SQL; no patient or practitioner join is needed. Malaysia service-day, 12-hour lifetime and expiry predicates apply independently of staff lifecycle cleanup. Staff queue endpoints preserve their existing authentication, CSRF and module permissions. The browser polls every 15 seconds; it does not reuse staff SSE credentials. Render demo remains browser-local simulation rather than a shared clinical database.

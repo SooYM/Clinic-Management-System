@@ -138,7 +138,7 @@ const sectionGuides: Record<string, [string, string, string][]> = {
     [
       'catalogs',
       'Catalog choices',
-      'Maintain drugs, inventory units, lab panels, specimen types and referral destinations. Archived choices remain in history and disappear from new selections.',
+      'Maintain billing categories, drugs, inventory units, lab panels, specimen types and referral destinations. Archived choices remain in history and disappear from new selections.',
     ],
     [
       'access',

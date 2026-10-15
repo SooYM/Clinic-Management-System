@@ -297,6 +297,10 @@ Full payment: disabled for zero invoice; exact cent total filled; chosen method/
 - Branch switch, disable and unmount cancel timers and queued/active speech.
 - Unsupported or failed synthesis provides recovery guidance without breaking the visual queue or available chime.
 - Public announcements contain ticket and room only; no patient names or clinical fields.
+## Editable billing categories
+
+`tests/billing-categories.test.ts`, `tests/demo-billing-categories.test.ts` and the guarded MySQL workflow cover bounded free category labels, administrator CRUD, billing-only reference permissions, tenant/branch isolation, archived/unknown rejection, all-archived rejection, immutable default markers after rename, new branch defaults and historical invoice/idempotency preservation. Database-reset tests require only master defaults after reset, including two editable billing categories. Browser acceptance additionally checks add/rename/order/remove/restore, refreshed checkout selections, actual paid invoice snapshots and phone layout against the real backend.
+
 ## Local startup and port reservations
 
 `tests/local-startup.test.ts` checks fixed Clinic ports, stale database/viewer/origin rejection, Progress Tracker port protection and global registry ownership conflicts. Checks use an isolated temporary harness directory and do not start services or connect to a database. PowerShell launcher validation must additionally verify an unrelated listener is rejected and the existing portable MySQL becomes ready before the application starts. A successful application health check must report live MySQL connectivity on the assigned ports.

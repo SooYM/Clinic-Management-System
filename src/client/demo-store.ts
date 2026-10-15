@@ -1,4 +1,4 @@
-import { catalogKinds } from '../shared/catalogs';
+import { catalogKinds, defaultBillingCategories } from '../shared/catalogs';
 import { malaysiaDate } from '../shared/clinic-dates';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { buildReceiptView } from '../shared/receipt-view';
@@ -495,6 +495,7 @@ export class DemoClinic {
       this.state.counters.catalogs = this.state.rows.catalogs.length;
     }
     for (const branch of this.state.rows.branches) {
+      this.ensureBillingCategories(branch.id);
       branch.active ??= true;
       branch.version ??= 1;
     }
@@ -528,6 +529,7 @@ export class DemoClinic {
   reset() {
     this.storage.removeItem(key);
     this.state = seed();
+    for (const branch of this.state.rows.branches) this.ensureBillingCategories(branch.id);
   }
   private databaseResetDefaults() {
     return {
@@ -537,7 +539,13 @@ export class DemoClinic {
       administratorEmail: 'admin@example.test',
       administratorName: 'Clinic Administrator',
       rooms: ['Room 01', 'Room 02', 'Treatment Room'],
-      catalogs: { LAB_PANEL: [], SPECIMEN_TYPE: [], INVENTORY_UNIT: [], REFERRAL_DESTINATION: [] },
+      catalogs: {
+        BILLING_CATEGORY: [...defaultBillingCategories],
+        LAB_PANEL: [],
+        SPECIMEN_TYPE: [],
+        INVENTORY_UNIT: [],
+        REFERRAL_DESTINATION: [],
+      },
     };
   }
   private resetEntireDatabase(actor: Row) {
@@ -557,6 +565,7 @@ export class DemoClinic {
     );
     branch.branchId = branch.id;
     branch.branchNumber = branch.id;
+    this.ensureBillingCategories(branch.id);
     const admin = this.add(
       'users',
       {
@@ -1079,7 +1088,13 @@ export class DemoClinic {
         fail('Select a valid choice list.');
       if (
         route === '/references/catalogs' &&
-        !modules.includes(kind === 'INVENTORY_UNIT' ? 'inventory' : 'clinical')
+        !modules.includes(
+          kind === 'BILLING_CATEGORY'
+            ? 'billing'
+            : kind === 'INVENTORY_UNIT'
+              ? 'inventory'
+              : 'clinical',
+        )
       )
         fail('Choice list access denied.', 403);
       if (method === 'GET')
@@ -1130,6 +1145,7 @@ export class DemoClinic {
         'catalogs',
         {
           kind: entryKind,
+          billingDefault: null,
           label,
           sortOrder: body.sortOrder ?? 0,
           active: body.active ?? true,
@@ -2044,6 +2060,8 @@ export class DemoClinic {
         if (prior.requestHash !== hash) fail('Payment key has different details.', 409);
         return this.enrich(prior);
       }
+      for (const line of v.lines)
+        this.validateCatalogChoice('BILLING_CATEGORY', line.category, branch);
       const patient = this.record('patients', v.patientId, branch),
         clinicBranch = this.state.rows.branches.find((b) => b.id === branch)!;
       this.doctor(v.practitionerId, branch);
@@ -2273,6 +2291,7 @@ export class DemoClinic {
       const b = this.add('branches', { ...input, active: true }, 0);
       b.branchId = b.id;
       b.branchNumber = b.id;
+      this.ensureBillingCategories(b.id);
       user.branchIds.push(b.id);
       return b;
     }
@@ -2427,6 +2446,15 @@ export class DemoClinic {
     );
     if (!doctor) fail('Choose an active GP in this branch.');
     return doctor!;
+  }
+  private ensureBillingCategories(branch: number) {
+    if (this.scoped('catalogs', branch).some((entry) => entry.kind === 'BILLING_CATEGORY')) return;
+    for (const [sortOrder, label] of defaultBillingCategories.entries())
+      this.add(
+        'catalogs',
+        { kind: 'BILLING_CATEGORY', label, billingDefault: label, active: true, sortOrder },
+        branch,
+      );
   }
   private validateCatalogChoice(kind: string, label: string, branch: number) {
     const choices = this.scoped('catalogs', branch).filter((entry) => entry.kind === kind);

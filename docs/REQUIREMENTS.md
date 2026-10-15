@@ -62,6 +62,8 @@ Administrator-managed choices cover drugs, supplies, rooms, lab panels, specimen
 
 Administrator name/removal controls cover staff, branches, rooms and managed catalog/inventory choices. Removed settings stay restorable when history requires retention. Receipt layout follows the supplied clinic reference using actual data, explicit preview/download and future immutable identity/cashier snapshots.
 
+Billing category choices must be administrator-editable, ordered and branch-scoped. Rename/archive/restore requires confirmation and preserves historical invoices. Defaults remain tied to automatic consultation/medicine charges after renaming. Billing-only roles can read choices; unauthorized roles cannot manage them. Stale checkout labels require explicit reselection while retaining other draft fields.
+
 
 ## Interaction acceptance
 

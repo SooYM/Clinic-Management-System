@@ -2,7 +2,7 @@
 
 ## Final schema
 
-MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `023_patient_custom_country.sql`.
+MySQL 8.4 with InnoDB is the supported database. Run every numbered migration from `001_initial.sql` through `024_billing_categories.sql`.
 The final schema is their combined result, including the numeric conversion helper; the initial migration alone is historical schema.
 Do not edit applied migrations. The runner checks migration content and the numeric helper checksum.
 
@@ -147,6 +147,8 @@ Existing signed encounters and business records are not rewritten or backfilled.
 Reservations subtract from eligible availability but not physical batch quantity. Dispensing closes own holds and atomically records physical depletion; shortages roll back both ledger and quantity changes.
 
 ## Managed branch catalogs
+
+Migration 024 extends `reference_catalogs.kind` with BILLING_CATEGORY and adds nullable `billing_default`. Existing branches receive editable SERVICE/PRODUCT master choices; new branches and administrator bootstrap/reset create the same defaults. This initializes configuration only, without clinical fixtures. A CHECK restricts the immutable default marker to SERVICE/PRODUCT on billing entries; a unique branch/kind/marker key prevents duplicate defaults. Renaming labels preserves automatic charge classification. Invoice JSON and receipt snapshots retain historical labels. Configured lists with every entry archived reject new invoice categories; only unconfigured legacy branches retain the SERVICE/PRODUCT API fallback.
 
 Migration 014 adds numeric-ID reference_catalogs with tenant/branch scope, kind, label, active status, ordering and optimistic version. Scoped kind/label uniqueness prevents duplicate choices. Inventory items gain active status, version and update time. Existing items remain active; no local choices or business fixtures are inserted.
 

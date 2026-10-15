@@ -6,7 +6,7 @@ This specification describes the implemented GP clinic application replacing the
 It incorporates the user's current requirements rather than preserving superseded PostgreSQL, UUID or specialty-workflow proposals as active scope.
 
 The required platform is MySQL 8.4/InnoDB, TypeScript, React and a modular Express backend.
-All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–023.
+All 26 entity tables use unsigned auto-increment numeric primary keys and matching numeric foreign keys after migrations 001–024.
 Session secrets, document verification tokens and idempotency keys remain opaque strings; they are not entity identifiers.
 
 Executable migrations and validators are authoritative for exact column types and bounds.
@@ -240,6 +240,8 @@ No real patient information, provider secrets or database credentials belong in 
 
 
 ## Administrator-managed catalog choices
+
+Billing categories are persistent branch-scoped catalog choices. Administrators add, rename, order, archive and restore them with confirmation, optimistic concurrency and auditing. Editable SERVICE/PRODUCT defaults initialize existing and newly created branches, including reset bootstrap. An immutable default marker preserves automatic consultation/medicine classification when labels change. Billing users read active choices without clinical-module access. Checkout validates active scoped labels transactionally; stale draft selections require reselection. Archive/rename never rewrites paid invoice or receipt snapshots, and exact idempotent retries remain valid after catalog changes.
 
 Administrators edit drugs, supplies, rooms, lab panels, specimen types, inventory units and referral destinations. Choices are branch scoped and can be archived/restored. New prescribing uses active medication items. Used item categories, ingredients and units stay fixed. New signed prescriptions retain authoritative medicine snapshots; legacy records without snapshots use catalog fallback. Existing signed prescriptions remain dispensable after archival. Workflow statuses and role codes remain fixed application rules.
 

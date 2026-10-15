@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { pool, transaction, camel, type Database } from './db.js';
 import type { Context } from './security.js';
 import { DomainError } from '../domain/models.js';
-import { catalogKinds, type CatalogKind } from '../shared/catalogs.js';
+import { catalogKinds, defaultBillingCategories, type CatalogKind } from '../shared/catalogs.js';
 import { schemas, validateItemIngredient } from './validation.js';
 const fields = {
   label: z.string().trim().min(1).max(200),
@@ -47,8 +47,11 @@ export async function validateCatalogChoices(
       [ctx.actor.tenantId, ctx.branchId, kind],
     )
   ).rows;
-  if (!rows.length) return;
-  if (labels.some((label) => !rows.some((row) => row.active && row.label === label)))
+  if (!rows.length && kind !== 'BILLING_CATEGORY') return;
+  const choices = rows.length
+    ? rows
+    : defaultBillingCategories.map((label) => ({ label, active: true }));
+  if (labels.some((label) => !choices.some((row) => row.active && row.label === label)))
     throw new DomainError(
       'INACTIVE_CATALOG_CHOICE',
       `Select an active ${kind.toLowerCase().replace(/_/g, ' ')} from this branch.`,
@@ -72,7 +75,7 @@ export class CatalogService {
   async list(ctx: Context, kind?: CatalogKind, activeOnly = false) {
     const rows = (
       await this.db.query(
-        'SELECT id,kind,label,active,sort_order,version,created_at,updated_at FROM reference_catalogs WHERE tenant_id=$1 AND branch_id=$2 AND ($3 IS NULL OR kind=$3) AND ($4=0 OR active=1) ORDER BY kind,sort_order,label,id',
+        'SELECT id,kind,label,billing_default,active,sort_order,version,created_at,updated_at FROM reference_catalogs WHERE tenant_id=$1 AND branch_id=$2 AND ($3 IS NULL OR kind=$3) AND ($4=0 OR active=1) ORDER BY kind,sort_order,label,id',
         [ctx.actor.tenantId, ctx.branchId, kind || null, activeOnly ? 1 : 0],
       )
     ).rows;
@@ -121,7 +124,7 @@ export class CatalogService {
       );
       const row = (
         await db.query(
-          'SELECT id,kind,label,active,sort_order,version,created_at,updated_at FROM reference_catalogs WHERE id=$1',
+          'SELECT id,kind,label,billing_default,active,sort_order,version,created_at,updated_at FROM reference_catalogs WHERE id=$1',
           [id],
         )
       ).rows[0];

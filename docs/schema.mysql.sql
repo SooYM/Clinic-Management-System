@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-023, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-024, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -533,11 +533,14 @@ CREATE TABLE `reference_catalogs` (
   `version` int NOT NULL DEFAULT '1',
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `billing_default` varchar(10) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `catalog_label` (`branch_id`,`kind`,`label`),
+  UNIQUE KEY `billing_category_default_once` (`branch_id`,`kind`,`billing_default`),
   KEY `catalog_choices` (`tenant_id`,`branch_id`,`kind`,`active`,`sort_order`,`id`),
   CONSTRAINT `reference_catalogs_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
-  CONSTRAINT `reference_catalogs_chk_1` CHECK ((`kind` in (_utf8mb4'LAB_PANEL',_utf8mb4'SPECIMEN_TYPE',_utf8mb4'INVENTORY_UNIT',_utf8mb4'REFERRAL_DESTINATION'))),
+  CONSTRAINT `billing_category_default` CHECK (((`billing_default` is null) or ((`kind` = _utf8mb4'BILLING_CATEGORY') and (`billing_default` in (_utf8mb4'SERVICE',_utf8mb4'PRODUCT'))))),
+  CONSTRAINT `reference_catalog_kind` CHECK ((`kind` in (_utf8mb4'LAB_PANEL',_utf8mb4'SPECIMEN_TYPE',_utf8mb4'INVENTORY_UNIT',_utf8mb4'REFERRAL_DESTINATION',_utf8mb4'BILLING_CATEGORY'))),
   CONSTRAINT `reference_catalogs_chk_2` CHECK (((`sort_order` >= 0) and (`sort_order` <= 1000000))),
   CONSTRAINT `reference_catalogs_chk_3` CHECK ((`version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

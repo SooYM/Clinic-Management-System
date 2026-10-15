@@ -199,6 +199,12 @@ The `/display` browser route needs no login. Its read-only endpoints run after t
 
 Clients poll every 15 seconds; no public SSE session is created. Existing `/api/queue`, `/api/queue/display` and `/api/queue/events` remain authenticated and permission-controlled. POST requests do not create a public queue mutation route.
 
+## Billing category catalog contract
+
+`GET /api/references/catalogs?kind=BILLING_CATEGORY` returns active branch choices to billing-authorized users. Administrator catalog reads include archived entries. Existing `POST /api/admin/catalogs` and `PUT /api/admin/catalogs/:id` manage label (trimmed 1–200 characters), active state, display order and optimistic version. Management requires ADMIN, branch scope and CSRF. Responses expose nullable `billingDefault` (SERVICE/PRODUCT), which clients cannot assign or change. Labels may change while the marker stays fixed.
+
+`POST /api/invoices` accepts category labels up to 200 characters and validates them against active tenant/branch billing choices inside its transaction. Unknown or archived choices fail with `INACTIVE_CATALOG_CHOICE`. An unconfigured legacy branch accepts SERVICE/PRODUCT only; a configured list with every choice archived accepts neither. Existing invoice retries with the same request and idempotency key are resolved before current catalog validation. No paid invoice lines or receipt snapshots change when catalog labels change.
+
 ## Custom nationality country contract
 
 POST/PUT /api/patients accepts countryCode=OTHER with countryName (trimmed 1–100 characters) for NON_MALAYSIAN. Missing/blank/oversized custom names return validation400 at countryName; OTHER without foreign nationality rejects. Read/list payloads include nullable countryName. Explicit ISO selection or MALAYSIAN/MY clears countryName. Legacy edit payloads omitting both country fields preserve a previous OTHER/name pair; switching away from Malaysian nationality without a country retains the existing unknown-country fallback. Phone calling-code choices retain their existing behavior.

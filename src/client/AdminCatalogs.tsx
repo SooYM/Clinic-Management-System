@@ -1,6 +1,7 @@
 import type { CatalogEntry } from '../shared/catalogs';
 export type { CatalogEntry } from '../shared/catalogs';
 import { useState } from 'react';
+import { useConfirm } from './Confirmation';
 import { api } from './api';
 import { useListControls } from './ListControls';
 import {
@@ -15,12 +16,14 @@ import {
   useResource,
 } from './components';
 export const catalogKinds = [
+  ['BILLING_CATEGORY', 'Billing categories'],
   ['LAB_PANEL', 'Lab investigation panels'],
   ['SPECIMEN_TYPE', 'Specimen types'],
   ['INVENTORY_UNIT', 'Inventory units'],
   ['REFERRAL_DESTINATION', 'Referral destinations'],
 ] as const;
 export default function AdminCatalogs() {
+  const confirm = useConfirm();
   const [showRemoved, setShowRemoved] = useState(false);
   const [error, setError] = useState('');
   const [kind, setKind] = useState('LAB_PANEL');
@@ -42,7 +45,7 @@ export default function AdminCatalogs() {
     },
   );
   return (
-    <Panel title="Clinical and inventory choices">
+    <Panel title="Clinic catalog choices">
       <p className="form-help">
         Edit choices for future records. Removal hides future choices; recorded document details
         stay unchanged.
@@ -152,6 +155,18 @@ export default function AdminCatalogs() {
                         <button
                           className="secondary"
                           onClick={async () => {
+                            if (
+                              !(await confirm({
+                                title: entry.active
+                                  ? 'Remove this choice?'
+                                  : 'Restore this choice?',
+                                message: entry.active
+                                  ? `Remove “${entry.label}” from future forms? Recorded details remain unchanged.`
+                                  : `Make “${entry.label}” available in future forms again?`,
+                                confirmLabel: entry.active ? 'Remove choice' : 'Restore choice',
+                              }))
+                            )
+                              return;
                             try {
                               setError('');
                               await api.put('/admin/catalogs/' + entry.id, {

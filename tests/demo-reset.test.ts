@@ -164,6 +164,7 @@ describe('fictional demo entire database reset', () => {
       branches: 1,
       users: 1,
       rooms: 3,
+      catalogs: 2,
       audit: 1,
     };
     for (const [table, rows] of Object.entries(after.rows))

@@ -1250,6 +1250,12 @@ export class ClinicService {
           );
         return camel(prior.rows[0]);
       }
+      await validateCatalogChoices(
+        db,
+        ctx,
+        'BILLING_CATEGORY',
+        input.lines.map((line: any) => line.category),
+      );
       let checkoutEncounter: any;
       if (input.encounterId) {
         checkoutEncounter = (

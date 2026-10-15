@@ -8,7 +8,7 @@ const topics = [
       'Sign in with your staff account and choose the correct branch in the sidebar.',
       'Numeric record IDs identify tenants, branches, patients, staff, rooms, consultations, stock, and invoices. Clinical document and queue references remain easy to recognise alongside record IDs.',
       'Use the modules visible in your sidebar. Your administrator controls role access.',
-      'Administrators maintain Clinical and inventory choices for lab panels, specimen types, units and referral destinations. Edit or archive choices for future forms; recorded document details stay preserved.',
+      'Administrators maintain billing categories, lab panels, specimen types, units and referral destinations in Catalog choices. Edit or archive choices for future forms; recorded document details stay preserved.',
       'Administrators use Edit item in Dispensary to correct drug names, prices and reorder levels, or archive and reactivate items. Archived medicines stay in historical prescriptions but disappear from new medicine choices. Category, ingredient and unit cannot change after stock or prescribing history.',
       'Use Account security to change your password. New passwords need at least 14 characters.',
     ],

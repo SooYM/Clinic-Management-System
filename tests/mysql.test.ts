@@ -35,6 +35,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   let admin: mysql.Connection, sql: mysql.Connection, service: any, applicationPool: any;
   let server: Server, baseUrl: string, legacyServer: Server, legacyBaseUrl: string;
   let settingsServer: Server, settingsBaseUrl: string;
+  let migrationBillingDefaults: any[] = [];
   let fixtureSequence = 1_000_000;
   const fixtureId = () => ++fixtureSequence;
   const receptionist = 2,
@@ -78,10 +79,26 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     for (const migration of migrations.filter((name) => name.endsWith('.sql')).sort()) {
       if (migration === '009_numeric_identifiers.sql')
         await (await import('../src/server/db/numeric-ids')).migrateNumericIds(sql);
-      else
+      else {
+        if (migration === '024_billing_categories.sql') {
+          await sql.query(
+            "INSERT INTO tenants(id,name) VALUES(42,'QA Migration'); INSERT INTO branches(id,tenant_id,name) VALUES(42,42,'QA Migration Branch')",
+          );
+        }
         await sql.query(
           await readFile(new URL(`../db/migrations/${migration}`, import.meta.url), 'utf8'),
         );
+        if (migration === '024_billing_categories.sql') {
+          migrationBillingDefaults = (
+            await sql.query(
+              'SELECT label,active FROM reference_catalogs WHERE branch_id=42 ORDER BY sort_order',
+            )
+          )[0] as any[];
+          await sql.query(
+            'DELETE FROM reference_catalogs WHERE branch_id=42; DELETE FROM branches WHERE id=42; DELETE FROM tenants WHERE id=42',
+          );
+        }
+      }
     }
     await sql.query('INSERT INTO tenants(id,name) VALUES(?,?)', [tenant, 'QA Tenant']);
     await sql.query('INSERT INTO branches(id,tenant_id,name) VALUES(?,?,?),(?,?,?)', [
@@ -3325,6 +3342,126 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(
       (await rows('SELECT patient_id FROM invoices WHERE id=?', [bill.id]))[0].patient_id,
     ).toBe(p.id);
+  });
+  it('billing categories persist editable defaults, enforce branch permissions and preserve receipt replay after archival', async () => {
+    expect(migrationBillingDefaults).toEqual([
+      { label: 'SERVICE', active: 1 },
+      { label: 'PRODUCT', active: 1 },
+    ]);
+    const p = await patient();
+    const original = (await (await settingsAdminHttp('/admin/role-modules')).json()).roles.find(
+      (r: any) => r.role === 'RECEPTIONIST',
+    ).modules;
+    const { createBillingCategoryDefaults } =
+      await import('../src/server/db/billing-category-defaults');
+    await createBillingCategoryDefaults(applicationPool, tenant, branch);
+    let createdBranch: any;
+    try {
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: ['billing'],
+      });
+      const refs = await settingsHttp('/references/catalogs?kind=BILLING_CATEGORY');
+      expect(refs.status).toBe(200);
+      const choices = (await refs.json()).data;
+      expect(choices.map((r: any) => r.label)).toEqual(['SERVICE', 'PRODUCT']);
+      expect((await settingsHttp('/references/catalogs?kind=LAB_PANEL')).status).toBe(403);
+      expect(
+        (
+          await settingsHttp('/admin/catalogs', 'POST', {
+            kind: 'BILLING_CATEGORY',
+            label: 'Forbidden',
+          })
+        ).status,
+      ).toBe(403);
+      const entry = choices.find((r: any) => r.label === 'SERVICE');
+      const edited = await settingsAdminHttp('/admin/catalogs/' + entry.id, 'PUT', {
+        label: 'Consultation fees',
+        active: true,
+        sortOrder: 0,
+        version: entry.version,
+      });
+      expect(edited.status).toBe(200);
+      const request = invoice(p.id, randomUUID(), {
+        lines: [
+          {
+            description: 'QA consultation',
+            quantity: 1,
+            unitPriceCents: 1000,
+            category: 'Consultation fees',
+          },
+        ],
+      });
+      const paid = await settingsHttp('/invoices', 'POST', request);
+      expect(paid.status).toBe(201);
+      const saved = await paid.json();
+      expect(
+        (await (await settingsHttp('/references/catalogs?kind=BILLING_CATEGORY')).json()).data.find(
+          (row: any) => row.id === entry.id,
+        ).billingDefault,
+      ).toBe('SERVICE');
+      expect(saved.lines[0].category).toBe('Consultation fees');
+      expect((await settingsHttp('/invoices', 'POST', invoice(p.id))).status).toBe(422);
+      expect(
+        (
+          await settingsAdminHttp('/admin/catalogs/' + entry.id, 'PUT', {
+            label: 'Consultation fees',
+            active: false,
+            sortOrder: 0,
+            version: entry.version + 1,
+          })
+        ).status,
+      ).toBe(200);
+      const replay = await settingsHttp('/invoices', 'POST', request);
+      expect(replay.status).toBe(201);
+      expect((await replay.json()).id).toBe(saved.id);
+      expect(
+        (await settingsHttp('/invoices', 'POST', { ...request, idempotencyKey: randomUUID() }))
+          .status,
+      ).toBe(422);
+      await expect(service.createInvoice(otherCtx, request)).rejects.toMatchObject({
+        code: 'INACTIVE_CATALOG_CHOICE',
+      });
+      expect(
+        (await rows('SELECT `lines` FROM invoices WHERE id=?', [saved.id]))[0].lines[0].category,
+      ).toBe('Consultation fees');
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: ['queue'],
+      });
+      expect((await settingsHttp('/references/catalogs?kind=BILLING_CATEGORY')).status).toBe(403);
+      const created = await settingsAdminHttp('/admin/branches', 'POST', {
+        name: 'QA Billing Defaults',
+        address: '',
+      });
+      expect(created.status).toBe(201);
+      createdBranch = await created.json();
+      expect(
+        (
+          await rows(
+            "SELECT label FROM reference_catalogs WHERE branch_id=? AND kind='BILLING_CATEGORY' ORDER BY sort_order",
+            [createdBranch.id],
+          )
+        ).map((r) => r.label),
+      ).toEqual(['SERVICE', 'PRODUCT']);
+    } finally {
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: original,
+      });
+      await sql.query(
+        "DELETE FROM reference_catalogs WHERE branch_id=? AND kind='BILLING_CATEGORY'",
+        [branch],
+      );
+      if (createdBranch) {
+        await sql.query("DELETE FROM audit_logs WHERE entity_type='branch' AND entity_id=?", [
+          createdBranch.id,
+        ]);
+        await sql.query('DELETE FROM reference_catalogs WHERE branch_id=?', [createdBranch.id]);
+        await sql.query('DELETE FROM user_branches WHERE branch_id=?', [createdBranch.id]);
+        await sql.query('DELETE FROM branches WHERE id=?', [createdBranch.id]);
+      }
+    }
   });
   it('admin catalogs enforce branch, CSRF, active references and optimistic versions', async () => {
     const input = { kind: 'LAB_PANEL', label: 'QA Catalog Panel', sortOrder: 3 };

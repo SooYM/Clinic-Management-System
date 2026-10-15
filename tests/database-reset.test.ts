@@ -263,6 +263,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('guarded entire-database reset',
       'SELECT id,tenant_id,branch_id,email,role,is_super_admin,password_hash FROM users',
     );
     expect(users).toHaveLength(1);
+    expect(
+      (
+        await rows(
+          "SELECT label FROM reference_catalogs WHERE kind='BILLING_CATEGORY' ORDER BY sort_order",
+        )
+      ).map((r) => r.label),
+    ).toEqual(['SERVICE', 'PRODUCT']);
     expect(users[0]).toMatchObject({
       email: 'reset-owner@example.invalid',
       role: 'ADMIN',
@@ -277,7 +284,17 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('guarded entire-database reset',
     ).toBe(true);
     const { RESET_TABLES } = await import('../src/server/database-reset');
     for (const table of RESET_TABLES)
-      if (!['tenants', 'branches', 'users', 'user_branches', 'rooms', 'audit_logs'].includes(table))
+      if (
+        ![
+          'tenants',
+          'branches',
+          'users',
+          'user_branches',
+          'rooms',
+          'audit_logs',
+          'reference_catalogs',
+        ].includes(table)
+      )
         expect(await rows(`SELECT COUNT(*) n FROM \`${table}\``)).toEqual([{ n: 0 }]);
     expect(await rows('SELECT name FROM rooms ORDER BY id')).toEqual([
       { name: 'Room 01' },

@@ -129,7 +129,9 @@ Messages are simulated; receipt and document downloads explain their demo limita
 
 ## Edit dropdown and stock choices
 
-Administrators use **Administration → Catalog choices** to add or edit lab panels, specimen types, inventory units and referral destinations. Set display order, archive unused choices, or restore them. New forms use active choices from the selected branch. Configure these lists before using an empty local installation.
+Administrators use **Administration → Catalog choices** to add or edit billing categories, lab panels, specimen types, inventory units and referral destinations. Set display order, archive unused choices, or restore them. New forms use active choices from the selected branch. Billing starts with editable SERVICE and PRODUCT choices; configure the other lists before using an empty local installation.
+
+Choose **Billing categories** to rename SERVICE or PRODUCT, add another category, change display order, or remove/restore a choice after confirmation. Billing category choices refresh automatically within 15 seconds or when the window regains focus. Renaming PRODUCT preserves its use for automatic medicine charges; renaming SERVICE preserves its use for consultation charges. If that default is removed, choose another active category explicitly. Drafts containing renamed/removed categories require reselection; other entered charges and payments remain intact. Existing invoices and receipt snapshots keep their original category labels.
 
 In **Dispensary → Stock catalogue**, administrators edit drug/supply names, SKU, prices and reorder levels, or archive/restore items. Prescription choices come from active medication items. Used stock units, categories and ingredients cannot change. New signed prescriptions retain captured medicine details; legacy records without snapshots use catalog fallback. Existing signed prescriptions remain dispensable after archival. Existing archived stock can still be received or used. Rooms remain editable in Administration; practitioners come from active GP accounts.
 

@@ -7,6 +7,7 @@ export interface DatabaseResetDefaults {
   administratorName: string;
   rooms: string[];
   catalogs: {
+    BILLING_CATEGORY: string[];
     LAB_PANEL: string[];
     SPECIMEN_TYPE: string[];
     INVENTORY_UNIT: string[];

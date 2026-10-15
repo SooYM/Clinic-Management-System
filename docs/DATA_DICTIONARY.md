@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–023. No records or credentials are included.
+Schema-only reference after migrations001–024. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -369,18 +369,19 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## reference_catalogs
 
-| Column     | Type            | Nullable | Default              | Extra / generated expression |
-| ---------- | --------------- | -------- | -------------------- | ---------------------------- |
-| id         | bigint unsigned | NO       | NULL                 | auto_increment               |
-| tenant_id  | bigint unsigned | NO       | NULL                 |                              |
-| branch_id  | bigint unsigned | NO       | NULL                 |                              |
-| kind       | varchar(30)     | NO       | NULL                 |                              |
-| label      | varchar(200)    | NO       | NULL                 |                              |
-| active     | tinyint(1)      | NO       | 1                    |                              |
-| sort_order | int             | NO       | 0                    |                              |
-| version    | int             | NO       | 1                    |                              |
-| created_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
-| updated_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| Column          | Type            | Nullable | Default              | Extra / generated expression |
+| --------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id              | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id       | bigint unsigned | NO       | NULL                 |                              |
+| branch_id       | bigint unsigned | NO       | NULL                 |                              |
+| kind            | varchar(30)     | NO       | NULL                 |                              |
+| label           | varchar(200)    | NO       | NULL                 |                              |
+| active          | tinyint(1)      | NO       | 1                    |                              |
+| sort_order      | int             | NO       | 0                    |                              |
+| version         | int             | NO       | 1                    |                              |
+| created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| updated_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| billing_default | varchar(10)     | YES      | NULL                 |                              |
 
 ## resource_locks
 
