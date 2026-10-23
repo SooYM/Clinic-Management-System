@@ -3,7 +3,9 @@ import { catalogKinds, defaultBillingCategories } from '../shared/catalogs';
 import { malaysiaDate } from '../shared/clinic-dates';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { buildReceiptView } from '../shared/receipt-view';
-import { schemas, validateItemIngredient } from '../server/validation';
+import { emptyLetterhead } from '../shared/letterhead';
+import { encounterBillingLines } from '../shared/encounter-billing';
+import { schemas, encounterWriteSchema, validateItemIngredient } from '../server/validation';
 import {
   ClinicalEncounter,
   DomainError,
@@ -120,10 +122,15 @@ function seed(): State {
     tenantId: 1,
     branchId: 1,
     branchIds: [1, 2],
-    email: `${['admin', 'gp', 'reception', 'nurse', 'therapist'][index]}@example.test`,
-    name: ['Nur Farah Aziz', 'Dr. Aiman Hafiz', 'Aina Sofia', 'Nur Syafiqah', 'Kavitha Raman'][
-      index
-    ],
+    email: `${['admin', 'gp', 'reception', 'nurse', 'therapist', 'cashier'][index]}@example.test`,
+    name: [
+      'Nur Farah Aziz',
+      'Dr. Aiman Hafiz',
+      'Aina Sofia',
+      'Nur Syafiqah',
+      'Kavitha Raman',
+      'Mei Tan',
+    ][index],
     role,
     isSuperAdmin: role === 'ADMIN',
     licenseNumber: role === 'DOCTOR' ? 'DEMO-NOT-A-LICENSE' : null,
@@ -720,7 +727,34 @@ export class DemoClinic {
       };
     });
   }
+  private letterheadSnapshot() {
+    return { ...emptyLetterhead, ...this.state.rows.tenants[0].letterhead };
+  }
   private reserve(encounter: Row, branch: number) {
+    for (const supply of encounter.consumables || []) {
+      const item = this.record('inventory', supply.itemId, branch);
+      if (item.active === false || item.category !== 'CONSUMABLE')
+        fail('Choose an active consumable supply.');
+      const allocations = FefoAllocator.allocate(
+        this.availableBatches(item.id, branch),
+        supply.quantity,
+        today(),
+        true,
+      );
+      for (const allocation of allocations)
+        this.record('batches', allocation.batchId, branch).quantity -= allocation.quantity;
+      this.add(
+        'usages',
+        {
+          ...supply,
+          encounterId: encounter.id,
+          patientId: encounter.patientId,
+          practitionerId: encounter.practitionerId,
+          allocations,
+        },
+        branch,
+      );
+    }
     for (const rx of encounter.prescriptions) {
       const allocations = FefoAllocator.allocate(
         this.availableBatches(rx.itemId, branch),
@@ -1011,29 +1045,31 @@ export class DemoClinic {
     if (/^\/(packages|commissions|photos)(\/|$)/.test(route)) fail('Feature retired.', 410);
     if (route.startsWith('/admin/') && user.role !== 'ADMIN')
       fail('Demo administration requires administrator role.', 403);
-    const module = /^\/encounters\/\d+\/prescription-log$/.test(route)
-      ? modules.includes('clinical')
-        ? 'clinical'
-        : 'inventory'
-      : /deposit-balance$/.test(route)
-        ? 'billing'
-        : /^\/patients\/\d+\/encounters$/.test(route)
+    const module = /^\/encounters\/\d+\/medicine-labels$/.test(route)
+      ? 'inventory'
+      : /^\/encounters\/\d+\/prescription-log$/.test(route)
+        ? modules.includes('clinical')
           ? 'clinical'
-          : /^\/(queue|dashboard)(\/|$)/.test(route)
-            ? 'queue'
-            : /^\/patients(\/|$)/.test(route)
-              ? 'patients'
-              : /^\/appointments(\/|$)/.test(route)
-                ? 'appointments'
-                : /^\/(encounters|documents|clinical)(\/|$)/.test(route)
-                  ? 'clinical'
-                  : /^\/(inventory|dispensary|dispenses)(\/|$)/.test(route)
-                    ? 'inventory'
-                    : /^\/(invoices|deposits|billing)(\/|$)/.test(route)
-                      ? 'billing'
-                      : /^\/(notifications|reports)(\/|$)/.test(route)
-                        ? 'reports'
-                        : undefined;
+          : 'inventory'
+        : /deposit-balance$/.test(route)
+          ? 'billing'
+          : /^\/patients\/\d+\/encounters$/.test(route)
+            ? 'clinical'
+            : /^\/(queue|dashboard)(\/|$)/.test(route)
+              ? 'queue'
+              : /^\/patients(\/|$)/.test(route)
+                ? 'patients'
+                : /^\/appointments(\/|$)/.test(route)
+                  ? 'appointments'
+                  : /^\/(encounters|documents|clinical)(\/|$)/.test(route)
+                    ? 'clinical'
+                    : /^\/(inventory|dispensary|dispenses)(\/|$)/.test(route)
+                      ? 'inventory'
+                      : /^\/(invoices|deposits|billing)(\/|$)/.test(route)
+                        ? 'billing'
+                        : /^\/(notifications|reports)(\/|$)/.test(route)
+                          ? 'reports'
+                          : undefined;
     if (module && !modules.includes(module as any))
       fail('This demo role has no access to that module.', 403);
     const foundId = route.match(/^\/(?:admin\/)?[^/]+\/(\d+)(?:\/|$)/),
@@ -1384,7 +1420,7 @@ export class DemoClinic {
       Object.assign(item, value, { active, version: item.version + 1 });
       return item;
     }
-    if (route === '/references/medications') {
+    if (route === '/references/medications' || route === '/references/consumables') {
       if (!modules.some((m) => ['clinical', 'inventory'].includes(m)))
         fail('Medication selector access denied.', 403);
       return {
@@ -1395,7 +1431,7 @@ export class DemoClinic {
                 .join(' ')
                 .toLowerCase()
                 .includes((url.searchParams.get('search') || '').toLowerCase()) &&
-              i.category === 'MEDICATION' &&
+              i.category === (route === '/references/consumables' ? 'CONSUMABLE' : 'MEDICATION') &&
               (i.active !== false || url.searchParams.get('includeInactive') === '1'),
           )
           .map(
@@ -1782,7 +1818,7 @@ export class DemoClinic {
       (/^\/encounters\/\d+$/.test(route) && method === 'PUT')
     ) {
       if (user.role !== 'DOCTOR') fail('Only GP can save or sign consultations.', 403);
-      const v = schemas.encounter.parse(body),
+      const v = encounterWriteSchema.parse(body),
         p = this.record('patients', v.patientId, branch);
       const existing = id ? this.record('encounters', id, branch) : undefined;
       if (existing && v.queueTicketId === undefined) v.queueTicketId = existing.queueTicketId;
@@ -1804,6 +1840,11 @@ export class DemoClinic {
           409,
         );
       this.checkPrescription(v.prescriptions, p, branch);
+      for (const supply of v.consumables) {
+        const item = this.record('inventory', supply.itemId, branch);
+        if (item.active === false || item.category !== 'CONSUMABLE')
+          fail('Choose an active consumable supply.');
+      }
       const priorPrescriptions = id ? this.record('encounters', id, branch).prescriptions : [];
       v.prescriptions = v.prescriptions.map((rx) => {
         const old = priorPrescriptions.find(
@@ -1819,6 +1860,7 @@ export class DemoClinic {
           itemName: old?.itemName || item.name,
           ingredient: old?.ingredient ?? item.ingredient,
           unit: old?.unit || item.unit,
+          unitPriceCents: rx.unitPriceCents ?? old?.unitPriceCents ?? item.priceCents,
         };
       });
       const previousRx = id ? this.record('encounters', id, branch).prescriptions : [];
@@ -1894,17 +1936,29 @@ export class DemoClinic {
     }
     if (route === '/inventory/batches' && method === 'POST') {
       const v = schemas.batch.parse(body);
-      this.record('inventory', v.itemId, branch);
+      const item = this.record('inventory', v.itemId, branch);
+      if (
+        v.priceCents !== undefined &&
+        v.itemVersion !== undefined &&
+        v.itemVersion !== item.version
+      )
+        fail('Inventory item changed; refresh before receiving stock.', 409);
       if (v.expiresOn && v.expiresOn <= today()) fail('Receive only stock expiring after today.');
       if (this.record('inventory', v.itemId, branch).category === 'MEDICATION' && !v.expiresOn)
         fail('Medication batches require an expiry date.');
       if (
+        v.batchNumber !== null &&
         this.scoped('batches', branch).some(
           (b) => b.itemId === v.itemId && b.batchNumber === v.batchNumber,
         )
       )
         fail('Batch already exists.', 409);
       const batch = this.add('batches', v, branch);
+      if (v.priceCents !== undefined) {
+        const item = this.record('inventory', v.itemId, branch);
+        item.priceCents = v.priceCents;
+        item.version++;
+      }
       return {
         ...batch,
         stockQuantity: this.inventory(branch).find((i) => i.id === v.itemId)!.stockQuantity,
@@ -2046,6 +2100,39 @@ export class DemoClinic {
           .slice(0, 200),
       };
     }
+    if (/^\/encounters\/\d+\/medicine-labels$/.test(route) && method === 'GET') {
+      const encounter = this.record('encounters', id!, branch);
+      const dispense =
+        this.scoped('dispenses', branch).find((d) => d.encounterId === encounter.id) ||
+        fail('Dispensed prescription not found.', 404);
+      if (encounter.status !== 'SIGNED') fail('Dispensed prescription not found.', 404);
+      return {
+        id: encounter.id,
+        patientId: encounter.patientId,
+        patientName: this.record('patients', encounter.patientId, branch).name,
+        practitionerName:
+          this.state.rows.users.find((u) => u.id === encounter.practitionerId)?.name || '',
+        dispensedAt: dispense.createdAt || null,
+        prescriptions: encounter.prescriptions.map((rx: Row) => ({
+          itemId: rx.itemId,
+          itemName:
+            rx.itemName ||
+            this.scoped('inventory', branch).find((item) => item.id === rx.itemId)?.name ||
+            `Medication ID ${rx.itemId}`,
+          unit:
+            rx.unit || this.scoped('inventory', branch).find((item) => item.id === rx.itemId)?.unit,
+          quantity: rx.quantity,
+          quantityPerDose: rx.quantityPerDose,
+          form: rx.form,
+          instructions: rx.instructions,
+          indication: rx.indication,
+          dosage: rx.dosage,
+          durationDays: rx.durationDays,
+          frequencyPerDay: rx.frequencyPerDay || 1,
+          mealTiming: rx.mealTiming || 'ANY_TIME',
+        })),
+      };
+    }
     if (/^\/encounters\/\d+\/prescription-log$/.test(route) && method === 'GET') {
       const e = this.record('encounters', id!, branch);
       const events: PrescriptionLogEvent[] = [];
@@ -2071,6 +2158,10 @@ export class DemoClinic {
           frequencyPerDay: rx.frequencyPerDay || 1,
           mealTiming: rx.mealTiming || 'ANY_TIME',
           dosage: rx.dosage,
+          quantityPerDose: rx.quantityPerDose,
+          indication: rx.indication,
+          form: rx.form,
+          instructions: rx.instructions,
           durationDays: rx.durationDays,
         });
       if (e.status === 'SIGNED')
@@ -2210,10 +2301,13 @@ export class DemoClinic {
               queueTicketId: e.queueTicketId || null,
               signedAt: e.signedAt,
               dispensedAt: dispense?.createdAt || null,
+              consultationFeeCents: e.consultationFeeCents ?? null,
+              procedureFeeCents: e.procedureFeeCents ?? null,
               prescriptions: e.prescriptions.map((rx: Row) => ({
                 ...rx,
                 itemName: rx.itemName || this.record('inventory', rx.itemId, branch).name,
-                unitPriceCents: this.record('inventory', rx.itemId, branch).priceCents,
+                unitPriceCents:
+                  rx.unitPriceCents ?? this.record('inventory', rx.itemId, branch).priceCents,
               })),
             };
           })
@@ -2275,13 +2369,42 @@ export class DemoClinic {
           fail('Dispense prescribed medicines before checkout.', 409);
         if (this.scoped('invoices', branch).some((i) => i.encounterId === encounter.id))
           fail('Consultation already checked out.', 409);
+        const catalogs = this.scoped('catalogs', branch);
+        const expected = encounterBillingLines(encounter as any, {
+          service:
+            catalogs.find((entry) => entry.active && entry.billingDefault === 'SERVICE')?.label ||
+            'SERVICE',
+          product:
+            catalogs.find((entry) => entry.active && entry.billingDefault === 'PRODUCT')?.label ||
+            'PRODUCT',
+        });
+        if (
+          expected &&
+          (expected.length !== v.lines.length ||
+            expected.some((line, index) => {
+              const actual = v.lines[index];
+              return (
+                line.description !== actual.description ||
+                line.quantity !== actual.quantity ||
+                line.unitPriceCents !== actual.unitPriceCents ||
+                line.category !== actual.category
+              );
+            }))
+        )
+          fail('Checkout must use the GP approved itemized charges.', 409);
       }
       const total = v.lines.reduce(
         (sum, l) => sum + new Money(l.unitPriceCents).multiply(l.quantity).cents,
         0,
       );
       new Money(total);
-      if (!total || v.payments.reduce((sum, p) => sum + p.amountCents, 0) !== total)
+      if (
+        (!total &&
+          (!encounter ||
+            encounter.consultationFeeCents == null ||
+            encounter.procedureFeeCents == null)) ||
+        v.payments.reduce((sum, p) => sum + p.amountCents, 0) !== total
+      )
         fail('Payment total must equal invoice total.');
       const invoice = this.add(
         'invoices',
@@ -2291,9 +2414,10 @@ export class DemoClinic {
           totalCents: total,
           status: 'PAID',
           receiptSnapshot: {
+            ...this.letterheadSnapshot(),
             clinicName: this.state.rows.tenants[0].name,
             branchName: clinicBranch.name,
-            clinicAddress: clinicBranch.address,
+            clinicAddress: this.state.rows.tenants[0].letterhead?.address || clinicBranch.address,
             patientName: patient.name,
             nationalId: patient.nationalId,
             receivedBy: user.name,
@@ -2350,12 +2474,15 @@ export class DemoClinic {
           documentNumber: 'DEMO-UNSIGNED-' + (this.state.counters.documents + 1),
           verificationUrl: '/demo-unavailable',
           payload: {
+            ...this.letterheadSnapshot(),
             ...v,
             endDate,
             demo: true,
             employer: v.employer,
             branchName: this.state.rows.branches.find((b) => b.id === branch)?.name,
-            branchAddress: this.state.rows.branches.find((b) => b.id === branch)?.address,
+            branchAddress:
+              this.state.rows.tenants[0].letterhead?.address ||
+              this.state.rows.branches.find((b) => b.id === branch)?.address,
             patientName: this.record('patients', e.patientId, branch).name,
             nationalId: this.record('patients', e.patientId, branch).nationalId,
             practitionerName: user.name,
@@ -2375,6 +2502,35 @@ export class DemoClinic {
       if (d.practitionerId !== user.id) fail('Only attending GP can revoke.', 403);
       d.revokedAt = now();
       return d;
+    }
+    if (route === '/admin/letterhead' && method === 'GET') {
+      const clinic = this.state.rows.tenants[0];
+      return { ...emptyLetterhead, ...clinic.letterhead, version: clinic.letterheadVersion || 1 };
+    }
+    if (route === '/admin/letterhead' && method === 'PUT') {
+      const input = z
+        .object({
+          version: z.number().int().positive(),
+          logoDataUrl: z
+            .string()
+            .max(220000)
+            .refine(
+              (value) =>
+                !value || /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(value),
+            ),
+          header: z.string().trim().max(500),
+          address: z.string().trim().max(1000),
+          footer: z.string().trim().max(500),
+        })
+        .strict()
+        .parse(body);
+      const clinic = this.state.rows.tenants[0];
+      if ((clinic.letterheadVersion || 1) !== input.version)
+        fail('Letterhead changed. Refresh before saving.', 409);
+      const { version, ...letterhead } = input;
+      clinic.letterhead = letterhead;
+      clinic.letterheadVersion = version + 1;
+      return { ...letterhead, version: version + 1 };
     }
     if (route === '/admin/clinic' && method === 'GET') {
       const clinic = this.state.rows.tenants[0];

@@ -61,7 +61,7 @@ const topics = [
     ],
   },
   {
-    title: 'Receive stock and dispense',
+    title: 'Stock catalogue → Receive stock and dispense',
     module: 'inventory',
     steps: [
       'Open Dispensary. Add medicines, consumables or retail products such as lab coats, then receive stock using batch number, expiry date, and quantity. Supplies and retail items may have no expiry. Search the catalog or filter its category.',
@@ -69,8 +69,8 @@ const topics = [
       'Use supplies and retail stock records physical usage or issue with quantity and reason. Medicines cannot use this shortcut; they require prescription dispensing.',
       'Available stock excludes expired batches. Refresh the catalogue to see current amounts.',
       'Search the prescription list by patient or medicine, then select an eligible signed prescription to review patient, GP, allergies, and medicine instructions.',
-      'Dispense uses first expiry, first out. Insufficient unexpired stock blocks the operation.',
-      'An empty prescription list means no undispensed signed prescriptions are available; a GP must sign the consultation first. Search Prescription history and activity for completed work. Clinic activity logs record prescribing, reservations and dispensing. The clinical Patient medication-taking log separately records Taken or Missed doses, patient-reported or staff-observed, without changing stock. GPs and nurses with clinical access can record doses on signed prescriptions.',
+      'Dispense uses first expiry, first out. Insufficient unexpired stock blocks the operation. Successful dispensing opens medicine labels and the print dialog; choose your printer and paper size.',
+      'An empty prescription list means no undispensed signed prescriptions are available; a GP must sign the consultation first. Search Prescription history and activity for completed work. Clinic activity logs record prescribing, reservations and dispensing. The clinical Medication timeline combines prescription activity with Taken or Missed doses, patient-reported or staff-observed, without changing stock. GPs and nurses with clinical access can record doses on signed prescriptions.',
     ],
   },
   {
@@ -87,7 +87,7 @@ const topics = [
     module: 'admin',
     steps: [
       'Create branches and consultation rooms in Administration. Rename a room or archive it when no longer needed; a busy room cannot be changed.',
-      'Create staff accounts in their branch. Choose GP for practitioners and provide the required registration number.',
+      'Create staff accounts in their branch. Choose GP for practitioners, or Cashier for payment staff. GPs require a registration number.',
       'Use Role module access to control navigation by role. Operational data remains branch scoped.',
       'Deactivate accounts when access is no longer needed and inspect the audit trail for recorded actions.',
     ],

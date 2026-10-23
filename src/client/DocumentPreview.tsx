@@ -29,7 +29,16 @@ export default function DocumentPreview({ documentId }: { documentId: number }) 
               </p>
             )}
             <header className="letter-heading">
+              {document.logoDataUrl && (
+                <img
+                  src={document.logoDataUrl}
+                  alt="Clinic logo"
+                  width={100}
+                  style={{ maxHeight: 80, objectFit: 'contain' }}
+                />
+              )}
               <strong>{document.clinicName || 'Clinic'}</strong>
+              {document.header && <p style={{ whiteSpace: 'pre-line' }}>{document.header}</p>}
               <p>{document.clinicAddress || 'Clinic address not recorded'}</p>
               <h2>
                 {document.kind === 'MC'
@@ -74,6 +83,7 @@ export default function DocumentPreview({ documentId }: { documentId: number }) 
               </span>
               <strong>{document.documentNumber}</strong>
             </footer>
+            {document.footer && <p style={{ whiteSpace: 'pre-line' }}>{document.footer}</p>}
           </article>
         )}
       </ResourceState>

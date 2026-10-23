@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
 import { api } from '../api';
 import {
   Empty,
@@ -23,6 +22,7 @@ import { useListControls } from '../ListControls';
 import { countryName } from '../../shared/countries';
 import { useConfirm } from '../Confirmation';
 import { SearchBox } from '../SearchBox';
+import DetailDialog from '../DetailDialog';
 interface Encounter {
   id: number;
   createdAt: string;
@@ -250,215 +250,210 @@ export default function Patients() {
           label="Patient directory"
           description="Find patients and review their recorded details and consultation history."
         >
-          {selected ? (
-            <>
-              <button
-                className="text-button"
-                onClick={() => {
-                  setSelected(undefined);
-                  setEditing(false);
-                }}
-              >
-                <ArrowLeft size={16} />
-                Back to patients
-              </button>
-              <div className="patient-banner">
-                <div>
-                  <h2>{selected.name}</h2>
-                  <p>
-                    Patient ID #{selected.id} · {selected.nationalId} ·{' '}
-                    {selected.dateOfBirth?.slice(0, 10)} · Blood group{' '}
-                    {selected.bloodGroup || 'unknown'}
-                  </p>
-                </div>
-                <div className="allergies">
-                  {selected.allergies?.length
-                    ? `Allergies: ${selected.allergies.join(', ')}`
-                    : 'No allergies recorded'}
-                </div>
-              </div>
-              <div className="two-column">
-                <Panel
-                  title="Patient profile"
-                  action={
-                    canEdit && (
-                      <button
-                        className="secondary"
-                        onClick={() => {
-                          setEditing(!editing);
-                          setSection(editing ? 'directory' : 'registration');
-                        }}
-                      >
-                        {editing ? 'Cancel edit' : 'Edit details'}
-                      </button>
-                    )
-                  }
-                >
-                  <dl>
-                    <dt>Patient ID</dt>
-                    <dd>#{selected.id}</dd>
-                    <dt>First name</dt>
-                    <dd>{selected.firstName || selected.name}</dd>
-                    <dt>Last name</dt>
-                    <dd>{selected.lastName || 'Not recorded'}</dd>
-                    <dt>Nationality</dt>
-                    <dd>
-                      {selected.nationality === 'MALAYSIAN'
-                        ? 'Malaysian'
-                        : selected.nationality === 'NON_MALAYSIAN'
-                          ? 'Non-Malaysian'
-                          : 'Not recorded'}
-                    </dd>
-                    {selected.nationality === 'NON_MALAYSIAN' && (
-                      <>
-                        <dt>Country of nationality</dt>
-                        <dd>
-                          {selected.countryCode
-                            ? countryName(selected.countryCode, selected.countryName)
-                            : 'Not recorded'}
-                        </dd>
-                      </>
-                    )}
-                    <dt>
-                      {selected.nationality === 'MALAYSIAN'
-                        ? 'IC number'
-                        : 'Passport / identity number'}
-                    </dt>
-                    <dd>{selected.nationalId}</dd>
-                    <dt>Date of birth</dt>
-                    <dd>{selected.dateOfBirth?.slice(0, 10) || 'Not recorded'}</dd>
-                    <dt>Gender</dt>
-                    <dd>{selected.sex || 'Not recorded'}</dd>
-                    <dt>Blood group</dt>
-                    <dd>{selected.bloodGroup || 'Not recorded'}</dd>
-                    <dt>Phone</dt>
-                    <dd>{selected.phone || 'Not recorded'}</dd>
-                    <dt>Email</dt>
-                    <dd>{selected.email || 'Not recorded'}</dd>
-                    <dt>Address line 1</dt>
-                    <dd>{selected.addressLine1 || 'Not recorded'}</dd>
-                    <dt>Address line 2</dt>
-                    <dd>{selected.addressLine2 || 'Not recorded'}</dd>
-                    <dt>Postcode</dt>
-                    <dd>{selected.postcode || 'Not recorded'}</dd>
-                    <dt>City / town</dt>
-                    <dd>{selected.city || 'Not recorded'}</dd>
-                    <dt>State / region</dt>
-                    <dd>{selected.state || 'Not recorded'}</dd>
-                    <dt>Allergies</dt>
-                    <dd>{selected.allergies?.join(', ') || 'None recorded'}</dd>
-                    <dt>Chronic conditions</dt>
-                    <dd>{selected.conditions?.join(', ') || 'None recorded'}</dd>
-                    <dt>Notification consent</dt>
-                    <dd>{selected.notificationConsent ? 'Consented' : 'Not consented'}</dd>
-                    <dt>Registered</dt>
-                    <dd>{selected.createdAt ? dateTime(selected.createdAt) : 'Not recorded'}</dd>
-                    <dt>Last updated</dt>
-                    <dd>{selected.updatedAt ? dateTime(selected.updatedAt) : 'Not recorded'}</dd>
-                  </dl>
-                </Panel>
-                <Panel title="Encounter history">
-                  <PatientHistory key={selected.id} patientId={selected.id} />
-                </Panel>
-              </div>
-            </>
-          ) : (
-            <Panel title="Patient directory">
-              <SearchBox
-                ariaLabel="Search patients"
-                placeholder="Name, IC/passport, or phone"
-                value={search}
-                onChange={setSearch}
-                suggestions={(resource.data || []).map((patient) => ({
-                  id: patient.id,
-                  label: patient.name,
-                  description: `Patient #${patient.id} · ${patient.nationalId} · ${patient.phone}`,
-                }))}
-                loading={search.trim() !== searchTerm || resource.refreshing}
-                error={resource.error}
-                emptyMessage="No matching patients."
-                onSelect={(suggestion) => {
-                  const patient = resource.data?.find((entry) => entry.id === suggestion.id);
-                  if (!patient) return;
-                  setSelected(patient);
-                  setSection('directory');
-                  setEditing(false);
-                }}
-              />
-              <p className="form-help">
-                Search patient list queries saved patients. Filters and sorting below apply to the
-                loaded results.
-              </p>
-              {patientList.controls}
-              <ResourceState {...resource}>
-                {resource.data?.length ? (
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Patient ID</th>
-                          <th>Patient</th>
-                          <th>NRIC / passport</th>
-                          <th>Phone</th>
-                          <th>Allergies</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {patientList.items.map((p) => (
-                          <tr
-                            key={p.id}
-                            className="patient-profile-row"
-                            onClick={() => {
-                              setSelected(p);
-                              setSection('directory');
-                              setEditing(false);
-                            }}
-                          >
-                            <td>#{p.id}</td>
-                            <td>
-                              <strong>{p.name}</strong>
-                              <small>{p.dateOfBirth?.slice(0, 10)}</small>
-                            </td>
-                            <td>{p.nationalId}</td>
-                            <td>{p.phone}</td>
-                            <td>
-                              {p.allergies?.length ? (
-                                <span className="status urgent">{p.allergies.join(', ')}</span>
-                              ) : (
-                                'None recorded'
-                              )}
-                            </td>
-                            <td>
-                              <button
-                                className="secondary"
-                                onClick={() => {
-                                  setSelected(p);
-                                  setSection('directory');
-                                  setEditing(false);
-                                }}
-                              >
-                                Open profile
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+          <DetailDialog
+            title="Patient profile"
+            open={!!selected && !editing}
+            onClose={() => setSelected(undefined)}
+          >
+            {selected && (
+              <>
+                <div className="patient-banner">
+                  <div>
+                    <h2>{selected.name}</h2>
+                    <p>
+                      Patient ID #{selected.id} · {selected.nationalId} ·{' '}
+                      {selected.dateOfBirth?.slice(0, 10)} · Blood group{' '}
+                      {selected.bloodGroup || 'unknown'}
+                    </p>
                   </div>
-                ) : (
-                  <Empty
-                    title={search ? 'No matching patients' : 'Your patient directory starts here'}
-                    description={
-                      search
-                        ? 'Try another name, ID, or phone number.'
-                        : 'Register your first patient to start their clinical record.'
+                  <div className="allergies">
+                    {selected.allergies?.length
+                      ? `Allergies: ${selected.allergies.join(', ')}`
+                      : 'No allergies recorded'}
+                  </div>
+                </div>
+                <div className="two-column">
+                  <Panel
+                    title="Patient profile"
+                    action={
+                      canEdit && (
+                        <button
+                          className="secondary"
+                          onClick={() => {
+                            setEditing(!editing);
+                            setSection(editing ? 'directory' : 'registration');
+                          }}
+                        >
+                          {editing ? 'Cancel edit' : 'Edit details'}
+                        </button>
+                      )
                     }
-                  />
-                )}
-              </ResourceState>
-            </Panel>
-          )}
+                  >
+                    <dl>
+                      <dt>Patient ID</dt>
+                      <dd>#{selected.id}</dd>
+                      <dt>First name</dt>
+                      <dd>{selected.firstName || selected.name}</dd>
+                      <dt>Last name</dt>
+                      <dd>{selected.lastName || 'Not recorded'}</dd>
+                      <dt>Nationality</dt>
+                      <dd>
+                        {selected.nationality === 'MALAYSIAN'
+                          ? 'Malaysian'
+                          : selected.nationality === 'NON_MALAYSIAN'
+                            ? 'Non-Malaysian'
+                            : 'Not recorded'}
+                      </dd>
+                      {selected.nationality === 'NON_MALAYSIAN' && (
+                        <>
+                          <dt>Country of nationality</dt>
+                          <dd>
+                            {selected.countryCode
+                              ? countryName(selected.countryCode, selected.countryName)
+                              : 'Not recorded'}
+                          </dd>
+                        </>
+                      )}
+                      <dt>
+                        {selected.nationality === 'MALAYSIAN'
+                          ? 'IC number'
+                          : 'Passport / identity number'}
+                      </dt>
+                      <dd>{selected.nationalId}</dd>
+                      <dt>Date of birth</dt>
+                      <dd>{selected.dateOfBirth?.slice(0, 10) || 'Not recorded'}</dd>
+                      <dt>Gender</dt>
+                      <dd>{selected.sex || 'Not recorded'}</dd>
+                      <dt>Blood group</dt>
+                      <dd>{selected.bloodGroup || 'Not recorded'}</dd>
+                      <dt>Phone</dt>
+                      <dd>{selected.phone || 'Not recorded'}</dd>
+                      <dt>Email</dt>
+                      <dd>{selected.email || 'Not recorded'}</dd>
+                      <dt>Address line 1</dt>
+                      <dd>{selected.addressLine1 || 'Not recorded'}</dd>
+                      <dt>Address line 2</dt>
+                      <dd>{selected.addressLine2 || 'Not recorded'}</dd>
+                      <dt>Postcode</dt>
+                      <dd>{selected.postcode || 'Not recorded'}</dd>
+                      <dt>City / town</dt>
+                      <dd>{selected.city || 'Not recorded'}</dd>
+                      <dt>State / region</dt>
+                      <dd>{selected.state || 'Not recorded'}</dd>
+                      <dt>Allergies</dt>
+                      <dd>{selected.allergies?.join(', ') || 'None recorded'}</dd>
+                      <dt>Chronic conditions</dt>
+                      <dd>{selected.conditions?.join(', ') || 'None recorded'}</dd>
+                      <dt>Notification consent</dt>
+                      <dd>{selected.notificationConsent ? 'Consented' : 'Not consented'}</dd>
+                      <dt>Registered</dt>
+                      <dd>{selected.createdAt ? dateTime(selected.createdAt) : 'Not recorded'}</dd>
+                      <dt>Last updated</dt>
+                      <dd>{selected.updatedAt ? dateTime(selected.updatedAt) : 'Not recorded'}</dd>
+                    </dl>
+                  </Panel>
+                  <Panel title="Encounter history">
+                    <PatientHistory key={selected.id} patientId={selected.id} />
+                  </Panel>
+                </div>
+              </>
+            )}
+          </DetailDialog>
+          <Panel title="Patient directory">
+            <SearchBox
+              ariaLabel="Search patients"
+              placeholder="Name, IC/passport, or phone"
+              value={search}
+              onChange={setSearch}
+              suggestions={(resource.data || []).map((patient) => ({
+                id: patient.id,
+                label: patient.name,
+                description: `Patient #${patient.id} · ${patient.nationalId} · ${patient.phone}`,
+              }))}
+              loading={search.trim() !== searchTerm || resource.refreshing}
+              error={resource.error}
+              emptyMessage="No matching patients."
+              onSelect={(suggestion) => {
+                const patient = resource.data?.find((entry) => entry.id === suggestion.id);
+                if (!patient) return;
+                setSelected(patient);
+                setSection('directory');
+                setEditing(false);
+              }}
+            />
+            <p className="form-help">
+              Search patient list queries saved patients. Filters and sorting below apply to the
+              loaded results.
+            </p>
+            {patientList.controls}
+            <ResourceState {...resource}>
+              {resource.data?.length ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Patient ID</th>
+                        <th>Patient</th>
+                        <th>NRIC / passport</th>
+                        <th>Phone</th>
+                        <th>Allergies</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {patientList.items.map((p) => (
+                        <tr
+                          key={p.id}
+                          className="patient-profile-row"
+                          onClick={() => {
+                            setSelected(p);
+                            setSection('directory');
+                            setEditing(false);
+                          }}
+                        >
+                          <td>#{p.id}</td>
+                          <td>
+                            <strong>{p.name}</strong>
+                            <small>{p.dateOfBirth?.slice(0, 10)}</small>
+                          </td>
+                          <td>{p.nationalId}</td>
+                          <td>{p.phone}</td>
+                          <td>
+                            {p.allergies?.length ? (
+                              <span className="status urgent">{p.allergies.join(', ')}</span>
+                            ) : (
+                              'None recorded'
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              className="secondary"
+                              onClick={() => {
+                                setSelected(p);
+                                setSection('directory');
+                                setEditing(false);
+                              }}
+                            >
+                              Open profile
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty
+                  title={search ? 'No matching patients' : 'Your patient directory starts here'}
+                  description={
+                    search
+                      ? 'Try another name, ID, or phone number.'
+                      : 'Register your first patient to start their clinical record.'
+                  }
+                />
+              )}
+            </ResourceState>
+          </Panel>
         </WorkspaceSection>
         <WorkspaceSection
           id="registration"

@@ -12,6 +12,7 @@ import {
   useRole,
 } from '../components';
 import DocumentPreview from '../DocumentPreview';
+import DetailDialog from '../DetailDialog';
 import { dateTime } from '../types';
 import { useListControls } from '../ListControls';
 interface ClinicalDocument {
@@ -132,12 +133,18 @@ export default function ClinicalDocuments({
           </MutationForm>
         )}
       </Panel>
-      {previewId && (
-        <DocumentPreview
-          key={`${previewId}:${resource.data?.find((d) => d.id === previewId)?.revokedAt || 'issued'}`}
-          documentId={previewId}
-        />
-      )}
+      <DetailDialog
+        open={!!previewId}
+        title="Clinical document"
+        onClose={() => setPreviewId(undefined)}
+      >
+        {previewId && (
+          <DocumentPreview
+            key={`${previewId}:${resource.data?.find((d) => d.id === previewId)?.revokedAt || 'issued'}`}
+            documentId={previewId}
+          />
+        )}
+      </DetailDialog>
     </>
   );
 }

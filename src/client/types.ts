@@ -80,7 +80,12 @@ export interface InventoryItem {
   stockQuantity?: number;
   onHandQuantity?: number;
   reservedQuantity?: number;
-  batches?: { id: number; batchNumber: string; quantity: number; expiresOn: string | null }[];
+  batches?: {
+    id: number;
+    batchNumber: string | null;
+    quantity: number;
+    expiresOn: string | null;
+  }[];
 }
 export const queueStates = [
   'REGISTERED',

@@ -218,11 +218,11 @@ export const schemas = {
         .superRefine((value, ctx) => {
           if (value.temperature !== undefined && value.temperature !== '') {
             const temperature = Number(value.temperature);
-            if (!Number.isFinite(temperature) || temperature < 28 || temperature > 40)
+            if (!Number.isFinite(temperature))
               ctx.addIssue({
                 code: 'custom',
                 path: ['temperature'],
-                message: 'Temperature must be between 28°C and 40°C.',
+                message: 'Temperature must be a finite number.',
               });
           }
           try {
@@ -236,12 +236,37 @@ export const schemas = {
           }
         }),
       procedureNotes: long,
+      consultationFeeCents: cents.optional(),
+      procedureFeeCents: cents.optional(),
+      consumables: z
+        .array(
+          z
+            .object({
+              itemId: id,
+              quantity: integer,
+              reason: z.string().trim().min(1).max(500),
+            })
+            .strict(),
+        )
+        .max(50)
+        .default([]),
       prescriptions: z
         .array(
           z
             .object({
               itemId: id,
               quantity: integer,
+              quantityPerDose: z
+                .number()
+                .finite()
+                .positive()
+                .max(1_000_000)
+                .refine((v) => Number(v.toFixed(3)) === v, 'Use at most three decimal places.')
+                .optional(),
+              form: z.enum(['PILL', 'PASTE', 'SYRUP', 'OTHER']).default('PILL'),
+              instructions: z.string().trim().max(2000).default(''),
+              unitPriceCents: cents.optional(),
+              indication: z.string().trim().max(500).default(''),
               dosage: text,
               durationDays: integer.max(365),
               frequencyPerDay: integer.max(24).default(1),
@@ -250,7 +275,15 @@ export const schemas = {
               ingredient: z.string().max(2000).optional(),
               unit: z.string().max(50).optional(),
             })
-            .strict(),
+            .strict()
+            .refine(
+              (v) =>
+                v.quantityPerDose === undefined ||
+                v.form !== 'PILL' ||
+                (Number.isInteger(v.quantityPerDose) &&
+                  v.quantity === v.quantityPerDose * v.frequencyPerDay * v.durationDays),
+              'Total quantity must equal whole pills per serving × times per day × days.',
+            ),
         )
         .max(50)
         .default([]),
@@ -261,6 +294,18 @@ export const schemas = {
     .refine(
       (v) => v.status !== 'SIGNED' || v.assessment.trim().length > 0,
       'Assessment required before signing.',
+    )
+    .refine(
+      (v) => new Set(v.prescriptions.map((rx) => rx.itemId)).size === v.prescriptions.length,
+      'Each medicine can appear only once in a prescription.',
+    )
+    .refine(
+      (v) => new Set(v.consumables.map((item) => item.itemId)).size === v.consumables.length,
+      'Each consumable can appear only once.',
+    )
+    .refine(
+      (v) => (v.consultationFeeCents === undefined) === (v.procedureFeeCents === undefined),
+      'Consultation and procedure fees must be supplied together.',
     ),
   item: z
     .object({
@@ -276,9 +321,11 @@ export const schemas = {
   batch: z
     .object({
       itemId: id,
-      batchNumber: text,
+      batchNumber: z.string().trim().min(1).max(100).nullable().optional().default(null),
       expiresOn: date.nullable().optional().default(null),
       quantity: integer,
+      priceCents: cents.optional(),
+      itemVersion: integer.optional(),
     })
     .strict(),
   dispense: z.object({ encounterId: id, idempotencyKey: z.string().min(8).max(100) }).strict(),
@@ -379,7 +426,6 @@ export const schemas = {
             })
             .strict(),
         )
-        .min(1)
         .max(10),
       idempotencyKey: z.string().min(8).max(100),
     })
@@ -405,3 +451,11 @@ export const schemas = {
     })
     .strict(),
 };
+
+/** Public signatures require explicit doctor prices; old persisted charts remain readable. */
+export const encounterWriteSchema = schemas.encounter.refine(
+  (value) =>
+    value.status !== 'SIGNED' ||
+    (value.consultationFeeCents !== undefined && value.procedureFeeCents !== undefined),
+  'Enter consultation and procedure fees before signing.',
+);

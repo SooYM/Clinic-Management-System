@@ -19,8 +19,11 @@ import {
   type PrescriptionLogEvent,
 } from '../shared/document-view.js';
 import type { MedicationDose, MedicationDoseLog } from '../shared/medication-doses.js';
+import type { MedicineLabelPrescription } from '../shared/medicine-labels.js';
 import { validateCatalogChoices } from './catalog-service.js';
 import { expireQueue } from './queue-lifecycle.js';
+import { encounterBillingLines } from '../shared/encounter-billing.js';
+import { readLetterhead } from './letterhead.js';
 
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -704,8 +707,27 @@ export class ClinicService {
       );
       input.prescriptions = input.prescriptions.map((rx: any) => {
         const item = medicationItems.find((item) => item.id === rx.itemId)!;
-        return { ...rx, itemName: item.name, ingredient: item.ingredient, unit: item.unit };
+        return {
+          ...rx,
+          itemName: item.name,
+          ingredient: item.ingredient,
+          unit: item.unit,
+          unitPriceCents: rx.unitPriceCents ?? item.price_cents,
+        };
       });
+      for (const supply of [...input.consumables].sort((a: any, b: any) => a.itemId - b.itemId)) {
+        const item = (
+          await db.query(
+            'SELECT category,active FROM inventory_items WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+            [supply.itemId, ctx.actor.tenantId, ctx.branchId],
+          )
+        ).rows[0];
+        if (!item || item.category !== 'CONSUMABLE' || !item.active)
+          throw new DomainError(
+            'INVALID_CONSUMABLE',
+            'Choose an active consumable from this branch.',
+          );
+      }
       const values = [
         ctx.actor.tenantId,
         ctx.branchId,
@@ -794,6 +816,29 @@ export class ClinicService {
           `INSERT INTO encounters(tenant_id,branch_id,patient_id,practitioner_id,queue_ticket_id,specialty,subjective,objective,assessment,plan,vitals,prescriptions,procedure_notes,status,signed_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CASE WHEN $14='SIGNED' THEN now() ELSE NULL END) RETURNING *`,
           values,
         ));
+      }
+      const clinicalDetails = (
+        await db.query(
+          'UPDATE encounters SET consultation_fee_cents=$4,procedure_fee_cents=$5,consumables=$6 WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 RETURNING *',
+          [
+            rows[0].id,
+            ctx.actor.tenantId,
+            ctx.branchId,
+            input.consultationFeeCents ?? null,
+            input.procedureFeeCents ?? null,
+            JSON.stringify(input.consumables),
+          ],
+        )
+      ).rows[0];
+      rows[0] = clinicalDetails;
+      if (input.status === 'SIGNED') {
+        const scopedService = new ClinicService(db, (work) => work(db));
+        for (const supply of [...input.consumables].sort((a: any, b: any) => a.itemId - b.itemId))
+          await scopedService.useInventory(ctx, {
+            ...supply,
+            reason: `Encounter ${rows[0].id}: ${supply.reason}`.slice(0, 500),
+            idempotencyKey: `encounter:${rows[0].id}:supply:${supply.itemId}`,
+          });
       }
       if (input.status === 'SIGNED')
         await this.reservePrescription(db, ctx, rows[0].id, input.prescriptions);
@@ -928,13 +973,28 @@ export class ClinicService {
     return this.transact(async (db) => {
       const item = (
         await db.query(
-          'SELECT category FROM inventory_items WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
+          'SELECT category,version FROM inventory_items WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 FOR UPDATE',
           [input.itemId, ctx.actor.tenantId, ctx.branchId],
         )
       ).rows[0];
       if (!item) throw missing();
       if (item.category === 'MEDICATION' && !input.expiresOn)
         throw new DomainError('EXPIRY_REQUIRED', 'Medication batches require an expiry date.');
+      if (input.priceCents !== undefined) {
+        if (input.itemVersion !== undefined && item.version !== input.itemVersion)
+          throw new DomainError(
+            'VERSION_CONFLICT',
+            'Item price changed. Reload before receiving stock.',
+            409,
+          );
+        await db.query(
+          'UPDATE inventory_items SET price_cents=$4,version=version+1 WHERE id=$1 AND tenant_id=$2 AND branch_id=$3',
+          [input.itemId, ctx.actor.tenantId, ctx.branchId, input.priceCents],
+        );
+        await this.audit(db, ctx, 'UPDATE_STOCK_PRICE', 'inventory', input.itemId, {
+          priceCents: input.priceCents,
+        });
+      }
       const { rows } = await db.query(
         `INSERT INTO inventory_batches(tenant_id,branch_id,item_id,batch_number,expires_on,quantity) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
         [
@@ -1315,6 +1375,36 @@ export class ClinicService {
             .rowCount
         )
           throw new DomainError('ALREADY_BILLED', 'Consultation already has a receipt.', 409);
+        const categories = (
+          await db.query(
+            "SELECT label,billing_default FROM reference_catalogs WHERE tenant_id=$1 AND branch_id=$2 AND kind='BILLING_CATEGORY' AND active=1 AND billing_default IS NOT NULL",
+            [ctx.actor.tenantId, ctx.branchId],
+          )
+        ).rows;
+        const approvedLines = encounterBillingLines(camel(checkoutEncounter), {
+          service:
+            categories.find((entry) => entry.billing_default === 'SERVICE')?.label || 'SERVICE',
+          product:
+            categories.find((entry) => entry.billing_default === 'PRODUCT')?.label || 'PRODUCT',
+        });
+        if (
+          approvedLines &&
+          (approvedLines.length !== input.lines.length ||
+            approvedLines.some((line, index) => {
+              const actual = input.lines[index];
+              return (
+                line.description !== actual.description ||
+                line.quantity !== actual.quantity ||
+                line.unitPriceCents !== actual.unitPriceCents ||
+                line.category !== actual.category
+              );
+            }))
+        )
+          throw new DomainError(
+            'DOCTOR_PRICE_REQUIRED',
+            'Checkout must match the signed doctor-approved itemized prices.',
+            409,
+          );
       }
       const patient = await this.patient(db, ctx, input.patientId);
       await this.practitioner(db, ctx, input.practitionerId);
@@ -1325,10 +1415,12 @@ export class ClinicService {
         )
       ).rows[0];
       if (!branding) throw missing();
+      const letterhead = await readLetterhead(db, ctx.actor.tenantId);
       const receiptSnapshot = {
+        ...letterhead,
         clinicName: branding.clinic_name,
         branchName: branding.branch_name,
-        clinicAddress: branding.address,
+        clinicAddress: letterhead.address || branding.address,
         patientName: patient.name,
         nationalId: patient.national_id,
         receivedBy: ctx.actor.name,
@@ -1338,7 +1430,10 @@ export class ClinicService {
         new Money(0),
       ).cents;
       if (
-        !total ||
+        (!total &&
+          (!checkoutEncounter ||
+            checkoutEncounter.consultation_fee_cents == null ||
+            checkoutEncounter.procedure_fee_cents == null)) ||
         input.payments.reduce((sum: number, p: any) => sum + p.amountCents, 0) !== total
       )
         throw new DomainError(
@@ -1450,7 +1545,9 @@ export class ClinicService {
             ).rows.map((item) => [item.id, item.name]),
           )
         : new Map();
+      const letterhead = await readLetterhead(db, ctx.actor.tenantId);
       const payload = {
+        ...letterhead,
         ...input,
         patientId: e.patient_id,
         practitionerId: e.practitioner_id,
@@ -1462,7 +1559,7 @@ export class ClinicService {
         practitionerName: e.practitioner_name,
         licenseNumber: e.license_number,
         branchName: e.branch_name,
-        branchAddress: e.address,
+        branchAddress: letterhead.address || e.address,
         assessment: e.assessment,
         vitals: e.vitals,
         allergies: e.allergies,
@@ -1645,6 +1742,46 @@ export class ClinicService {
       return this.doseView({ ...row, actor_name: ctx.actor.name });
     });
   }
+  async medicineLabels(ctx: Context, id: number): Promise<MedicineLabelPrescription> {
+    const row = (
+      await this.db.query(
+        "SELECT e.id,e.patient_id,e.prescriptions,p.name patient_name,u.name practitioner_name,d.created_at dispensed_at FROM encounters e JOIN dispenses d ON d.encounter_id=e.id AND d.tenant_id=e.tenant_id AND d.branch_id=e.branch_id JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL AND e.status='SIGNED'",
+        [id, ctx.actor.tenantId, ctx.branchId],
+      )
+    ).rows[0];
+    if (!row) throw missing();
+    const missingSnapshots = row.prescriptions.filter((rx: any) => !rx.itemName || !rx.unit);
+    const items = missingSnapshots.length
+      ? (
+          await this.db.query(
+            'SELECT id,name,unit FROM inventory_items WHERE tenant_id=$1 AND branch_id=$2 AND id IN ($3)',
+            [ctx.actor.tenantId, ctx.branchId, missingSnapshots.map((rx: any) => rx.itemId)],
+          )
+        ).rows
+      : [];
+    const catalog = new Map(items.map((item) => [item.id, item]));
+    return {
+      id: row.id,
+      patientId: row.patient_id,
+      patientName: row.patient_name,
+      practitionerName: row.practitioner_name,
+      dispensedAt: camel({ dispensed_at: row.dispensed_at }).dispensedAt,
+      prescriptions: row.prescriptions.map((rx: any) => ({
+        itemId: rx.itemId,
+        itemName: rx.itemName || catalog.get(rx.itemId)?.name || `Medication ID ${rx.itemId}`,
+        unit: rx.unit || catalog.get(rx.itemId)?.unit,
+        quantity: rx.quantity,
+        quantityPerDose: rx.quantityPerDose,
+        form: rx.form,
+        instructions: rx.instructions,
+        indication: rx.indication,
+        dosage: rx.dosage,
+        durationDays: rx.durationDays,
+        frequencyPerDay: rx.frequencyPerDay || 1,
+        mealTiming: rx.mealTiming || 'ANY_TIME',
+      })),
+    };
+  }
   async prescriptionLog(ctx: Context, id: number): Promise<PrescriptionLog> {
     const e = (
       await this.db.query(
@@ -1670,7 +1807,7 @@ export class ClinicService {
       at: string,
       actorName: string,
       batchId?: number,
-      batchNumber?: string,
+      batchNumber?: string | null,
     ) =>
       events.push({
         type,
@@ -1682,6 +1819,10 @@ export class ClinicService {
         frequencyPerDay: rx.frequencyPerDay || 1,
         mealTiming: rx.mealTiming || 'ANY_TIME',
         dosage: rx.dosage,
+        quantityPerDose: rx.quantityPerDose,
+        form: rx.form,
+        instructions: rx.instructions,
+        indication: rx.indication,
         durationDays: rx.durationDays,
         ...(batchId ? { batchId, batchNumber } : {}),
       });

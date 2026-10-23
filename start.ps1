@@ -37,7 +37,7 @@ try {
     }
     & node scripts/check-local-config.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Local configuration check failed.' }
-    if (-not $DatabaseOnly -or $StopDatabase) {
+    if ((-not $DatabaseOnly -or $StopDatabase) -and -not $Check) {
         foreach ($port in @(3100, 3101)) {
             $listeners = @(Get-ClinicListener $port)
             if ($listeners.Count) {
@@ -76,6 +76,8 @@ try {
         if ($existing.Count) { throw 'Clinic MySQL already runs on another port or is starting. Check its configuration; no duplicate instance was started.' }
     }
     if ($Check) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $clinicWorkspace 'scripts/stop-local-app.ps1') -Check
+        if ($LASTEXITCODE -ne 0) { throw 'Clinic application ownership check failed.' }
         Write-Output 'Clinic check passed: web 3100, API 3101, MySQL 3310. No services started.'
         return
     }

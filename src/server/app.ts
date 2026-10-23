@@ -17,7 +17,7 @@ import { pool, camel } from './db.js';
 import { authenticate, hashToken, verifyPassword, sessionCookie, roles } from './security.js';
 import { ClinicService } from './service.js';
 import { DomainError } from '../domain/models.js';
-import { schemas } from './validation.js';
+import { schemas, encounterWriteSchema } from './validation.js';
 import { recordRouter } from './record-router.js';
 import { administrationRouter } from './administration.js';
 import { authorizeModules } from './module-access.js';
@@ -280,7 +280,7 @@ export function createApp(service = new ClinicService()) {
     broadcast(r.context.branchId);
     return result;
   });
-  mutation('/encounters', schemas.encounter, (r, i) => service.saveEncounter(r.context, i));
+  mutation('/encounters', encounterWriteSchema, (r, i) => service.saveEncounter(r.context, i));
   api.delete(
     '/encounters/:id',
     roles('DOCTOR'),
@@ -294,7 +294,7 @@ export function createApp(service = new ClinicService()) {
   );
   mutation(
     '/encounters/:id',
-    schemas.encounter.refine((v) => !!v.version, 'Version is required.'),
+    encounterWriteSchema.refine((v) => !!v.version, 'Version is required.'),
     (r, i) => service.saveEncounter(r.context, i, idSchema.parse(r.params.id)),
     'put',
   );
@@ -351,6 +351,12 @@ export function createApp(service = new ClinicService()) {
     '/documents/:id',
     asyncRoute(async (req, res) => {
       res.json(await service.documentPreview(req.context, idSchema.parse(req.params.id)));
+    }),
+  );
+  api.get(
+    '/encounters/:id/medicine-labels',
+    asyncRoute(async (req, res) => {
+      res.json(await service.medicineLabels(req.context, idSchema.parse(req.params.id)));
     }),
   );
   api.get(

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { DemoClinic } from '../src/client/demo-store';
+import { encounterBillingLines } from '../src/shared/encounter-billing';
 class Storage {
   entries = new Map<string, string>();
   getItem(key: string) {
@@ -30,20 +31,28 @@ async function ready(medicines = true) {
     assessment: 'Fictional workflow test',
     prescriptions: medicines ? [medicine] : [],
     status: 'SIGNED',
+    consultationFeeCents: 100,
+    procedureFeeCents: 0,
   };
   return { clinic, storage, ticket, consultation };
 }
 async function admin(clinic: DemoClinic) {
   await clinic.request('/auth/login', 'POST', { email: 'admin@example.test', password: 'demo' });
 }
-const checkout = (encounterId: number, key = 'checkout-test-key') => ({
-  encounterId,
+const checkout = (encounter: any, key = 'checkout-test-key') => ({
+  encounterId: encounter.id,
   patientId: 4,
   practitionerId: 2,
-  lines: [
-    { description: 'Fictional charge', quantity: 1, unitPriceCents: 100, category: 'SERVICE' },
+  lines: encounterBillingLines(encounter)!,
+  payments: [
+    {
+      method: 'CASH',
+      amountCents: encounterBillingLines(encounter)!.reduce(
+        (sum, line) => sum + line.quantity * line.unitPriceCents,
+        0,
+      ),
+    },
   ],
-  payments: [{ method: 'CASH', amountCents: 100 }],
   idempotencyKey: key,
 });
 afterEach(() => vi.useRealTimers());
@@ -76,7 +85,7 @@ describe('demo synchronized visit handoffs', () => {
         (row: any) => row.id === encounter.id,
       ),
     ).toBe(false);
-    await expect(clinic.request('/invoices', 'POST', checkout(encounter.id))).rejects.toThrow(
+    await expect(clinic.request('/invoices', 'POST', checkout(encounter))).rejects.toThrow(
       'Dispense',
     );
     const dispenseBody = { encounterId: encounter.id, idempotencyKey: 'dispense-handoff-test' };
@@ -101,8 +110,8 @@ describe('demo synchronized visit handoffs', () => {
       practitionerId: 2,
     });
     expect(suggestion.prescriptions[0].unitPriceCents).toBeTypeOf('number');
-    const invoice = await clinic.request('/invoices', 'POST', checkout(encounter.id));
-    expect(await clinic.request('/invoices', 'POST', checkout(encounter.id))).toEqual(invoice);
+    const invoice = await clinic.request('/invoices', 'POST', checkout(encounter));
+    expect(await clinic.request('/invoices', 'POST', checkout(encounter))).toEqual(invoice);
     expect(
       (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id).status,
     ).toBe('COMPLETED');
@@ -112,7 +121,7 @@ describe('demo synchronized visit handoffs', () => {
       ),
     ).toBe(false);
     await expect(
-      clinic.request('/invoices', 'POST', checkout(encounter.id, 'second-checkout-key')),
+      clinic.request('/invoices', 'POST', checkout(encounter, 'second-checkout-key')),
     ).rejects.toThrow('already checked out');
   });
   it('routes signed visits without medicines directly to billing', async () => {
@@ -127,7 +136,7 @@ describe('demo synchronized visit handoffs', () => {
         expect.objectContaining({ encounterId: encounter.id, patientId: 4, prescriptions: [] }),
       ]),
     );
-    await clinic.request('/invoices', 'POST', checkout(encounter.id));
+    await clinic.request('/invoices', 'POST', checkout(encounter));
     expect(
       (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id).status,
     ).toBe('COMPLETED');
@@ -150,7 +159,7 @@ describe('demo synchronized visit handoffs', () => {
     const encounter = await clinic.request('/encounters', 'POST', consultation);
     await admin(clinic);
     await expect(
-      clinic.request('/invoices', 'POST', { ...checkout(encounter.id), patientId: 3 }),
+      clinic.request('/invoices', 'POST', { ...checkout(encounter), patientId: 3 }),
     ).rejects.toThrow('this patient');
     expect(
       (await clinic.request('/billing/suggestions')).data.some(
@@ -174,7 +183,7 @@ describe('demo synchronized visit handoffs', () => {
       encounterId: encounter.id,
       idempotencyKey: 'expired-handoff-test',
     });
-    await clinic.request('/invoices', 'POST', checkout(encounter.id));
+    await clinic.request('/invoices', 'POST', checkout(encounter));
     expect(
       (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id),
     ).toMatchObject({

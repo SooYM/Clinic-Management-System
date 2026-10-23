@@ -95,6 +95,29 @@ export function referenceRouter() {
     }),
   );
   router.get(
+    '/references/consumables',
+    route(async (req, res) => {
+      anyModule(req, ['clinical', 'inventory']);
+      const search = z.string().max(200).default('').parse(req.query.search);
+      const { rows } = await pool.query(
+        `SELECT i.id,i.name,i.unit,i.category,i.price_cents,i.active,i.version,
+          (SELECT COALESCE(SUM(b.quantity),0) FROM inventory_batches b WHERE b.tenant_id=i.tenant_id AND b.branch_id=i.branch_id AND b.item_id=i.id AND (b.expires_on IS NULL OR b.expires_on>DATE(DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR)))) stock_quantity
+          FROM inventory_items i WHERE i.tenant_id=$1 AND i.branch_id=$2 AND i.category='CONSUMABLE' AND i.active=1 AND (i.name LIKE $3 OR i.sku LIKE $3) ORDER BY i.id LIMIT 200`,
+        [req.context.actor.tenantId, req.context.branchId, `%${search}%`],
+      );
+      await audit(req, 'READ_CLINICAL_SUPPLIES', 'inventory', null, rows.length);
+      res.json({
+        data: camel(
+          rows.map((row) => ({
+            ...row,
+            active: Boolean(row.active),
+            stock_quantity: Number(row.stock_quantity),
+          })),
+        ),
+      });
+    }),
+  );
+  router.get(
     '/clinical/patients/:id',
     route(async (req, res) => {
       anyModule(req, ['clinical']);
@@ -151,7 +174,7 @@ export function referenceRouter() {
       anyModule(req, ['billing']);
       const search = z.string().max(200).default('').parse(req.query.search);
       const { rows } = await pool.query(
-        `SELECT e.id,e.id encounter_id,e.patient_id,p.id patient_number,p.name patient_name,e.practitioner_id,u.name practitioner_name,e.queue_ticket_id,e.signed_at,d.created_at dispensed_at,e.prescriptions
+        `SELECT e.id,e.id encounter_id,e.patient_id,p.id patient_number,p.name patient_name,e.practitioner_id,u.name practitioner_name,e.queue_ticket_id,e.signed_at,d.created_at dispensed_at,e.prescriptions,e.consultation_fee_cents,e.procedure_fee_cents
          FROM encounters e JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id
          JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id LEFT JOIN dispenses d ON d.encounter_id=e.id
          WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.deleted_at IS NULL AND e.status='SIGNED'
@@ -177,7 +200,7 @@ export function referenceRouter() {
         row.prescriptions = row.prescriptions.map((rx: any) => ({
           ...rx,
           itemName: rx.itemName || drugs.get(rx.itemId)?.name || 'Medication',
-          unitPriceCents: Number(drugs.get(rx.itemId)?.price_cents || 0),
+          unitPriceCents: rx.unitPriceCents ?? Number(drugs.get(rx.itemId)?.price_cents || 0),
         }));
       await audit(req, 'READ_BILLING_SUGGESTIONS', 'encounter', null, rows.length);
       res.json({ data: camel(rows) });

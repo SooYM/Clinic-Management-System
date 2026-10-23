@@ -51,8 +51,8 @@ Successful collection reads return `{ "data": [] }`; single-resource and mutatio
 | `/api/inventory/usage`                 | POST       | Non-medication supply usage with `{itemId,quantity,reason,idempotencyKey}`; audited and idempotent       |
 | `/api/invoices`                        | GET / POST | Billing module financial ledger / split checkout                                                         |
 | `/api/invoices/:id/receipt`            | GET        | Authenticated receipt rendering                                                                          |
-| `/api/deposits`                        | POST       | Retired: 410 FEATURE_RETIRED; historical ledger retained                                                                            |
-| `/api/patients/:id/deposit-balance`    | GET        | Retired: 410 FEATURE_RETIRED                                                                    |
+| `/api/deposits`                        | POST       | Retired: 410 FEATURE_RETIRED; historical ledger retained                                                 |
+| `/api/patients/:id/deposit-balance`    | GET        | Retired: 410 FEATURE_RETIRED                                                                             |
 | `/api/documents`                       | GET / POST | Protected clinical documents / attending doctor issuance                                                 |
 | `/api/documents/:id`                   | GET        | Authenticated, integrity-checked, redacted letter preview projection                                     |
 | `/api/documents/:id/revoke`            | POST       | Issuing GP revocation with reason                                                                        |
@@ -161,27 +161,24 @@ ADMIN DELETE /api/admin/rooms/:id returns `{id,removed:"deleted"}` for unused ro
 
 Billing-module GET /api/invoices/:id/receipt-view returns safe ReceiptView metadata, line amounts, total and payments, without raw request hashes. GET /api/invoices/:id/receipt defaults to inline PDF; ?download=1 explicitly downloads. Both require authenticated tenant/branch scope. New invoice receiptSnapshot metadata wins over later renamed master records; legacy invoices use current metadata and historical checkout actor, with Not recorded when unavailable. Demo supports sample receipt-view, not real PDF.
 
-
 ## Direct registered patient call
 
 POST /api/queue/:id/transition accepts status CALLED_TO_ROOM directly from REGISTERED, with version, roomId and practitionerId. Existing room scope/active/occupancy, practitioner, concurrency and audit rules remain. TRIAGE_WAITING paths remain compatible. No new endpoint or schema.
-
 
 ## Queue expiry and assigned suggestions
 
 GET /api/clinical/queue-suggestions requires clinical module and DOCTOR role. Returns {data:[queueTicketId,patientId,patientNumber,patientName,ticketNumber,roomId,roomName,status,version,createdAt,calledAt,expiresAt,encounterId]}; encounterId is nullable. Scope is current tenant/branch and assigned GP. POST /api/queue returns PATIENT_ALREADY_CHECKED_IN 409 for an active duplicate. Expired transitions return QUEUE_EXPIRED 409. POST /api/encounters may link an assigned CALLED_TO_ROOM or IN_CONSULTATION ticket; creates/starts atomically and returns ENCOUNTER_EXISTS 409 if already linked. Existing clinical edits keep their original association and are permitted after operational expiry.
 
-
 ## Signing handoff and multiple prescriptions
 
 POST /api/encounters and PUT /api/encounters/:id retain prescriptions:[{itemId,quantity,durationDays,frequencyPerDay,mealTiming,dosage}] with a maximum of 50. SIGNED saves now atomically advance a scoped linked active visit to DISPENSARY_WAITING after all reservations succeed. Stored queue association is authoritative when draft updates omit queueTicketId. No new endpoint/schema or weaker permission rule is introduced.
-
 
 ## Draft removal and privileged reset
 
 DELETE /api/encounters/:id requires clinical module, attending DOCTOR, {version}, CSRF and DRAFT status. Signed/protected dependencies reject 409; foreign/removed records return 404 and stale versions reject 409. GET /api/admin/database-reset/preview requires ADMIN with live is_super_admin; returns scope ENTIRE_DATABASE, confirmationPhrase, counts[{table,rowCount}], defaults and preserves metadata. POST /api/admin/database-reset strictly accepts {confirmationPhrase:"RESET ALL CLINIC DATA",currentPassword,acknowledge:true}; reauthentication, capability and schema guards are enforced server-side. Successful reset returns {requiresLogin:true,bootstrapEmail}, clears sessions and cookie, and never returns passwords/hashes. Incorrect current password is 403 PASSWORD_INCORRECT.
 
 ## Live stock and checkout suggestions
+
 `GET /api/references/medications` returns `stockQuantity` (available), `onHandQuantity` (eligible physical stock), and `reservedQuantity`, with existing medicine identity fields. Clinical permission allows these minimal references without granting stock mutation access.
 `GET /api/billing/suggestions?search=...` requires billing permission and returns scoped signed, nondeleted, unpaid consultations with no medicines or a completed dispense. Rows include `id/encounterId`, `patientId/patientNumber/patientName`, `practitionerId/practitionerName`, `queueTicketId`, `signedAt`, `dispensedAt`, and `prescriptions` with `itemName`, `quantity` and `unitPriceCents`. Catalogue prices are editable checkout suggestions, not historical price guarantees.
 `POST /api/invoices` additionally accepts optional numeric `encounterId`. It must identify a signed consultation for the submitted patient/GP; medicine visits must already be dispensed. Duplicate linked checkout returns 409; idempotent retries return the original invoice. Successful linked checkout completes only an active, unexpired PAYMENT_WAITING visit. Standalone invoices retain compatibility.
@@ -203,9 +200,9 @@ POST/PUT /api/encounters accepts optional vitals.temperature as numeric or numer
 
 The `/display` browser route needs no login. Its read-only endpoints run after the common API security headers and rate limit, before staff authentication:
 
-| Endpoint | Result |
-| --- | --- |
-| `GET /api/public/display/branches` | `{data:[{id,name,clinicName}]}` for active branches, ordered by branch ID |
+| Endpoint                                   | Result                                                                                                          |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `GET /api/public/display/branches`         | `{data:[{id,name,clinicName}]}` for active branches, ordered by branch ID                                       |
 | `GET /api/public/display/queue?branchId=1` | `{branch:{id,name,clinicName},data:[{ticketNumber,status,roomName}]}` for the explicitly selected active branch |
 
 `branchId` must be a positive safe integer. Missing/malformed IDs return 400; unknown or inactive branches return 404. The query selects the chosen branch's tenant directly; staff cookies and `X-Branch-ID` do not override selection. Responses use `Cache-Control: no-store`. Public queue data includes only today's Asia/Kuala_Lumpur service date, unexpired visits younger than 12 hours, and statuses `REGISTERED`, `TRIAGE_WAITING`, `CALLED_TO_ROOM`, `IN_CONSULTATION`. It excludes internal ticket IDs, patient identifiers/names, practitioner names, contacts, clinical fields, configuration secrets and authentication tokens.
@@ -221,3 +218,18 @@ Clients poll every 15 seconds; no public SSE session is created. Existing `/api/
 ## Custom nationality country contract
 
 POST/PUT /api/patients accepts countryCode=OTHER with countryName (trimmed 1–100 characters) for NON_MALAYSIAN. Missing/blank/oversized custom names return validation400 at countryName; OTHER without foreign nationality rejects. Read/list payloads include nullable countryName. Explicit ISO selection or MALAYSIAN/MY clears countryName. Legacy edit payloads omitting both country fields preserve a previous OTHER/name pair; switching away from Malaysian nationality without a country retains the existing unknown-country fallback. Phone calling-code choices retain their existing behavior.
+
+## Cashier, dose quantities and unnumbered stock receipts
+
+`GET /api/encounters/:id/medicine-labels` requires inventory module access, including inventory-only staff. Clinical access alone is insufficient. It returns `{id, patientId, patientName, practitionerName, dispensedAt, prescriptions}` only for a signed, nonremoved encounter with a successful dispense in the caller's tenant and branch. `id` is the encounter ID. `dispensedAt` is the original `dispenses.created_at` ISO timestamp, never the reprint time. Directions use the saved encounter prescription snapshot: itemId, itemName, optional unit, quantity, optional quantityPerDose/indication, dosage, durationDays, frequencyPerDay and mealTiming. Linked patient/GP names reflect current identity records; historical identity-name snapshots were not stored. Saved medicine names and units remain authoritative. Missing legacy name/unit snapshots fall back only to the current catalog item in the same tenant and branch, including archived items; absent names still show `Medication ID <id>` when no scoped catalog record exists. Responses omit SOAP and internal dispense keys. Missing, unsigned, removed, undispensed or foreign-scope records return404. Repeated GETs do not create dispenses, update stock/reservations or create invoices. Browser demo implements the same label projection and permission semantics using simulated records.
+
+Staff creation and role-module configuration accept `CASHIER`. Defaults grant `queue`, `patients`, `clinical` and `billing`. Receptionist, nurse and therapist defaults also include clinical chart access; existing administrator-configured module overrides remain authoritative. Clinical creation/signing and clinical document issuance retain their GP-only server gates. Cashiers cannot receive administrator or dispensary access through the default role.
+
+Each POST/PUT `/api/encounters` prescription optionally accepts positive integer `quantityPerDose` and trimmed `indication` (0–500 characters). `quantity` remains the positive integer total supply used for stock reservations, dispensing and billing. When `quantityPerDose` is supplied, the server requires `quantity = quantityPerDose * frequencyPerDay * durationDays`. Historical prescriptions without per-dose quantities remain readable and editable as historical drafts; no migration invents dose values. Signed snapshots retain both new fields. Prescription-log events include these optional fields.
+
+POST `/api/inventory/batches` accepts `batchNumber: null` or an omitted batch number. A supplied number must contain 1–100 trimmed characters. SQL NULL represents missing manufacturer numbering; repeated unnumbered receipts create distinct tracked rows and movements. Named batch numbers remain unique per item. `expiresOn: null` remains accepted only for CONSUMABLE/RETAIL categories; MEDICATION still requires a future expiry date. Tenant/branch checks, stock transactions and audit records apply to every receipt.
+
+
+## Clinical pricing and letterhead update — 23 October 2026
+
+See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.

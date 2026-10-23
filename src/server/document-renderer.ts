@@ -12,10 +12,20 @@ export function renderDocumentPdf(doc: PDFKit.PDFDocument, view: DocumentView, q
         ? 'REFERRAL LETTER'
         : 'LAB INVESTIGATION REQUISITION';
   function header() {
+    let top = 50;
+    if (view.logoDataUrl) {
+      doc.image(Buffer.from(view.logoDataUrl.split(',')[1], 'base64'), left + width / 2 - 45, top, {
+        fit: [90, 55],
+        align: 'center',
+      });
+      top += 65;
+    }
     doc
       .font('Helvetica-Bold')
       .fontSize(18)
-      .text(view.clinicName, left, 50, { width, align: 'center' });
+      .text(view.clinicName, left, top, { width, align: 'center' });
+    if (view.header)
+      doc.font('Helvetica').fontSize(10).text(view.header, { width, align: 'center' });
     doc.font('Helvetica').fontSize(10).text(view.clinicAddress, { width, align: 'center' });
     doc.moveDown(1.2).font('Helvetica-Bold').fontSize(15).text(title, { width, align: 'center' });
     if (view.revoked)
@@ -100,4 +110,8 @@ export function renderDocumentPdf(doc: PDFKit.PDFDocument, view: DocumentView, q
     width: width - 80,
   });
   if (qr) doc.image(qr, left + width - 65, doc.page.height - 100, { width: 65, height: 65 });
+  if (view.footer)
+    doc
+      .fontSize(7)
+      .text(view.footer, left, doc.page.height - 45, { width, height: 40, align: 'center' });
 }

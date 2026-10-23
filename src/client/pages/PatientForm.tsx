@@ -251,64 +251,57 @@ export default function PatientForm({
             placeholder="e.g. Abdullah"
           />
         </Field>
-        <div className="nationality-fields">
-          <Field label="Nationality">
-            <select
-              value={nationality}
-              onChange={(e) => {
-                setNationality(e.target.value as Patient['nationality']);
-                if (e.target.value === 'MALAYSIAN') setCustomCountryName('');
-                setNationalId('');
-                setDateOfBirth('');
-                setIdentityError('');
-                clearAutofilled();
-              }}
-            >
-              <option value="MALAYSIAN">Malaysian</option>
-              <option value="NON_MALAYSIAN">Non-Malaysian</option>
-            </select>
+        <Field label="Nationality">
+          <select
+            value={nationality}
+            onChange={(e) => {
+              setNationality(e.target.value as Patient['nationality']);
+              if (e.target.value === 'MALAYSIAN') setCustomCountryName('');
+              setNationalId('');
+              setDateOfBirth('');
+              setIdentityError('');
+              clearAutofilled();
+            }}
+          >
+            <option value="MALAYSIAN">Malaysian</option>
+            <option value="NON_MALAYSIAN">Non-Malaysian</option>
+          </select>
+        </Field>
+        <Field label="Country of nationality" hint="Country recorded on the identity document.">
+          <select
+            required={nationality === 'NON_MALAYSIAN'}
+            disabled={nationality !== 'NON_MALAYSIAN'}
+            value={nationality === 'MALAYSIAN' ? 'MY' : countryCode}
+            onChange={(event) => {
+              setCountryCode(event.target.value);
+              if (event.target.value !== 'OTHER') setCustomCountryName('');
+            }}
+          >
+            <option value="">Choose country</option>
+            {nationality === 'MALAYSIAN' && <option value="MY">Malaysia</option>}
+            {countryOptions
+              .filter((country) => country.code !== 'MY')
+              .map((country) => (
+                <option key={country.code} value={country.code}>
+                  {country.name}
+                </option>
+              ))}
+          </select>
+        </Field>
+        {otherCountry && (
+          <Field label="Country name" hint="Enter the name shown on the identity document.">
+            <input
+              name="countryName"
+              value={customCountryName}
+              onChange={(event) => setCustomCountryName(event.target.value)}
+              required={otherCountry}
+              disabled={!otherCountry}
+              maxLength={100}
+              placeholder="Enter country name"
+              autoComplete="off"
+            />
           </Field>
-          <div>
-            <Field label="Country of nationality" hint="Country recorded on the identity document.">
-              <select
-                required={nationality === 'NON_MALAYSIAN'}
-                disabled={nationality !== 'NON_MALAYSIAN'}
-                value={nationality === 'MALAYSIAN' ? 'MY' : countryCode}
-                onChange={(event) => {
-                  setCountryCode(event.target.value);
-                  if (event.target.value !== 'OTHER') setCustomCountryName('');
-                }}
-              >
-                <option value="">Choose country</option>
-                {nationality === 'MALAYSIAN' && <option value="MY">Malaysia</option>}
-                {countryOptions
-                  .filter((country) => country.code !== 'MY')
-                  .map((country) => (
-                    <option key={country.code} value={country.code}>
-                      {country.name}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-            <div
-              style={{ visibility: otherCountry ? 'visible' : 'hidden', marginTop: 17 }}
-              aria-hidden={!otherCountry}
-            >
-              <Field label="Country name" hint="Enter the name shown on the identity document.">
-                <input
-                  name="countryName"
-                  value={customCountryName}
-                  onChange={(event) => setCustomCountryName(event.target.value)}
-                  required={otherCountry}
-                  disabled={!otherCountry}
-                  maxLength={100}
-                  placeholder="Enter country name"
-                  autoComplete="off"
-                />
-              </Field>
-            </div>
-          </div>
-        </div>
+        )}
         <Field
           label={nationality === 'MALAYSIAN' ? 'Malaysian IC' : 'Passport number'}
           hint={

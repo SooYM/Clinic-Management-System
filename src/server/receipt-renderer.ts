@@ -19,11 +19,19 @@ export function renderReceiptPdf(doc: PDFKit.PDFDocument, receipt: ReceiptView) 
       .stroke();
   }
   function header(continued = false, fees = true) {
+    let top = doc.page.margins.top;
+    if (receipt.logoDataUrl) {
+      doc.image(Buffer.from(receipt.logoDataUrl.split(',')[1], 'base64'), left, top, {
+        fit: [100, 55],
+      });
+      top += 65;
+    }
     doc
       .font('Helvetica-Bold')
       .fontSize(16)
       .fillColor('#111827')
-      .text(receipt.clinicName.toUpperCase(), left, doc.page.margins.top, { width });
+      .text(receipt.clinicName.toUpperCase(), left, top, { width });
+    if (receipt.header) doc.font('Helvetica').fontSize(10).text(receipt.header, { width });
     doc
       .font('Helvetica')
       .fontSize(10)
@@ -120,4 +128,8 @@ export function renderReceiptPdf(doc: PDFKit.PDFDocument, receipt: ReceiptView) 
     .moveDown()
     .fontSize(8)
     .text('Payment methods are staff-recorded settlement references.', left, doc.y, { width });
+  if (receipt.footer) {
+    space(doc.heightOfString(receipt.footer, { width }) + 12, false);
+    doc.fontSize(8).text(receipt.footer, left, doc.y + 8, { width });
+  }
 }

@@ -1,6 +1,6 @@
 # Clinic Management System — V2
 
-From any PowerShell directory, use `webapp clinic` to start local MySQL, API and frontend. Progress Tracker uses `webapp progress` in another terminal. See [one-command startup and global ports](docs/LOCAL_HARNESS.md).
+From any PowerShell directory, use `webapp clinic management` to start local MySQL, API and frontend. Repeating the command replaces existing verified Clinic web/API workers on the same ports. Progress Tracker uses `webapp progress` in another terminal. See [one-command startup and global ports](docs/LOCAL_HARNESS.md).
 
 Malaysia-focused, multi-branch clinic application using MySQL 8.4/InnoDB, React, TypeScript, Vite and Express. V2 fully replaces the V1 Next.js/Supabase implementation while preserving repository history.
 
@@ -40,13 +40,13 @@ npm run dev
 
 Open http://127.0.0.1:3100. Set explicit bootstrap credentials and a random signing key first. Bootstrap creates the clinic, initial branch, rooms and administrator; it refuses an existing users table. Add staff through Administration. Never run synthetic `db:seed` in production.
 
-After initial setup, start MySQL, API and frontend with one PowerShell command from this repository:
+After initial setup, start MySQL, API and frontend with one PowerShell command from any directory:
 
 ```powershell
-.\start.ps1
+webapp clinic management
 ```
 
-From any folder, the installed global harness supports `webapp clinic`; `webapp progress` starts Progress Tracker. Use `.\start.ps1 -Check` or `webapp check clinic` to validate without starting services. Startup waits for MySQL authentication, preserves data, rejects unrelated listeners and never changes ports automatically. Keep the terminal open; Ctrl+C stops the application. MySQL remains available for the table viewer and later starts.
+The installed global harness also retains `webapp clinic` as an alias; `webapp progress` starts Progress Tracker. Use `.\start.ps1 -Check` or `webapp check clinic management` to validate without starting services. Startup waits for MySQL authentication, preserves data, rejects unrelated listeners and never changes ports automatically. Repeated Clinic launches stop only verified Clinic web/API workers, preserving MySQL. Keep the terminal open; Ctrl+C stops the application. MySQL remains available for the table viewer and later starts. Without the workstation harness, `.\start.ps1` still supports guarded startup inside this repository.
 
 | Clinic service | Fixed local port |
 | --- | --- |

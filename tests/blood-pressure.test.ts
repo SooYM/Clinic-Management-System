@@ -9,24 +9,18 @@ describe('blood pressure format and non-diagnostic monitor flags', () => {
   it.each(['120/80', ' 120 / 80 ', '260/215'])('accepts common monitor range %s', (value) => {
     expect(parseBloodPressure(value)?.unusual).toBe(false);
   });
-  it.each(['300/220', '59/39', '1000/1'])('accepts unusual readings with warning %s', (value) => {
-    expect(parseBloodPressure(value)?.unusual).toBe(true);
-  });
-  it.each([
-    '80/120',
-    '80/80',
-    '0/0',
-    '-120/80',
-    '120.5/80',
-    '1e3/80',
-    '120/80/70',
-    '120',
-    120,
-    true,
-    {},
-  ])('rejects invalid reading %s', (value) => {
-    expect(() => parseBloodPressure(value)).toThrow();
-  });
+  it.each(['300/220', '59/39', '1000/1', '80/120', '80/80'])(
+    'accepts unusual readings with warning %s',
+    (value) => {
+      expect(parseBloodPressure(value)?.unusual).toBe(true);
+    },
+  );
+  it.each(['0/0', '-120/80', '120.5/80', '1e3/80', '120/80/70', '120', 120, true, {}])(
+    'rejects invalid reading %s',
+    (value) => {
+      expect(() => parseBloodPressure(value)).toThrow();
+    },
+  );
   it('validates only bloodPressure and preserves other vitals', () => {
     const vitals = {
       bloodPressure: '300/220',
@@ -36,7 +30,7 @@ describe('blood pressure format and non-diagnostic monitor flags', () => {
     };
     expect(schemas.encounter.parse({ patientId: 1, vitals }).vitals).toEqual(vitals);
     expect(
-      schemas.encounter.safeParse({ patientId: 1, vitals: { bloodPressure: '80/120' } }).success,
+      schemas.encounter.safeParse({ patientId: 1, vitals: { bloodPressure: 'invalid' } }).success,
     ).toBe(false);
   });
 });

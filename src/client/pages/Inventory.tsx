@@ -1,4 +1,6 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import DetailDialog from '../DetailDialog';
+import MedicineLabels from '../MedicineLabels';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import type { CatalogEntry } from '../AdminCatalogs';
 import PrescriptionLog from '../PrescriptionLog';
@@ -20,7 +22,7 @@ import {
   useRole,
   useModules,
 } from '../components';
-import { type InventoryItem, dateTime, humanize } from '../types';
+import { type InventoryItem, dateTime, humanize, money } from '../types';
 import { useListControls } from '../ListControls';
 import { useConfirm } from '../Confirmation';
 import './Inventory.css';
@@ -44,17 +46,17 @@ function StockBatches({ item }: { item: InventoryItem }) {
     ],
   });
   return (
-    <details>
-      <summary>View batches</summary>
+    <section aria-label="Stock batches">
+      <h3>Stock batches</h3>
       {list.controls}
       {list.items.map((batch) => (
         <p className="form-help" key={batch.id}>
-          {batch.batchNumber} · {batch.quantity} units ·{' '}
+          {batch.batchNumber || 'No batch number'} · {batch.quantity} units ·{' '}
           {batch.expiresOn ? `expiry ${batch.expiresOn.slice(0, 10)}` : 'No expiry'}
         </p>
       ))}
       {!list.items.length && <p className="form-help">No matching batches.</p>}
-    </details>
+    </section>
   );
 }
 interface PendingPrescription {
@@ -69,6 +71,8 @@ interface PendingPrescription {
     itemId: number;
     itemName: string;
     quantity: number;
+    quantityPerDose?: number;
+    indication?: string;
     dosage: string;
     durationDays: number;
     frequencyPerDay: number;
@@ -102,10 +106,14 @@ function PendingMedicines({
         <div className="list-row" key={`${rx.itemId}:${index}`}>
           <strong>{rx.itemName}</strong>
           <p>
-            {rx.quantity} units · {rx.frequencyPerDay || 1} times daily ·{' '}
+            {rx.quantityPerDose ? `${rx.quantityPerDose} per serving · ` : ''}
+            {rx.quantity} units total · {rx.frequencyPerDay || 1} times daily ·{' '}
             {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.durationDays} days
           </p>
-          <p className="form-help">{rx.dosage}</p>
+          <p className="form-help">
+            {rx.indication && `For ${rx.indication} · `}
+            {rx.dosage}
+          </p>
         </div>
       ))}
     </>
@@ -120,6 +128,10 @@ export default function Inventory() {
   const [catalogError, setCatalogError] = useState('');
   const [detailsItemId, setDetailsItemId] = useState<number>();
   const [section, setSection] = useState('dispense');
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [noExpiry, setNoExpiry] = useState(false);
+  const [noBatchNumber, setNoBatchNumber] = useState(false);
+  const [labels, setLabels] = useState<number>();
   const editorRef = useRef<HTMLDivElement>(null);
   const units = useResource<CatalogEntry[]>('/references/catalogs?kind=INVENTORY_UNIT');
   const [editingItem, setEditingItem] = useState<InventoryItem>();
@@ -213,6 +225,7 @@ export default function Inventory() {
       { key: 'patient', label: 'Patient name', value: (row) => row.patientName },
     ],
   });
+  const detailsItem = resource.data?.find((item) => item.id === detailsItemId);
   const receivingItem = resource.data?.find((item) => item.id === Number(receivingItemId));
   const optionalExpiry =
     receivingItem?.category === 'CONSUMABLE' || receivingItem?.category === 'RETAIL';
@@ -339,69 +352,80 @@ export default function Inventory() {
                 </p>
               )}
               {pending.data?.length ? (
-                <MutationForm
-                  label="Dispense medicines"
-                  disabled={!selected}
-                  disabledReason="Select a patient prescription to review medicines before dispensing."
-                  onSuccess={() => {
-                    if (selected)
-                      setBillingPatient({ id: selected.id, name: selected.patientName });
-                    setLogEncounterId(encounterId);
-                    refresh();
-                    setEncounterId('');
-                    setDispenseKey(crypto.randomUUID());
-                  }}
-                  onSubmit={() => {
-                    if (!selected) throw new Error('Select a signed prescription first.');
-                    return api.post('/dispenses', {
-                      encounterId: selected.id,
-                      idempotencyKey: dispenseKey,
-                    });
-                  }}
+                <DetailDialog
+                  open={!!selected}
+                  title="Review prescription"
+                  onClose={() => setEncounterId('')}
                 >
-                  {!matchingPrescriptions.length && (
-                    <p className="form-help" role="status">
-                      No prescriptions match this search. Clear or change the search to see pending
-                      work.
-                    </p>
-                  )}
-                  <Field label="Signed GP prescription">
-                    <select
-                      required
-                      value={encounterId}
-                      onChange={(e) => {
-                        setEncounterId(e.target.value);
-                        setDispenseKey(crypto.randomUUID());
-                      }}
-                    >
-                      <option value="">Select patient prescription</option>
-                      {matchingPrescriptions.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.patientName} · Patient ID #{e.patientId} · Prescription encounter #
-                          {e.id} · {e.practitionerName} · {dateTime(e.createdAt)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {selected && (
-                    <div>
-                      <h3>{selected.patientName}</h3>
-                      <p className="form-help">
-                        Patient ID #{selected.patientId} · {selected.nationalId} · GP{' '}
-                        {selected.practitionerName}
+                  <MutationForm
+                    label="Dispense medicines"
+                    disabled={!selected}
+                    disabledReason="Select a patient prescription to review medicines before dispensing."
+                    onSuccess={() => {
+                      if (selected) {
+                        setBillingPatient({ id: selected.id, name: selected.patientName });
+                        setLabels(selected.id);
+                      }
+                      setLogEncounterId('');
+                      refresh();
+                      setEncounterId('');
+                      setDispenseKey(crypto.randomUUID());
+                    }}
+                    onSubmit={() => {
+                      if (!selected) throw new Error('Select a signed prescription first.');
+                      return api.post('/dispenses', {
+                        encounterId: selected.id,
+                        idempotencyKey: dispenseKey,
+                      });
+                    }}
+                  >
+                    {!matchingPrescriptions.length && (
+                      <p className="form-help" role="status">
+                        No prescriptions match this search. Clear or change the search to see
+                        pending work.
                       </p>
-                      <p className="allergies">
-                        Allergies: {selected.allergies?.join(', ') || 'None recorded'}
-                      </p>
-                      <PendingMedicines key={selected.id} prescriptions={selected.prescriptions} />
+                    )}
+                    <Field label="Signed GP prescription">
+                      <select
+                        required
+                        value={encounterId}
+                        onChange={(e) => {
+                          setEncounterId(e.target.value);
+                          setDispenseKey(crypto.randomUUID());
+                        }}
+                      >
+                        <option value="">Select patient prescription</option>
+                        {matchingPrescriptions.map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.patientName} · Patient ID #{e.patientId} · Prescription encounter #
+                            {e.id} · {e.practitionerName} · {dateTime(e.createdAt)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    {selected && (
+                      <div>
+                        <h3>{selected.patientName}</h3>
+                        <p className="form-help">
+                          Patient ID #{selected.patientId} · {selected.nationalId} · GP{' '}
+                          {selected.practitionerName}
+                        </p>
+                        <p className="allergies">
+                          Allergies: {selected.allergies?.join(', ') || 'None recorded'}
+                        </p>
+                        <PendingMedicines
+                          key={selected.id}
+                          prescriptions={selected.prescriptions}
+                        />
+                      </div>
+                    )}
+                    <div className="notice info">
+                      <Status value="FEFO" />
+                      Signed prescriptions use reserved stock. Older unreserved prescriptions use
+                      eligible FEFO batches. Physical stock is deducted once when dispensed.
                     </div>
-                  )}
-                  <div className="notice info">
-                    <Status value="FEFO" />
-                    Signed prescriptions use reserved stock. Older unreserved prescriptions use
-                    eligible FEFO batches. Physical stock is deducted once when dispensed.
-                  </div>
-                </MutationForm>
+                  </MutationForm>
+                </DetailDialog>
               ) : (
                 <Empty
                   title={
@@ -417,7 +441,6 @@ export default function Inventory() {
                 />
               )}
             </ResourceState>
-            <a href="#guide">Read the consultation and dispensing guide</a>
           </Panel>
         </WorkspaceSection>
         <WorkspaceSection
@@ -569,7 +592,23 @@ export default function Inventory() {
               </Panel>
             )}
           </div>
-          <Panel title="Stock catalogue">
+          <Panel
+            title="Stock catalogue"
+            action={
+              <button
+                type="button"
+                data-guide="receive-stock"
+                onClick={() => {
+                  setReceivingItemId('');
+                  setNoExpiry(false);
+                  setNoBatchNumber(false);
+                  setReceiveOpen(true);
+                }}
+              >
+                Receive stock
+              </button>
+            }
+          >
             <p className="form-help">
               Available stock excludes expired batches and prescription reservations. Open item
               details for batch quantities, reservations and catalogue management.
@@ -623,6 +662,7 @@ export default function Inventory() {
                       <tr>
                         <th>Item</th>
                         <th>Available</th>
+                        <th>Prescription unit price</th>
                         <th>Reorder level</th>
                         <th>Status</th>
                         <th>Details</th>
@@ -630,142 +670,55 @@ export default function Inventory() {
                     </thead>
                     <tbody>
                       {catalogList.items.map((item) => (
-                        <Fragment key={item.id}>
-                          <tr>
-                            <td>
-                              <strong>{item.name}</strong>
-                              <small>
-                                Item ID #{item.id} · {humanize(item.category || 'MEDICATION')}
-                              </small>
-                            </td>
-                            <td>
-                              <strong>{item.stockQuantity ?? item.quantity ?? 0}</strong>
-                              <small>{item.unit}</small>
-                              {item.active !== false &&
-                                (item.stockQuantity ?? item.quantity ?? 0) <= item.reorderLevel && (
-                                  <small>Reorder needed</small>
-                                )}
-                            </td>
-                            <td>{item.reorderLevel}</td>
-                            <td>
-                              <Status value={item.active === false ? 'ARCHIVED' : 'ACTIVE'} />
-                            </td>
-                            <td>
+                        <tr key={item.id}>
+                          <td>
+                            <strong>{item.name}</strong>
+                            <small>
+                              Item ID #{item.id} · {humanize(item.category || 'MEDICATION')}
+                            </small>
+                          </td>
+                          <td>
+                            <strong>{item.stockQuantity ?? item.quantity ?? 0}</strong>
+                            <small>{item.unit}</small>
+                            {item.active !== false &&
+                              (item.stockQuantity ?? item.quantity ?? 0) <= item.reorderLevel && (
+                                <small>Reorder needed</small>
+                              )}
+                          </td>
+                          <td>
+                            {money((item.priceCents || 0) / 100)} / {item.unit}
+                          </td>
+                          <td>{item.reorderLevel}</td>
+                          <td>
+                            <Status value={item.active === false ? 'ARCHIVED' : 'ACTIVE'} />
+                          </td>
+                          <td>
+                            <div className="actions">
                               <button
                                 type="button"
                                 className="secondary"
-                                aria-expanded={detailsItemId === item.id}
-                                aria-controls={
-                                  detailsItemId === item.id
-                                    ? `inventory-details-${item.id}`
-                                    : undefined
-                                }
-                                onClick={() =>
-                                  setDetailsItemId(detailsItemId === item.id ? undefined : item.id)
-                                }
+                                aria-haspopup="dialog"
+                                onClick={() => setDetailsItemId(item.id)}
                               >
-                                {detailsItemId === item.id ? 'Hide details' : 'View details'}
+                                View details
                               </button>
-                            </td>
-                          </tr>
-                          {detailsItemId === item.id && (
-                            <tr className="inventory-details-row">
-                              <td colSpan={5}>
-                                <section
-                                  id={`inventory-details-${item.id}`}
-                                  aria-label={`${item.name} details`}
+                              {item.active !== false && (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => {
+                                    setReceivingItemId(String(item.id));
+                                    setNoExpiry(false);
+                                    setNoBatchNumber(false);
+                                    setReceiveOpen(true);
+                                  }}
                                 >
-                                  <h3>{item.name} details</h3>
-                                  <dl className="inventory-item-facts">
-                                    <div>
-                                      <dt>SKU</dt>
-                                      <dd>{item.sku}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>Active ingredient</dt>
-                                      <dd>
-                                        {item.ingredient ||
-                                          (item.category === 'MEDICATION'
-                                            ? 'Not recorded'
-                                            : 'Not applicable')}
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt>Unexpired stock</dt>
-                                      <dd>
-                                        {item.onHandQuantity ?? '—'} {item.unit}
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt>Reserved</dt>
-                                      <dd>
-                                        {item.reservedQuantity ?? '—'} {item.unit}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                  {item.batches?.length ? (
-                                    <StockBatches item={item} />
-                                  ) : (
-                                    <p className="form-help">No batches received.</p>
-                                  )}
-                                  {role === 'ADMIN' && (
-                                    <div className="actions inventory-item-actions">
-                                      <button
-                                        className="secondary"
-                                        onClick={() => {
-                                          setSection('stock');
-                                          setEditingItem(item);
-                                          setCreate(false);
-                                        }}
-                                      >
-                                        Edit item
-                                      </button>
-                                      <button
-                                        className="secondary"
-                                        onClick={async () => {
-                                          const restore = item.active === false;
-                                          if (
-                                            !(await confirm({
-                                              title: `${restore ? 'Restore' : 'Remove'} ${item.name}?`,
-                                              message: restore
-                                                ? 'This item will be available for new catalogue choices again.'
-                                                : 'This item will be hidden from new catalogue choices. Recorded stock and prescriptions remain preserved.',
-                                              confirmLabel: restore
-                                                ? 'Restore item'
-                                                : 'Remove item',
-                                            }))
-                                          )
-                                            return;
-                                          try {
-                                            setCatalogError('');
-                                            await api.put('/admin/inventory/' + item.id, {
-                                              name: item.name,
-                                              sku: item.sku,
-                                              ingredient: item.ingredient || '',
-                                              category: item.category || 'MEDICATION',
-                                              unit: item.unit,
-                                              priceCents: item.priceCents || 0,
-                                              reorderLevel: item.reorderLevel,
-                                              active: item.active === false,
-                                              version: item.version,
-                                            });
-                                            if (editingItem?.id === item.id)
-                                              setEditingItem(undefined);
-                                            refresh();
-                                          } catch (failure) {
-                                            setCatalogError((failure as Error).message);
-                                          }
-                                        }}
-                                      >
-                                        {item.active === false ? 'Restore' : 'Remove'}
-                                      </button>
-                                    </div>
-                                  )}
-                                </section>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
+                                  Restock
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
@@ -785,60 +738,6 @@ export default function Inventory() {
                 />
               )}
             </ResourceState>
-          </Panel>
-        </WorkspaceSection>
-        <WorkspaceSection
-          id="receive"
-          label="Receive stock"
-          description="Record delivered batches and their expiry dates."
-        >
-          <Panel title="Receive a stock batch">
-            <MutationForm
-              label="Receive stock"
-              onSuccess={refresh}
-              onSubmit={(f) =>
-                api.post('/inventory/batches', {
-                  itemId: Number(formText(f, 'itemId')),
-                  batchNumber: formText(f, 'batchNumber'),
-                  expiresOn: formText(f, 'expiresOn') || null,
-                  quantity: Number(f.get('quantity')),
-                })
-              }
-            >
-              <Field label="Inventory item">
-                <select
-                  name="itemId"
-                  required
-                  value={receivingItemId}
-                  onChange={(event) => setReceivingItemId(event.target.value)}
-                >
-                  <option value="">Select item</option>
-                  {matchingItems.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} · {humanize(i.category || 'MEDICATION')}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="form-grid">
-                <Field label="Batch number">
-                  <input name="batchNumber" required placeholder="e.g. BATCH-2026-01" />
-                </Field>
-                <Field
-                  label="Expiry date"
-                  hint={
-                    optionalExpiry
-                      ? 'Optional for supplies and retail products. Leave blank when the item has no expiry.'
-                      : 'Medicines require an expiry date after today.'
-                  }
-                >
-                  <input name="expiresOn" type="date" required={!optionalExpiry} />
-                </Field>
-                <Field label="Quantity">
-                  <input name="quantity" type="number" required min="1" />
-                </Field>
-              </div>
-            </MutationForm>
           </Panel>
         </WorkspaceSection>
         <WorkspaceSection
@@ -946,9 +845,23 @@ export default function Inventory() {
                         {row.dispensed ? 'Dispensed' : 'Pending'}
                       </p>
                     </div>
-                    <button className="secondary" onClick={() => setLogEncounterId(String(row.id))}>
-                      View activity
-                    </button>
+                    <div className="actions">
+                      <button
+                        className="secondary"
+                        onClick={() => setLogEncounterId(String(row.id))}
+                      >
+                        View activity
+                      </button>
+                      {row.dispensed && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => setLabels(row.id)}
+                        >
+                          Reprint stickers
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -978,14 +891,240 @@ export default function Inventory() {
               )}
             </ResourceState>
             {logEncounterId && (
-              <PrescriptionLog
-                key={`${logEncounterId}:${logRevision}`}
-                encounterId={Number(logEncounterId)}
-              />
+              <DetailDialog
+                open
+                title="Prescription activity"
+                onClose={() => setLogEncounterId('')}
+              >
+                {history.data?.some(
+                  (row) => row.id === Number(logEncounterId) && row.dispensed,
+                ) && (
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => setLabels(Number(logEncounterId))}
+                    >
+                      Reprint stickers
+                    </button>
+                  </div>
+                )}
+                <PrescriptionLog
+                  key={`${logEncounterId}:${logRevision}`}
+                  encounterId={Number(logEncounterId)}
+                />
+              </DetailDialog>
             )}
           </Panel>
         </WorkspaceSection>
       </WorkspaceSections>
+      {detailsItem && (
+        <DetailDialog
+          open
+          title={`${detailsItem.name} details`}
+          onClose={() => setDetailsItemId(undefined)}
+        >
+          {catalogError && <ErrorNotice>{catalogError}</ErrorNotice>}
+          <dl className="inventory-item-facts">
+            <div>
+              <dt>SKU</dt>
+              <dd>{detailsItem.sku}</dd>
+            </div>
+            <div>
+              <dt>Active ingredient</dt>
+              <dd>
+                {detailsItem.ingredient ||
+                  (detailsItem.category === 'MEDICATION' ? 'Not recorded' : 'Not applicable')}
+              </dd>
+            </div>
+            <div>
+              <dt>Unexpired stock</dt>
+              <dd>
+                {detailsItem.onHandQuantity ?? '—'} {detailsItem.unit}
+              </dd>
+            </div>
+            <div>
+              <dt>Reserved</dt>
+              <dd>
+                {detailsItem.reservedQuantity ?? '—'} {detailsItem.unit}
+              </dd>
+            </div>
+          </dl>
+          {detailsItem.batches?.length ? (
+            <StockBatches item={detailsItem} />
+          ) : (
+            <p className="form-help">No batches received.</p>
+          )}
+          {role === 'ADMIN' && (
+            <div className="actions inventory-item-actions">
+              <button
+                className="secondary"
+                onClick={() => {
+                  setSection('stock');
+                  setEditingItem(detailsItem);
+                  setDetailsItemId(undefined);
+                  setCreate(false);
+                }}
+              >
+                Edit item
+              </button>
+              <button
+                className="secondary"
+                onClick={async () => {
+                  const restore = detailsItem.active === false;
+                  if (
+                    !(await confirm({
+                      title: `${restore ? 'Restore' : 'Remove'} ${detailsItem.name}?`,
+                      message: restore
+                        ? 'This item will be available for new catalogue choices again.'
+                        : 'This item will be hidden from new catalogue choices. Recorded stock and prescriptions remain preserved.',
+                      confirmLabel: restore ? 'Restore item' : 'Remove item',
+                    }))
+                  )
+                    return;
+                  try {
+                    setCatalogError('');
+                    await api.put('/admin/inventory/' + detailsItem.id, {
+                      name: detailsItem.name,
+                      sku: detailsItem.sku,
+                      ingredient: detailsItem.ingredient || '',
+                      category: detailsItem.category || 'MEDICATION',
+                      unit: detailsItem.unit,
+                      priceCents: detailsItem.priceCents || 0,
+                      reorderLevel: detailsItem.reorderLevel,
+                      active: detailsItem.active === false,
+                      version: detailsItem.version,
+                    });
+                    if (editingItem?.id === detailsItem.id) setEditingItem(undefined);
+                    refresh();
+                  } catch (failure) {
+                    setCatalogError((failure as Error).message);
+                  }
+                }}
+              >
+                {detailsItem.active === false ? 'Restore' : 'Remove'}
+              </button>
+            </div>
+          )}
+        </DetailDialog>
+      )}
+      {receiveOpen && (
+        <DetailDialog open title="Receive stock" onClose={() => setReceiveOpen(false)}>
+          <Panel title="Receive a stock batch">
+            <MutationForm
+              label="Receive stock"
+              onSuccess={() => {
+                refresh();
+                setReceiveOpen(false);
+              }}
+              onSubmit={(f) =>
+                api.post('/inventory/batches', {
+                  itemId: Number(formText(f, 'itemId')),
+                  batchNumber: noBatchNumber ? null : formText(f, 'batchNumber'),
+                  expiresOn: optionalExpiry && noExpiry ? null : formText(f, 'expiresOn'),
+                  quantity: Number(f.get('quantity')),
+                  priceCents: Math.round(Number(f.get('price')) * 100),
+                  itemVersion: matchingItems.find(
+                    (item) => item.id === Number(formText(f, 'itemId')),
+                  )?.version,
+                })
+              }
+            >
+              <Field label="Inventory item">
+                <select
+                  name="itemId"
+                  required
+                  value={receivingItemId}
+                  onChange={(event) => {
+                    setReceivingItemId(event.target.value);
+                    setNoExpiry(false);
+                  }}
+                >
+                  <option value="">Select item</option>
+                  {matchingItems
+                    .filter((i) => i.active !== false)
+                    .map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name} · {humanize(i.category || 'MEDICATION')}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <div className="form-grid">
+                <div>
+                  <Field label="Batch number">
+                    <input
+                      name="batchNumber"
+                      required={!noBatchNumber}
+                      disabled={noBatchNumber}
+                      placeholder="e.g. BATCH-2026-01"
+                    />
+                  </Field>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={noBatchNumber}
+                      onChange={(event) => setNoBatchNumber(event.target.checked)}
+                    />
+                    No batch number
+                  </label>
+                </div>
+                <div>
+                  <Field
+                    label="Expiry date"
+                    hint={
+                      optionalExpiry
+                        ? 'Choose No expiry for undated supplies and retail products.'
+                        : 'Medicines require an expiry date after today.'
+                    }
+                  >
+                    <input
+                      name="expiresOn"
+                      type="date"
+                      required={!noExpiry || !optionalExpiry}
+                      disabled={optionalExpiry && noExpiry}
+                    />
+                  </Field>
+                  {optionalExpiry && (
+                    <label className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={noExpiry}
+                        onChange={(event) => setNoExpiry(event.target.checked)}
+                      />
+                      No expiry
+                    </label>
+                  )}
+                </div>
+                <Field label="Quantity">
+                  <input name="quantity" type="number" required min="1" />
+                </Field>
+                <Field
+                  label="Prescription unit price (MYR)"
+                  hint="Default selling price per stock unit. GP can set the final price before signing."
+                >
+                  <input
+                    key={receivingItemId}
+                    name="price"
+                    type="number"
+                    required
+                    min="0"
+                    max="20000000"
+                    step="0.01"
+                    defaultValue={
+                      (matchingItems.find((item) => item.id === Number(receivingItemId))
+                        ?.priceCents || 0) / 100
+                    }
+                  />
+                </Field>
+              </div>
+            </MutationForm>
+          </Panel>
+        </DetailDialog>
+      )}
+      {labels && (
+        <MedicineLabels key={labels} encounterId={labels} onClose={() => setLabels(undefined)} />
+      )}
     </>
   );
 }

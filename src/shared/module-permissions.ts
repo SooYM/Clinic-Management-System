@@ -9,12 +9,20 @@ export const moduleDefinitions = [
 ] as const;
 export type ModuleId = (typeof moduleDefinitions)[number]['id'];
 export const moduleIds = moduleDefinitions.map((module) => module.id);
-export const roleIds = ['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'NURSE', 'THERAPIST'] as const;
+export const roleIds = [
+  'ADMIN',
+  'DOCTOR',
+  'RECEPTIONIST',
+  'NURSE',
+  'THERAPIST',
+  'CASHIER',
+] as const;
 export type RoleId = (typeof roleIds)[number];
 export const defaultRoleModules: Record<RoleId, readonly ModuleId[]> = {
   ADMIN: moduleIds,
   DOCTOR: ['queue', 'patients', 'appointments', 'clinical', 'inventory'],
-  RECEPTIONIST: ['queue', 'patients', 'appointments', 'billing', 'reports'],
-  NURSE: ['queue', 'patients', 'inventory'],
-  THERAPIST: ['queue', 'patients', 'appointments'],
+  RECEPTIONIST: ['queue', 'patients', 'appointments', 'clinical', 'billing', 'reports'],
+  NURSE: ['queue', 'patients', 'clinical', 'inventory'],
+  THERAPIST: ['queue', 'patients', 'appointments', 'clinical'],
+  CASHIER: ['queue', 'patients', 'clinical', 'billing'],
 };

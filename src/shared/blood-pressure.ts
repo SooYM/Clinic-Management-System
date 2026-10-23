@@ -13,12 +13,13 @@ export function parseBloodPressure(value: unknown): BloodPressure | null {
     !Number.isSafeInteger(systolic) ||
     !Number.isSafeInteger(diastolic) ||
     diastolic <= 0 ||
-    systolic <= diastolic
+    systolic <= 0
   )
-    throw new Error('Blood pressure requires positive whole numbers with SYS greater than DIA.');
+    throw new Error('Blood pressure requires positive whole numbers.');
   return {
     systolic,
     diastolic,
-    unusual: systolic < 60 || systolic > 260 || diastolic < 40 || diastolic > 215,
+    unusual:
+      systolic <= diastolic || systolic < 60 || systolic > 260 || diastolic < 40 || diastolic > 215,
   };
 }

@@ -5,7 +5,7 @@ Server database configuration loads `.env` before creating the MySQL pool, inclu
 Run each app in its own PowerShell terminal, from any directory:
 
 ```powershell
-webapp clinic
+webapp clinic management
 webapp progress
 ```
 
@@ -14,11 +14,11 @@ Inspect allocations and current listeners:
 ```powershell
 webapp ports
 webapp status
-webapp check clinic
+webapp check clinic management
 webapp check progress
 ```
 
-An occupied application port refuses another start. No duplicate or fallback is started. Databases are reused only after ownership and authenticated readiness checks. Ctrl+C stops the foreground app; persistent MySQL stays running.
+Running `webapp clinic management` again stops verified Clinic web/API workers and restarts one instance on3100/3101. Unknown port owners abort before cleanup; no duplicate or fallback is started. Databases are reused only after ownership and authenticated readiness checks. Ctrl+C stops the foreground app; persistent MySQL stays running. The older `webapp clinic` alias remains supported.
 
 | Application | Website | API | MySQL | Other local listeners |
 | --- | --- | --- | --- | --- |
@@ -34,3 +34,11 @@ Clinic configuration changed after a stopped-database cold backup in ignored `.l
 For data recovery, retain the current reserved ports in `.env` and `mysql.ini`. Do not reactivate Clinic's old API3001 or restore old port assignments alongside Progress Tracker. The guarded `scripts/start-local-mysql.ps1 -Stop` refuses shutdown while Clinic's application listeners remain active.
 
 New legacy Exabytes projects default to maintained PHP/MySQL backends and locally built React/TypeScript static frontends. Preserve Angular in existing Angular projects. Node/Python server runtimes require verified hosting support. This Clinic backend requires a compatible Node host or separately scoped migration.
+
+## Restart ownership and verification
+
+The shared registry lock serializes cleanup before acquiring the next foreground lifetime lock. `scripts/stop-local-app.ps1` validates both3100/3101 listeners before stopping any process. It stops only verified project launchers, watchers and their descendants, checking creation time and command line again before termination. MySQL is excluded. Old failed development watchers are cleaned up when their command points into this project. `concurrently --kill-others` stops sibling workers when either child exits. No port reservation, account credential or database configuration changes during restart.
+
+`webapp check clinic management` performs read-only configuration and ownership checks while Clinic is running. The workstation wrapper retains its earlier version at `%USERPROFILE%\.codex\harness\webapp.pre-clinic-management-20261021.ps1` for rollback. Restore that file to `webapp.ps1` to reinstate the earlier refusal-on-collision behavior.
+
+On21 October2026, five focused startup tests passed. Two consecutive real `webapp clinic management` runs replaced web/API PIDs on the same ports; MySQL retained PID6896. The final web response returned200 and `/api/health` returned `ok`. No database records were edited during these checks.

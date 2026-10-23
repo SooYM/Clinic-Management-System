@@ -21,6 +21,7 @@ import {
 } from '../components';
 import { type Patient, type Reference, money } from '../types';
 import type { CatalogEntry } from '../../shared/catalogs';
+import { encounterBillingLines } from '../../shared/encounter-billing';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 interface BillingSuggestion {
   id: number;
@@ -31,6 +32,8 @@ interface BillingSuggestion {
   practitionerId: number;
   practitionerName: string;
   dispensedAt: string | null;
+  consultationFeeCents?: number | null;
+  procedureFeeCents?: number | null;
   prescriptions: { itemName: string; quantity: number; unitPriceCents: number }[];
 }
 interface Invoice {
@@ -67,6 +70,8 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     activeCategories.find((entry) => entry.billingDefault === preferred)?.label || '';
   const initialCategoriesLoaded = useRef(false);
   const [selectedVisit, setSelectedVisit] = useState<BillingSuggestion>();
+  const doctorPriced =
+    selectedVisit?.consultationFeeCents != null && selectedVisit?.procedureFeeCents != null;
   const handoffConsumed = useRef(false);
   const [handoffMissing, setHandoffMissing] = useState(false);
   const invoiceList = useListControls(invoices.data || [], {
@@ -139,21 +144,25 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     setSection('checkout');
     setCheckoutKey(crypto.randomUUID());
     setLines(
-      visit.prescriptions.length
-        ? visit.prescriptions.map((rx) => ({
-            description: rx.itemName,
-            quantity: rx.quantity,
-            unitPriceCents: rx.unitPriceCents,
-            category: defaultCategory('PRODUCT'),
-          }))
-        : [
-            {
-              description: 'Consultation',
-              quantity: 1,
-              unitPriceCents: 0,
-              category: defaultCategory('SERVICE'),
-            },
-          ],
+      encounterBillingLines(visit, {
+        service: defaultCategory('SERVICE'),
+        product: defaultCategory('PRODUCT'),
+      }) ??
+        (visit.prescriptions.length
+          ? visit.prescriptions.map((rx) => ({
+              description: rx.itemName,
+              quantity: rx.quantity,
+              unitPriceCents: rx.unitPriceCents,
+              category: defaultCategory('PRODUCT'),
+            }))
+          : [
+              {
+                description: 'Consultation',
+                quantity: 1,
+                unitPriceCents: 0,
+                category: defaultCategory('SERVICE'),
+              },
+            ]),
     );
     setPayments([{ method: 'CASH', amountCents: 0, reference: '' }]);
     scrollToCheckout();
@@ -266,7 +275,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                     )
                   )
                     throw new Error('Choose an active billing category for every invoice item.');
-                  if (total <= 0 || paid !== total)
+                  if (total < 0 || (total === 0 && !doctorPriced) || paid !== total)
                     throw new Error(
                       'Payment total must equal the invoice total. Adjust the split amounts before checkout.',
                     );
@@ -275,7 +284,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                     patientId: Number(formText(f, 'patientId')),
                     practitionerId: Number(formText(f, 'practitionerId')),
                     lines,
-                    payments,
+                    payments: total === 0 ? [] : payments,
                     idempotencyKey: checkoutKey,
                   });
                 }}
@@ -331,6 +340,11 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                 </div>
                 <fieldset>
                   <legend>Invoice items</legend>
+                  {doctorPriced && (
+                    <p className="form-help">
+                      GP approved these itemized charges when signing. Collect the calculated total.
+                    </p>
+                  )}
                   {categories.loading ? (
                     <p className="form-help" role="status">
                       Loading billing categories…
@@ -354,6 +368,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                       <Field label="Description">
                         <input
                           required
+                          readOnly={doctorPriced}
                           value={l.description}
                           onChange={(e) => updateLine(i, { description: e.target.value })}
                         />
@@ -363,6 +378,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           type="number"
                           required
                           min="1"
+                          readOnly={doctorPriced}
                           value={l.quantity}
                           onChange={(e) => updateLine(i, { quantity: Number(e.target.value) })}
                         />
@@ -373,6 +389,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           required
                           min="0"
                           step="0.01"
+                          readOnly={doctorPriced}
                           value={l.unitPriceCents / 100}
                           onChange={(e) =>
                             updateLine(i, {
@@ -385,7 +402,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                         <select
                           required
                           value={l.category}
-                          disabled={categories.loading || !!categories.error}
+                          disabled={doctorPriced || categories.loading || !!categories.error}
                           onChange={(e) => updateLine(i, { category: e.target.value })}
                         >
                           <option value="">Select category</option>
@@ -406,7 +423,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                         className="icon-button secondary"
                         type="button"
                         aria-label={`Remove invoice line ${i + 1}`}
-                        disabled={lines.length === 1}
+                        disabled={doctorPriced || lines.length === 1}
                         onClick={() => {
                           checkoutDirty.current = true;
                           setLines((v) => v.filter((_, index) => index !== i));
@@ -419,6 +436,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   <button
                     className="text-button"
                     type="button"
+                    disabled={doctorPriced}
                     onClick={() => {
                       checkoutDirty.current = true;
                       setLines((v) => [
@@ -440,7 +458,13 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   <span>Invoice total</span>
                   <strong>{money(total / 100)}</strong>
                 </div>
-                <fieldset>
+                {total === 0 && doctorPriced && (
+                  <p className="form-help">
+                    GP approved a no-charge visit. Complete checkout to issue a zero-value receipt
+                    without payment.
+                  </p>
+                )}
+                <fieldset disabled={total === 0}>
                   <legend>Split payments</legend>
                   {payments.map((p, i) => (
                     <div className="payment-line" key={i}>

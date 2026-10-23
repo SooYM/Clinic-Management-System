@@ -64,6 +64,8 @@ const chartPayload = (patientId: number, prescriptions: any[]) => ({
   procedureNotes: '',
   vitals: { resp_rate: 18 },
   status: 'SIGNED',
+  consultationFeeCents: 0,
+  procedureFeeCents: 0,
   prescriptions,
 });
 const rx = (itemId: number, quantity: number) => ({
@@ -525,7 +527,7 @@ describe('browser-session demo simulation', () => {
       ).rejects.toBeDefined();
     await expect(request(restored, path, 'GET', undefined, 2)).rejects.toBeDefined();
     await login(restored, 'reception');
-    await expect(request(restored, path)).rejects.toBeDefined();
+    expect((await request(restored, path)).entries).toHaveLength(2);
   });
   it('retains prior-session records and fills only missing legacy document snapshot fields', async () => {
     const storage = new MemoryStorage();

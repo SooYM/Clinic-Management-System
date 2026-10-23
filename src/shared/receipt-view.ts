@@ -2,6 +2,9 @@ export interface ReceiptSnapshot {
   clinicName: string;
   branchName: string;
   clinicAddress: string;
+  logoDataUrl?: string;
+  header?: string;
+  footer?: string;
   patientName: string;
   nationalId: string;
   receivedBy: string;
@@ -38,6 +41,9 @@ export function buildReceiptView(
     clinicName: p.clinicName,
     branchName: p.branchName,
     clinicAddress: p.clinicAddress,
+    logoDataUrl: p.logoDataUrl || '',
+    header: p.header || '',
+    footer: p.footer || '',
     patientName: p.patientName,
     nationalId: p.nationalId,
     receivedBy: p.receivedBy || 'Not recorded',

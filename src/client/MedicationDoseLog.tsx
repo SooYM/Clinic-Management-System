@@ -31,13 +31,19 @@ export default function MedicationDoseLog({
   encounterId,
   signed,
   medicines,
+  formOnly = false,
+  onRecorded,
 }: {
   encounterId: number;
   signed: boolean;
+  formOnly?: boolean;
+  onRecorded?: () => void;
   medicines: { id: number; name: string; unit: string }[];
 }) {
   const role = useRole();
-  const resource = useResource<DoseLog>(`/encounters/${encounterId}/medication-doses`);
+  const resource = useResource<DoseLog>(
+    formOnly ? '' : `/encounters/${encounterId}/medication-doses`,
+  );
   const [outcome, setOutcome] = useState('TAKEN');
   const [formKey, setFormKey] = useState(crypto.randomUUID());
   const list = useListControls(resource.data?.entries || [], {
@@ -55,7 +61,7 @@ export default function MedicationDoseLog({
     ],
   });
   return (
-    <Panel title="Patient medication-taking log">
+    <Panel title={formOnly ? 'Record a patient dose' : 'Patient medication-taking log'}>
       <p className="form-help">
         Record reported or observed doses only. These records never reduce clinic stock or imply a
         medicine schedule.
@@ -66,6 +72,7 @@ export default function MedicationDoseLog({
           label="Record medication dose"
           onSuccess={() => {
             resource.refresh();
+            onRecorded?.();
             setFormKey(crypto.randomUUID());
             setOutcome('TAKEN');
           }}
@@ -142,55 +149,57 @@ export default function MedicationDoseLog({
           Medication doses can be recorded only after the GP signs a medicine prescription.
         </p>
       )}
-      <ResourceState {...resource}>
-        {list.controls}
-        {list.items.length ? (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Medicine / outcome</th>
-                  <th>Source / dose time</th>
-                  <th>Recorded by</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.items.map((dose) => (
-                  <tr key={dose.id}>
-                    <td>
-                      <strong>{dose.medicineName}</strong>
-                      <small>
-                        {humanize(dose.outcome)}
-                        {dose.amount !== null ? ` · ${dose.amount} ${dose.unit}` : ''}
-                      </small>
-                      {dose.notes && <small>{dose.notes}</small>}
-                    </td>
-                    <td>
-                      {humanize(dose.source)}
-                      <small>{dateTime(dose.occurredAt)} MYT</small>
-                    </td>
-                    <td>
-                      {dose.actorName}
-                      <small>{dateTime(dose.createdAt)} MYT</small>
-                    </td>
+      {!formOnly && (
+        <ResourceState {...resource}>
+          {list.controls}
+          {list.items.length ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Medicine / outcome</th>
+                    <th>Source / dose time</th>
+                    <th>Recorded by</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty
-            title={
-              resource.data?.entries.length ? 'No matching doses' : 'No patient doses recorded'
-            }
-            description={
-              resource.data?.entries.length
-                ? 'Clear filters to see all loaded dose records.'
-                : 'No reports or observations have been recorded for this consultation. Absence of a record does not mean a dose was missed.'
-            }
-          />
-        )}
-      </ResourceState>
+                </thead>
+                <tbody>
+                  {list.items.map((dose) => (
+                    <tr key={dose.id}>
+                      <td>
+                        <strong>{dose.medicineName}</strong>
+                        <small>
+                          {humanize(dose.outcome)}
+                          {dose.amount !== null ? ` · ${dose.amount} ${dose.unit}` : ''}
+                        </small>
+                        {dose.notes && <small>{dose.notes}</small>}
+                      </td>
+                      <td>
+                        {humanize(dose.source)}
+                        <small>{dateTime(dose.occurredAt)} MYT</small>
+                      </td>
+                      <td>
+                        {dose.actorName}
+                        <small>{dateTime(dose.createdAt)} MYT</small>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <Empty
+              title={
+                resource.data?.entries.length ? 'No matching doses' : 'No patient doses recorded'
+              }
+              description={
+                resource.data?.entries.length
+                  ? 'Clear filters to see all loaded dose records.'
+                  : 'No reports or observations have been recorded for this consultation. Absence of a record does not mean a dose was missed.'
+              }
+            />
+          )}
+        </ResourceState>
+      )}
     </Panel>
   );
 }

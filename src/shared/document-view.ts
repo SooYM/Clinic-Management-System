@@ -4,6 +4,9 @@ export interface DocumentView {
   documentNumber: string;
   clinicName: string;
   clinicAddress: string;
+  logoDataUrl?: string;
+  header?: string;
+  footer?: string;
   patientName: string;
   nationalId: string;
   practitionerName: string;
@@ -52,6 +55,9 @@ export function buildDocumentView(d: DocumentSnapshot): DocumentView {
     documentNumber: d.documentNumber,
     clinicName: String(p.branchName || ''),
     clinicAddress: String(p.branchAddress || ''),
+    logoDataUrl: String(p.logoDataUrl || ''),
+    header: String(p.header || ''),
+    footer: String(p.footer || ''),
     patientName: String(p.patientName || ''),
     nationalId: String(p.nationalId || ''),
     practitionerName: String(p.practitionerName || ''),
@@ -133,12 +139,16 @@ export interface PrescriptionLogEvent {
   itemName: string;
   quantity: number;
   batchId?: number;
-  batchNumber?: string;
+  batchNumber?: string | null;
   actorName: string;
   at: string;
   frequencyPerDay: number;
   mealTiming: string;
   dosage: string;
+  quantityPerDose?: number;
+  form?: 'PILL' | 'PASTE' | 'SYRUP' | 'OTHER';
+  instructions?: string;
+  indication?: string;
   durationDays: number;
 }
 export interface PrescriptionLog {

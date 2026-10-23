@@ -34,8 +34,13 @@ The migration preserves clinical text, verification tokens and encrypted photo c
 If migration fails after schema changes begin, keep the application stopped and restore the pre-upgrade backup. Mapping tables retained after failure aid diagnosis; do not rerun against a partially converted database. Entity IDs are predictable, so authorization must always enforce tenant, branch and module access independently.
 ## Fixed local startup
 
-Run `webapp clinic` from PowerShell after installing the global harness, or run `.\start.ps1` inside this repository. Both use the existing portable MySQL data directory and verify authenticated `@@port`/`@@datadir` before starting the API/frontend. `-Check` performs configuration/ownership checks without starting services. An occupied API/frontend port fails immediately; no fallback port or automatic process termination occurs.
+Run `webapp clinic management` from PowerShell after installing the global harness, or run `.\start.ps1` inside this repository. Both use the existing portable MySQL data directory and verify authenticated `@@port`/`@@datadir` before starting the API/frontend. `webapp check clinic management` performs configuration/ownership checks without starting services. The global command replaces verified existing Clinic web/API workers before starting one instance on3100/3101; MySQL stays running. An unverified listener aborts before cleanup. Direct `.\start.ps1` refuses occupied ports. Neither path selects fallback ports.
 
 Clinic owns frontend 3100, API 3101, MySQL 3310, read-only viewer 3102 and local demo 3103. Progress Tracker exclusively owns 3001. Keep private `.env` and portable `.local/mysql.ini` synchronized with the global reservation registry. Never initialize or replace the data directory to change a port. The Docker service uses API 3101; hosted environments may explicitly supply their infrastructure-assigned `PORT`.
 
 To stop only the portable database, first stop Clinic API/frontend, then use `scripts/start-local-mysql.ps1 -Stop`. This checks the exact executable/defaults file, loopback port and authenticated data directory before requesting administrative `SHUTDOWN`. It refuses shutdown while API/frontend ports remain active. Use `-Stop -Check` to validate without stopping anything. No unrelated process is terminated.
+
+
+## Clinical pricing and letterhead update — 23 October 2026
+
+See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.

@@ -250,3 +250,32 @@ Type part of a name, then click a matching result or use the arrow keys and Ente
 ### Spoken ticket and room announcements
 
 Choose **Enable announcements** on the waiting-room display and check the spoken sample. Each new call chimes, then reads its ticket and destination room. For Q-001 and Room 2, it says “Ticket Q zero zero one, please proceed to Room 2.” Voice availability depends on the browser/device. If speech fails, turn announcements off and on to retry; the chime remains available. Changing branches or disabling announcements stops queued speech.
+
+
+## Staff workflow refinement — 21 October 2026
+
+Cashier (`CASHIER`) is a staff role with default Clinic overview, Patients, Clinical workspace and Billing access. Administrators can configure module grants; existing explicit grants remain authoritative. Ordinary staff roles include clinical review by default. Only the attending GP can create, edit or sign consultations and issue clinical documents. Selecting a patient enables history, notes, documents and medication review; the latest saved encounter loads automatically. Patients without encounters show clear empty states. New consultation remains GP-only.
+
+Prescribing captures **pieces per dose**, daily frequency, treatment days and optional medicine purpose (for example, headache or fever). Total supply equals pieces per dose × times daily × days; server validation checks that total. Historical prescriptions without a per-dose count retain their original total and instructions. Stock holds, dispensing and invoice quantities always use total supply.
+
+Successful dispensing opens medicine labels and requests browser printing. Each medicine label includes patient, medicine, purpose, per-dose count when recorded, frequency, meal timing, duration, instructions, total supply, GP and dispensing date. The operator selects the physical printer and paper size; browser cancellation never rolls back saved dispensing. The preview supports printing again while open. Browser demo labels are explicitly marked as samples.
+
+Medication logs use one chronological timeline combining prescribing, reservation, dispensing and Taken/Missed reports. Each event identifies its type, medicine, actor and time. Patient dose reports never change stock. Only authorized GP/nurse accounts can add dose reports.
+
+Stock catalogue contains **Receive stock** and per-item **Restock** actions. Receiving opens a focused popout with the selected item. Select **No batch number** when the manufacturer provides none; separate receipt IDs retain traceability. Supplies and retail items offer **No expiry**. Medication stock still requires a future expiry date. Patient profiles, consultation details, document previews, prescription reviews/activity, inventory details and receipt previews use popouts with Close and Escape support. Catalogue filters remain optional expandable controls.
+
+Forms use a shared responsive grid and consistent spacing. Nationality and country occupy ordinary grid cells; only Others reveals a country-name field. The top bar omits Malaysia · MYT and Find patient; clinical dates still use Asia/Kuala_Lumpur.
+
+Apply migration `026_cashier_and_optional_batches.sql` using the normal migration runner before starting the updated production backend. Back up first; existing migrations remain unchanged. No hosting deployment or printer hardware certification is implied by local validation.
+
+
+## Reprint prescription stickers
+
+Open **Dispensary → Prescription history**, find a completed prescription, then choose **Reprint stickers**. You can also use the reprint action inside its activity popout. The print dialog initially includes all medicines. Select **Print this sticker** beside one medicine to print only that sticker, or **Print all stickers** to print the whole prescription. Choose your physical label printer and paper size. You can close the preview, refresh or sign in later and reprint from history again.
+
+Stickers retain the original dispensing date, quantities and saved directions. Reprinting does not dispense again, reduce stock or create charges. Pending prescriptions must be dispensed first. User guide remains available in the page header as an in-place guided tour; obsolete links to the hidden Guide page are removed.
+
+
+## Clinical pricing and letterhead update — 23 October 2026
+
+See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.

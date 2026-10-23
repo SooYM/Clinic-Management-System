@@ -22,6 +22,7 @@ import DatabaseReset from './DatabaseReset';
 import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
 import { useListControls } from '../ListControls';
 import { useConfirm } from '../Confirmation';
+import LetterheadSettings from '../LetterheadSettings';
 interface Staff extends User {
   active: boolean;
 }
@@ -140,7 +141,7 @@ export default function Admin({
         <WorkspaceSection
           id="clinic"
           label="Clinic settings"
-          description="Set the clinic name shown on future clinic documents and receipts."
+          description="Customize clinic identity and letterhead for future documents and receipts."
         >
           <Panel title="Clinic name">
             <ResourceState {...clinic}>
@@ -181,6 +182,7 @@ export default function Admin({
               </p>
             )}
           </Panel>
+          <LetterheadSettings />
         </WorkspaceSection>
         <WorkspaceSection
           id="staff"
@@ -232,11 +234,13 @@ export default function Admin({
                     value={staffRole}
                     onChange={(e) => setStaffRole(e.target.value)}
                   >
-                    {['RECEPTIONIST', 'DOCTOR', 'NURSE', 'THERAPIST', 'ADMIN'].map((r) => (
-                      <option key={r} value={r}>
-                        {r === 'DOCTOR' ? 'GP (general practitioner)' : r}
-                      </option>
-                    ))}
+                    {['RECEPTIONIST', 'CASHIER', 'DOCTOR', 'NURSE', 'THERAPIST', 'ADMIN'].map(
+                      (r) => (
+                        <option key={r} value={r}>
+                          {r === 'DOCTOR' ? 'GP (general practitioner)' : r}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </Field>
                 <SelectReference items={branches} name="branchId" label="Branch" />

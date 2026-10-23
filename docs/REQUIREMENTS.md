@@ -105,3 +105,25 @@ Daily live queue shows all current Malaysia-day visits and an uncapped total; it
 The waiting-room display opens at `/display` without authentication and offers an active branch selector. Show anonymous ticket numbers, stages and room names only. Refresh every 15 seconds. Scope each branch to its own tenant; exclude expired/prior-day/completed/skipped tickets and private data. Staff queue APIs and events retain existing access checks.
 
 Non-Malaysian nationality selection includes Others plus required free-text countryName (trimmed1–100 characters). Store it with countryCode=OTHER, show it on profiles, retain it during edits, and clear it when selecting ISO/Malaysian nationality. Existing missing-country compatibility and phone/address separation remain unchanged.
+
+
+## Staff workflow refinement — 21 October 2026
+
+Cashier (`CASHIER`) is a staff role with default Clinic overview, Patients, Clinical workspace and Billing access. Administrators can configure module grants; existing explicit grants remain authoritative. Ordinary staff roles include clinical review by default. Only the attending GP can create, edit or sign consultations and issue clinical documents. Selecting a patient enables history, notes, documents and medication review; the latest saved encounter loads automatically. Patients without encounters show clear empty states. New consultation remains GP-only.
+
+Prescribing captures **pieces per dose**, daily frequency, treatment days and optional medicine purpose (for example, headache or fever). Total supply equals pieces per dose × times daily × days; server validation checks that total. Historical prescriptions without a per-dose count retain their original total and instructions. Stock holds, dispensing and invoice quantities always use total supply.
+
+Successful dispensing opens medicine labels and requests browser printing. Each medicine label includes patient, medicine, purpose, per-dose count when recorded, frequency, meal timing, duration, instructions, total supply, GP and dispensing date. The operator selects the physical printer and paper size; browser cancellation never rolls back saved dispensing. The preview supports printing again while open. Browser demo labels are explicitly marked as samples.
+
+Medication logs use one chronological timeline combining prescribing, reservation, dispensing and Taken/Missed reports. Each event identifies its type, medicine, actor and time. Patient dose reports never change stock. Only authorized GP/nurse accounts can add dose reports.
+
+Stock catalogue contains **Receive stock** and per-item **Restock** actions. Receiving opens a focused popout with the selected item. Select **No batch number** when the manufacturer provides none; separate receipt IDs retain traceability. Supplies and retail items offer **No expiry**. Medication stock still requires a future expiry date. Patient profiles, consultation details, document previews, prescription reviews/activity, inventory details and receipt previews use popouts with Close and Escape support. Catalogue filters remain optional expandable controls.
+
+Forms use a shared responsive grid and consistent spacing. Nationality and country occupy ordinary grid cells; only Others reveals a country-name field. The top bar omits Malaysia · MYT and Find patient; clinical dates still use Asia/Kuala_Lumpur.
+
+Apply migration `026_cashier_and_optional_batches.sql` using the normal migration runner before starting the updated production backend. Back up first; existing migrations remain unchanged. No hosting deployment or printer hardware certification is implied by local validation.
+
+
+## Clinical pricing and letterhead update — 23 October 2026
+
+See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.

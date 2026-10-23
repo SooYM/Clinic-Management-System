@@ -14,12 +14,13 @@ import {
   useRole,
   useDebouncedValue,
 } from '../components';
-import { type Patient, type InventoryItem, dateTime, humanize } from '../types';
+import { type Patient, type InventoryItem, dateTime, humanize, money } from '../types';
 import type { CatalogEntry } from '../AdminCatalogs';
 import { WorkspaceSections, WorkspaceSection } from '../WorkspaceSections';
 import ClinicalDocuments from './ClinicalDocuments';
 import DocumentPreview from '../DocumentPreview';
 import PrescriptionLog from '../PrescriptionLog';
+import DetailDialog from '../DetailDialog';
 import MedicationDoseLog from '../MedicationDoseLog';
 import { defaultMcStartDate } from '../../shared/clinic-dates';
 import { parseBloodPressure } from '../../shared/blood-pressure';
@@ -51,12 +52,20 @@ interface Encounter {
   queueTicketId?: number;
   procedureNotes: string;
   vitals: Record<string, string | number>;
+  consultationFeeCents?: number | null;
+  procedureFeeCents?: number | null;
+  consumables?: { itemId: number; itemName?: string; quantity: number; reason: string }[];
   prescriptions: {
     itemId: number;
     itemName?: string;
     ingredient?: string;
     unit?: string;
     quantity: number;
+    quantityPerDose?: number;
+    form?: 'PILL' | 'PASTE' | 'SYRUP' | 'OTHER';
+    instructions?: string;
+    unitPriceCents?: number;
+    indication?: string;
     dosage: string;
     durationDays: number;
     frequencyPerDay?: number;
@@ -253,9 +262,11 @@ function ConsultationHistory({
 function MedicinePicker({
   name,
   onSelectionChange,
+  excludedIds,
 }: {
   name: string;
-  onSelectionChange: (selected: boolean) => void;
+  excludedIds: number[];
+  onSelectionChange: (selected?: InventoryItem) => void;
 }) {
   const [search, setSearch] = useState('');
   const term = useDebouncedValue(search.trim());
@@ -264,7 +275,9 @@ function MedicinePicker({
     15000,
   );
   const [selected, setSelected] = useState<InventoryItem>();
-  const choices = (resource.data || []).filter((item) => item.active !== false);
+  const choices = (resource.data || []).filter(
+    (item) => item.active !== false && !excludedIds.includes(item.id),
+  );
   const visibleSelection = choices.find((item) => item.id === selected?.id);
   const selectedStock = useResource<InventoryItem[]>(
     selected && !visibleSelection
@@ -293,7 +306,7 @@ function MedicinePicker({
             const medicine = choices.find((item) => item.id === suggestion.id);
             if (!medicine) return;
             setSelected(medicine);
-            onSelectionChange(true);
+            onSelectionChange(medicine);
             setSearch(medicine.name);
           }}
           loading={search.trim() !== term || resource.refreshing}
@@ -310,7 +323,7 @@ function MedicinePicker({
           onChange={(event) => {
             const medicine = options.find((item) => item.id === Number(event.target.value));
             setSelected(medicine);
-            onSelectionChange(!!medicine);
+            onSelectionChange(medicine);
           }}
         >
           <option value="">No additional medication</option>
@@ -350,25 +363,66 @@ function PrescriptionRow({
   rowId,
   number,
   onRemove,
+  excludedIds,
+  onSelectionChange,
 }: {
   rowId: number;
   number: number;
+  excludedIds: number[];
+  onSelectionChange: (itemId?: number) => void;
   onRemove: (hasMedicine: boolean) => void;
 }) {
-  const [hasMedicine, setHasMedicine] = useState(false);
+  const [medicine, setMedicine] = useState<InventoryItem>();
+  const hasMedicine = !!medicine;
+  const [dose, setDose] = useState(1);
+  const [days, setDays] = useState(1);
+  const [frequency, setFrequency] = useState(1);
+  const [form, setForm] = useState('PILL');
+  const [supply, setSupply] = useState(1);
+  const [price, setPrice] = useState(0);
+  const quantity = form === 'PILL' ? dose * days * frequency : supply;
   const prefix = `prescription-${rowId}-`;
   return (
     <fieldset className="prescription-row" data-prescription-row={rowId}>
       <legend>Prescription {number}</legend>
       <input type="hidden" name="prescriptionRow" value={rowId} />
-      <MedicinePicker name={`${prefix}itemId`} onSelectionChange={setHasMedicine} />
+      <MedicinePicker
+        name={`${prefix}itemId`}
+        excludedIds={excludedIds}
+        onSelectionChange={(item) => {
+          setMedicine(item);
+          setPrice((item?.priceCents || 0) / 100);
+          onSelectionChange(item?.id);
+        }}
+      />
       <div className="form-grid">
-        <Field label="Quantity">
+        <Field label="Medicine form">
+          <select
+            name={`${prefix}form`}
+            value={form}
+            onChange={(event) => setForm(event.target.value)}
+            disabled={!hasMedicine}
+          >
+            <option value="PILL">Pill</option>
+            <option value="PASTE">Paste</option>
+            <option value="SYRUP">Syrup</option>
+            <option value="OTHER">Others</option>
+          </select>
+        </Field>
+        <Field
+          label="Quantity per serving"
+          hint={
+            form === 'PILL'
+              ? 'Pills per serving. Total supply = serving × times daily × days.'
+              : 'Dose in mL, grams or another unit. Specify the unit in instructions.'
+          }
+        >
           <input
-            name={`${prefix}quantity`}
+            name={`${prefix}quantityPerDose`}
+            onChange={(event) => setDose(Number(event.target.value))}
             type="number"
-            min="1"
-            step="1"
+            min={form === 'PILL' ? '1' : '0.001'}
+            step={form === 'PILL' ? '1' : '0.001'}
             defaultValue="1"
             required={hasMedicine}
             disabled={!hasMedicine}
@@ -377,6 +431,7 @@ function PrescriptionRow({
         <Field label="Supply (days)">
           <input
             name={`${prefix}durationDays`}
+            onChange={(event) => setDays(Number(event.target.value))}
             type="number"
             min="1"
             max="365"
@@ -389,6 +444,7 @@ function PrescriptionRow({
         <Field label="Frequency (times per day)">
           <input
             name={`${prefix}frequencyPerDay`}
+            onChange={(event) => setFrequency(Number(event.target.value))}
             type="number"
             min="1"
             max="24"
@@ -405,14 +461,62 @@ function PrescriptionRow({
             <option value="ANY_TIME">Any time</option>
           </select>
         </Field>
+        {form !== 'PILL' && (
+          <Field
+            label={`Total supply (${medicine?.unit || 'stock units'})`}
+            hint="Whole bottles, tubes or stock units to dispense. Separate from quantity per serving."
+          >
+            <input
+              name={`${prefix}quantity`}
+              type="number"
+              min="1"
+              step="1"
+              defaultValue="1"
+              required={hasMedicine}
+              disabled={!hasMedicine}
+              onChange={(event) => setSupply(Number(event.target.value))}
+            />
+          </Field>
+        )}
+        <Field
+          label="Medication unit price (MYR)"
+          hint="GP decides final price per stock unit. Defaults to inventory list price."
+        >
+          <input
+            name={`${prefix}unitPrice`}
+            type="number"
+            min="0"
+            max="20000000"
+            step="0.01"
+            value={price}
+            onChange={(event) => setPrice(Number(event.target.value))}
+            required={hasMedicine}
+            disabled={!hasMedicine}
+          />
+        </Field>
       </div>
+      {hasMedicine && (
+        <p className="form-help" role="status">
+          Total supply: {quantity} {medicine?.unit || 'units'}. Medication fee:{' '}
+          {money((quantity * Math.round(price * 100)) / 100)}.
+        </p>
+      )}
+      <Field label="Medicine purpose (optional)">
+        <input
+          name={`${prefix}indication`}
+          placeholder="e.g. headache, fever"
+          maxLength={500}
+          disabled={!hasMedicine}
+        />
+      </Field>
       <Field
         label="Dosage instructions"
-        hint="Optional; frequency, meal timing and duration form the default instructions."
+        hint="For paste, syrup and other forms, include dose unit, route and application instructions."
       >
         <input
           name={`${prefix}dosage`}
           placeholder="Dose, frequency, and route"
+          required={hasMedicine && form !== 'PILL'}
           disabled={!hasMedicine}
           maxLength={200}
         />
@@ -424,15 +528,17 @@ function PrescriptionRow({
   );
 }
 function PrescriptionRows({
-  recordedCount,
+  recordedIds,
   disabled,
   onDirty,
 }: {
-  recordedCount: number;
+  recordedIds: number[];
   disabled: boolean;
   onDirty: () => void;
 }) {
+  const recordedCount = recordedIds.length;
   const [rows, setRows] = useState(recordedCount < 50 ? [1] : []);
+  const [selections, setSelections] = useState<Record<number, number | undefined>>({});
   const nextId = useRef(2);
   const confirm = useConfirm();
   async function remove(rowId: number, hasMedicine: boolean) {
@@ -447,17 +553,34 @@ function PrescriptionRows({
     )
       return;
     setRows((current) => current.filter((id) => id !== rowId));
+    setSelections((current) => {
+      const next = { ...current };
+      delete next[rowId];
+      return next;
+    });
     onDirty();
   }
   return (
     <fieldset className="prescription-rows" disabled={disabled}>
       <legend>Additional medicines</legend>
-      <p className="form-help">Use one row per medicine. Blank rows are skipped when saving.</p>
+      <p className="form-help">
+        One row per medicine. Selected medicines are excluded from other rows. Blank rows are
+        skipped when saving.
+      </p>
       {rows.map((rowId, index) => (
         <PrescriptionRow
           key={rowId}
           rowId={rowId}
           number={index + 1}
+          excludedIds={[
+            ...recordedIds,
+            ...Object.entries(selections)
+              .filter(([id]) => Number(id) !== rowId)
+              .flatMap(([, id]) => (id ? [id] : [])),
+          ]}
+          onSelectionChange={(itemId) =>
+            setSelections((current) => ({ ...current, [rowId]: itemId }))
+          }
           onRemove={(hasMedicine) => void remove(rowId, hasMedicine)}
         />
       ))}
@@ -477,6 +600,184 @@ function PrescriptionRows({
         <p className="form-help">A consultation supports up to 50 medicines.</p>
       )}
     </fieldset>
+  );
+}
+function ConsumableSupply({
+  initial = [],
+  onDirty,
+}: {
+  initial?: Encounter['consumables'];
+  onDirty: () => void;
+}) {
+  const stock = useResource<InventoryItem[]>('/references/consumables', 15000);
+  const [rows, setRows] = useState(() =>
+    initial.map((item, index) => ({ ...item, rowId: index + 1 })),
+  );
+  const nextId = useRef(initial.length + 1);
+  return (
+    <fieldset>
+      <legend>Minor surgery &amp; consumable supply</legend>
+      <p className="form-help">
+        Record procedure details above and supplies used below. Signing deducts consumables from
+        stock once.
+      </p>
+      {stock.error && <ErrorNotice>{stock.error}</ErrorNotice>}
+      {rows.map((row, index) => (
+        <fieldset key={row.rowId}>
+          <legend>Supply {index + 1}</legend>
+          <input type="hidden" name="consumableRow" value={row.rowId} />
+          <div className="form-grid">
+            <Field label="Consumable">
+              <select
+                name={`consumable-${row.rowId}-itemId`}
+                value={row.itemId || ''}
+                required
+                onChange={(event) =>
+                  setRows((current) =>
+                    current.map((value) =>
+                      value.rowId === row.rowId
+                        ? { ...value, itemId: Number(event.target.value) }
+                        : value,
+                    ),
+                  )
+                }
+              >
+                <option value="">Choose supply</option>
+                {!!row.itemId && !stock.data?.some((item) => item.id === row.itemId) && (
+                  <option value={row.itemId}>{row.itemName || `Supply #${row.itemId}`}</option>
+                )}
+                {stock.data
+                  ?.filter(
+                    (item) =>
+                      item.id === row.itemId || !rows.some((value) => value.itemId === item.id),
+                  )
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} · {item.stockQuantity ?? item.quantity ?? 0} {item.unit} available
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <Field label="Quantity used">
+              <input
+                name={`consumable-${row.rowId}-quantity`}
+                type="number"
+                min="1"
+                step="1"
+                required
+                defaultValue={row.quantity}
+              />
+            </Field>
+            <Field label="Purpose / procedure">
+              <input
+                name={`consumable-${row.rowId}-reason`}
+                required
+                maxLength={500}
+                defaultValue={row.reason}
+              />
+            </Field>
+          </div>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setRows((current) => current.filter((value) => value.rowId !== row.rowId));
+              onDirty();
+            }}
+          >
+            Remove supply
+          </button>
+        </fieldset>
+      ))}
+      <button
+        type="button"
+        className="secondary"
+        disabled={stock.loading || !!stock.error || !stock.data?.length || rows.length >= 50}
+        onClick={() => {
+          setRows((current) => [
+            ...current,
+            { rowId: nextId.current++, itemId: 0, quantity: 1, reason: '' },
+          ]);
+          onDirty();
+        }}
+      >
+        Add consumable supply
+      </button>
+      {!stock.loading && !stock.error && !stock.data?.length && (
+        <p className="form-help">
+          No consumables configured. Add consumable items and receive stock in Inventory.
+        </p>
+      )}
+    </fieldset>
+  );
+}
+function CheckoutTotal({
+  prescriptions,
+  readOnly,
+  consultationFeeCents = 0,
+  procedureFeeCents = 0,
+}: {
+  prescriptions: Encounter['prescriptions'];
+  readOnly: boolean;
+  consultationFeeCents?: number | null;
+  procedureFeeCents?: number | null;
+}) {
+  const summary = useRef<HTMLParagraphElement>(null);
+  const [total, setTotal] = useState(0);
+  const [medication, setMedication] = useState(0);
+  useEffect(() => {
+    const form = summary.current?.closest('form');
+    if (!form) return;
+    function update() {
+      if (readOnly) {
+        const medicationCents = prescriptions.reduce(
+          (sum, rx) => sum + rx.quantity * (rx.unitPriceCents || 0),
+          0,
+        );
+        setMedication(medicationCents);
+        setTotal(medicationCents + (consultationFeeCents || 0) + (procedureFeeCents || 0));
+        return;
+      }
+      const values = new FormData(form!);
+      let medicationCents = prescriptions.reduce(
+        (sum, rx) =>
+          sum + rx.quantity * Math.round(Number(values.get(`recorded-price-${rx.itemId}`)) * 100),
+        0,
+      );
+      for (const rowId of values.getAll('prescriptionRow')) {
+        const prefix = `prescription-${rowId}-`;
+        if (!Number(values.get(`${prefix}itemId`))) continue;
+        const quantity =
+          values.get(`${prefix}form`) === 'PILL'
+            ? Number(values.get(`${prefix}quantityPerDose`)) *
+              Number(values.get(`${prefix}frequencyPerDay`)) *
+              Number(values.get(`${prefix}durationDays`))
+            : Number(values.get(`${prefix}quantity`));
+        medicationCents += quantity * Math.round(Number(values.get(`${prefix}unitPrice`)) * 100);
+      }
+      setMedication(medicationCents);
+      setTotal(
+        medicationCents +
+          Math.round(Number(values.get('consultationFee')) * 100) +
+          Math.round(Number(values.get('procedureFee')) * 100),
+      );
+    }
+    update();
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    const observer = new MutationObserver(update);
+    observer.observe(form, { childList: true, subtree: true });
+    return () => {
+      form.removeEventListener('input', update);
+      form.removeEventListener('change', update);
+      observer.disconnect();
+    };
+  }, [prescriptions, readOnly, consultationFeeCents, procedureFeeCents]);
+  return (
+    <p className="form-help" ref={summary} role="status">
+      Medication fee: {money(medication / 100)} · Checkout total: {money(total / 100)}.
+      {readOnly ? ' Recorded GP prices.' : ' Signing approves these itemized prices.'}
+    </p>
   );
 }
 function McLeaveStart() {
@@ -502,7 +803,7 @@ function BloodPressureField({ initial }: { initial?: string | number }) {
   return (
     <Field
       label="Blood pressure"
-      hint="SYS/DIA in mmHg; positive whole numbers with systolic higher than diastolic."
+      hint="SYS/DIA in mmHg. Enter the measured reading; no clinical range limit applies."
     >
       <input
         name="bloodPressure"
@@ -529,8 +830,8 @@ function BloodPressureField({ initial }: { initial?: string | number }) {
       )}
       {unusual && (
         <small id="blood-pressure-warning" role="status">
-          Outside common monitor operating ranges (SYS 60–260, DIA 40–215). Verify this reading; you
-          can still record it. These are not healthy or diagnostic ranges.
+          Unusual SYS/DIA relationship or outside common monitor operating ranges (SYS 60–260, DIA
+          40–215). Verify this reading; you can still record it. These are not diagnostic ranges.
         </small>
       )}
     </Field>
@@ -556,6 +857,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     '/references/catalogs?kind=REFERRAL_DESTINATION',
   );
   const [selected, setSelected] = useState<Encounter>();
+  const [previewEncounter, setPreviewEncounter] = useState<Encounter>();
   const activeEncounterId = useRef(selected?.id);
   activeEncounterId.current = selected?.id;
   const [deletingId, setDeletingId] = useState<number>();
@@ -571,6 +873,9 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
   const activePatientId = useRef(selectedPatientId);
   activePatientId.current = selectedPatientId;
   const [historyRevision, setHistoryRevision] = useState(0);
+  const [medicationRevision, setMedicationRevision] = useState(0);
+  const [openingRecord, setOpeningRecord] = useState(false);
+  const [recordError, setRecordError] = useState('');
   const [documentKind, setDocumentKind] = useState('MC');
   const [doc, setDoc] = useState<Document>();
   const [error, setError] = useState('');
@@ -584,16 +889,31 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
       ? [chosenPatient, ...(patients.data || [])]
       : patients.data || []),
   ].sort((a, b) => a.id - b.id);
-  function choosePatient(next?: Patient) {
-    suggestionRequest.current++;
+  async function choosePatient(next?: Patient) {
+    const request = ++suggestionRequest.current;
     setOpeningSuggestion(undefined);
     setChosenPatient(next);
+    setPreviewEncounter(undefined);
     setAssignedQueue(undefined);
     setSelected(undefined);
     setDoc(undefined);
     setPrescriptionSearch('');
     setSection('consultations');
     noteDirty.current = false;
+    setRecordError('');
+    setOpeningRecord(false);
+    if (!next) return;
+    setOpeningRecord(true);
+    try {
+      const history = await api.getPage<HistoryPage>(`/patients/${next.id}/encounters`);
+      const latest = history.data[0];
+      const encounter = latest ? await api.get<Encounter>(`/encounters/${latest.id}`) : undefined;
+      if (request === suggestionRequest.current) setSelected(encounter);
+    } catch (failure) {
+      if (request === suggestionRequest.current) setRecordError((failure as Error).message);
+    } finally {
+      if (request === suggestionRequest.current) setOpeningRecord(false);
+    }
   }
   async function keepOrDiscardNote() {
     if (!noteDirty.current) return true;
@@ -657,6 +977,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
     if (!(await keepOrDiscardNote())) return;
     const request = ++suggestionRequest.current;
     setOpeningSuggestion(suggestion.queueTicketId);
+    setOpeningRecord(false);
     setSuggestionError('');
     try {
       if (new Date(suggestion.expiresAt).getTime() <= Date.now()) {
@@ -752,11 +1073,17 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               : `new:${selectedPatientId}:${assignedQueue?.queueTicketId || 'manual'}`
           }
           label={selected ? 'Save consultation' : 'Create consultation'}
-          disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
+          disabled={
+            selected?.status === 'SIGNED' ||
+            role !== 'DOCTOR' ||
+            (!!selected && selected.practitionerId !== practitionerId)
+          }
           disabledReason={
             role !== 'DOCTOR'
               ? 'Only a GP account can create, edit, or sign clinical notes. You can review recorded consultations.'
-              : undefined
+              : selected && selected.practitionerId !== practitionerId
+                ? 'Only the attending GP can edit this consultation.'
+                : undefined
           }
           onSuccess={() => {
             setHistoryRevision((value) => value + 1);
@@ -780,20 +1107,30 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               const prefix = `prescription-${rowId}-`;
               const itemId = Number(formText(f, `${prefix}itemId`));
               if (!itemId) return [];
-              const quantity = Number(f.get(`${prefix}quantity`));
+              const quantityPerDose = Number(f.get(`${prefix}quantityPerDose`));
               const durationDays = Number(f.get(`${prefix}durationDays`));
               const frequencyPerDay = Number(f.get(`${prefix}frequencyPerDay`));
               const mealTiming = formText(f, `${prefix}mealTiming`);
+              const form = formText(f, `${prefix}form`) as 'PILL' | 'PASTE' | 'SYRUP' | 'OTHER';
+              const instructions =
+                formText(f, `${prefix}dosage`) ||
+                `${quantityPerDose} per serving; ${frequencyPerDay} times daily; ${humanize(mealTiming)}; ${durationDays} days`;
               return [
                 {
                   itemId,
-                  quantity,
+                  quantity:
+                    form === 'PILL'
+                      ? quantityPerDose * frequencyPerDay * durationDays
+                      : Number(f.get(`${prefix}quantity`)),
+                  form,
+                  instructions,
+                  unitPriceCents: Math.round(Number(f.get(`${prefix}unitPrice`)) * 100),
+                  quantityPerDose,
+                  indication: formText(f, `${prefix}indication`),
                   durationDays,
                   frequencyPerDay,
                   mealTiming,
-                  dosage:
-                    formText(f, `${prefix}dosage`) ||
-                    `${frequencyPerDay} times daily; ${humanize(mealTiming)}; ${durationDays} days`,
+                  dosage: instructions,
                 },
               ];
             });
@@ -811,6 +1148,13 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               assessment: formText(f, 'assessment'),
               plan: formText(f, 'plan'),
               procedureNotes: formText(f, 'procedureNotes'),
+              consultationFeeCents: Math.round(Number(f.get('consultationFee')) * 100),
+              procedureFeeCents: Math.round(Number(f.get('procedureFee')) * 100),
+              consumables: f.getAll('consumableRow').map((rowId) => ({
+                itemId: Number(f.get(`consumable-${rowId}-itemId`)),
+                quantity: Number(f.get(`consumable-${rowId}-quantity`)),
+                reason: formText(f, `consumable-${rowId}-reason`),
+              })),
               status: formText(f, 'status'),
               version: selected?.version,
               vitals: {
@@ -818,7 +1162,13 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 bloodPressure: formText(f, 'bloodPressure'),
                 temperature: formText(f, 'temperature'),
               },
-              prescriptions: [...(selected?.prescriptions || []), ...additionalPrescriptions],
+              prescriptions: [
+                ...(selected?.prescriptions || []).map((rx) => ({
+                  ...rx,
+                  unitPriceCents: Math.round(Number(f.get(`recorded-price-${rx.itemId}`)) * 100),
+                })),
+                ...additionalPrescriptions,
+              ],
             };
             const saved = selected
               ? await api.put<Encounter>(`/encounters/${selected.id}`, body)
@@ -834,108 +1184,195 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
             setSection('notes');
           }}
         >
-          {!selected && (
-            <p className="form-help">
-              New consultation for {chosenPatient?.name} · Patient ID #{selectedPatientId}
-              {assignedQueue &&
-                ` · Queue ${assignedQueue.ticketNumber} · ${assignedQueue.roomName || 'Assigned room'}`}
-            </p>
-          )}
-          <div className="form-grid">
-            <Field label="Consultation template">
-              <select name="specialty" defaultValue={selected?.specialty || 'GP'}>
-                <option>GP</option>
-                <option>DENTAL</option>
-                <option>AESTHETIC</option>
-              </select>
-            </Field>
-            <Field
-              label="Note status"
-              hint="Signing reserves medicines and sends this patient to dispensary, or directly to billing when no medicines are prescribed."
-            >
-              <select name="status" defaultValue={selected?.status || 'DRAFT'}>
-                <option value="DRAFT">Draft · keep editing</option>
-                <option value="SIGNED">Signed · complete consultation</option>
-              </select>
-            </Field>
-            <BloodPressureField initial={selected?.vitals?.bloodPressure} />
-            <Field label="Temperature (°C)" hint="Enter 28°C to 40°C.">
-              <input
-                name="temperature"
-                type="number"
-                step="0.1"
-                min="28"
-                max="40"
-                defaultValue={selected?.vitals?.temperature}
-              />
-            </Field>
-          </div>
-          <div className="soap-grid">
-            {(['subjective', 'objective', 'assessment', 'plan'] as const).map((key, i) => (
-              <Field
-                key={key}
-                label={`${['S', 'O', 'A', 'P'][i]} · ${key[0].toUpperCase() + key.slice(1)}`}
-              >
-                <textarea name={key} rows={3} required defaultValue={selected?.[key]} />
-              </Field>
-            ))}
-          </div>
-          <Field label="Procedure notes">
-            <textarea name="procedureNotes" rows={2} defaultValue={selected?.procedureNotes} />
-          </Field>
-          <fieldset>
-            <legend>Prescriptions</legend>
-            {!!selected?.prescriptions?.length && prescriptionList.controls}
-            {!!selected?.prescriptions?.length && (
-              <Field label="Search recorded prescriptions">
-                <SearchBox
-                  ariaLabel="Search recorded prescriptions"
-                  value={prescriptionSearch}
-                  onChange={setPrescriptionSearch}
-                  suggestions={(selected?.prescriptions || []).map((rx, index) => ({
-                    id: index,
-                    label:
-                      rx.itemName ||
-                      items.data?.find((item) => item.id === rx.itemId)?.name ||
-                      `Item #${rx.itemId}`,
-                    description: rx.dosage,
-                  }))}
-                  onSelect={(suggestion) => setPrescriptionSearch(suggestion.label)}
-                  placeholder="Medicine or dosage instructions"
-                  emptyMessage="No recorded medicines match."
-                />
-              </Field>
-            )}
-            {!!prescriptionSearch && !matchingRecordedPrescriptions.length && (
-              <p className="form-help" role="status">
-                No recorded medicines match this search. The saved prescription remains unchanged.
+          <fieldset
+            className="consultation-fields"
+            disabled={
+              selected?.status === 'SIGNED' ||
+              role !== 'DOCTOR' ||
+              (!!selected && selected.practitionerId !== practitionerId)
+            }
+          >
+            {!selected && (
+              <p className="form-help">
+                New consultation for {chosenPatient?.name} · Patient ID #{selectedPatientId}
+                {assignedQueue &&
+                  ` · Queue ${assignedQueue.ticketNumber} · ${assignedQueue.roomName || 'Assigned room'}`}
               </p>
             )}
-            {matchingRecordedPrescriptions.map((rx, index) => {
-              const medicine = items.data?.find((item) => item.id === rx.itemId);
-              return (
-                <p key={index} className="form-help">
-                  Existing: {rx.itemName || medicine?.name || rx.itemId} · {rx.quantity} units ·{' '}
-                  {rx.frequencyPerDay || 1} times daily · {humanize(rx.mealTiming || 'ANY_TIME')} ·{' '}
-                  {rx.dosage} · {rx.durationDays} days
-                  <br />
-                  {items.error || typeof medicine?.stockQuantity !== 'number'
-                    ? 'Live stock unavailable. Refresh before prescribing.'
-                    : `Live stock: ${medicine.stockQuantity} ${medicine.unit} available · ${medicine.reservedQuantity ?? 0} reserved · ${medicine.onHandQuantity ?? 0} eligible in stock.`}
-                </p>
-              );
-            })}
-            <PrescriptionRows
-              recordedCount={selected?.prescriptions?.length || 0}
-              disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
+            <div className="form-grid">
+              <Field label="Consultation template">
+                <select name="specialty" defaultValue={selected?.specialty || 'GP'}>
+                  <option>GP</option>
+                  <option>DENTAL</option>
+                  <option>AESTHETIC</option>
+                </select>
+              </Field>
+              <Field
+                label="Note status"
+                hint="Signing reserves medicines and sends this patient to dispensary, or directly to billing when no medicines are prescribed."
+              >
+                <select name="status" defaultValue={selected?.status || 'DRAFT'}>
+                  <option value="DRAFT">Draft · keep editing</option>
+                  <option value="SIGNED">Signed · complete consultation</option>
+                </select>
+              </Field>
+              <BloodPressureField initial={selected?.vitals?.bloodPressure} />
+              <Field
+                label="Temperature (°C)"
+                hint="Enter the measured reading; no clinical range limit applies."
+              >
+                <input
+                  name="temperature"
+                  type="number"
+                  step="any"
+                  defaultValue={selected?.vitals?.temperature}
+                />
+              </Field>
+            </div>
+            <div className="soap-grid">
+              {(['subjective', 'objective', 'assessment', 'plan'] as const).map((key, i) => (
+                <Field
+                  key={key}
+                  label={`${['S', 'O', 'A', 'P'][i]} · ${key[0].toUpperCase() + key.slice(1)}`}
+                >
+                  <textarea name={key} rows={3} required defaultValue={selected?.[key]} />
+                </Field>
+              ))}
+            </div>
+            <Field
+              label="Minor surgery / procedure notes"
+              hint="Record procedure, consent, findings, treatment and aftercare when applicable."
+            >
+              <textarea name="procedureNotes" rows={4} defaultValue={selected?.procedureNotes} />
+            </Field>
+            <ConsumableSupply
+              initial={selected?.consumables}
               onDirty={() => {
                 noteDirty.current = true;
               }}
             />
-            <p className="form-help">
-              Allergy conflicts prevent saving a prescription. Signing sends prescribed medicines to
-              the dispensary; dispensing uses the earliest eligible expiry.
-            </p>
+            <fieldset>
+              <legend>GP checkout pricing</legend>
+              <p className="form-help">
+                Set final consultation, procedure and itemized medication fees before signing.
+                Checkout uses these approved prices.
+              </p>
+              <div className="form-grid">
+                <Field label="Consultation fee (MYR)">
+                  <input
+                    name="consultationFee"
+                    type="number"
+                    min="0"
+                    max="20000000"
+                    step="0.01"
+                    required
+                    defaultValue={(selected?.consultationFeeCents || 0) / 100}
+                  />
+                </Field>
+                <Field label="Procedure fee (MYR)">
+                  <input
+                    name="procedureFee"
+                    type="number"
+                    min="0"
+                    max="20000000"
+                    step="0.01"
+                    required
+                    defaultValue={(selected?.procedureFeeCents || 0) / 100}
+                  />
+                </Field>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Prescriptions</legend>
+              {!!selected?.prescriptions?.length && prescriptionList.controls}
+              {!!selected?.prescriptions?.length && (
+                <Field label="Search recorded prescriptions">
+                  <SearchBox
+                    ariaLabel="Search recorded prescriptions"
+                    value={prescriptionSearch}
+                    onChange={setPrescriptionSearch}
+                    suggestions={(selected?.prescriptions || []).map((rx, index) => ({
+                      id: index,
+                      label:
+                        rx.itemName ||
+                        items.data?.find((item) => item.id === rx.itemId)?.name ||
+                        `Item #${rx.itemId}`,
+                      description: rx.dosage,
+                    }))}
+                    onSelect={(suggestion) => setPrescriptionSearch(suggestion.label)}
+                    placeholder="Medicine or dosage instructions"
+                    emptyMessage="No recorded medicines match."
+                  />
+                </Field>
+              )}
+              {!!prescriptionSearch && !matchingRecordedPrescriptions.length && (
+                <p className="form-help" role="status">
+                  No recorded medicines match this search. The saved prescription remains unchanged.
+                </p>
+              )}
+              {[
+                ...matchingRecordedPrescriptions,
+                ...(selected?.prescriptions || []).filter(
+                  (rx) => !matchingRecordedPrescriptions.includes(rx),
+                ),
+              ].map((rx) => {
+                const medicine = items.data?.find((item) => item.id === rx.itemId);
+                return (
+                  <div
+                    key={rx.itemId}
+                    className="list-row"
+                    hidden={!matchingRecordedPrescriptions.includes(rx)}
+                  >
+                    <p className="form-help">
+                      Existing: {rx.itemName || medicine?.name || rx.itemId} · {rx.quantity} units
+                      total · {rx.quantityPerDose && `${rx.quantityPerDose} per serving · `}
+                      {rx.indication && `For ${rx.indication} · `}
+                      {rx.frequencyPerDay || 1} times daily ·{' '}
+                      {humanize(rx.mealTiming || 'ANY_TIME')} · {rx.dosage} · {rx.durationDays} days
+                      <br />
+                      {items.error || typeof medicine?.stockQuantity !== 'number'
+                        ? 'Live stock unavailable. Refresh before prescribing.'
+                        : `Live stock: ${medicine.stockQuantity} ${medicine.unit} available · ${medicine.reservedQuantity ?? 0} reserved · ${medicine.onHandQuantity ?? 0} eligible in stock.`}
+                    </p>
+                    <Field
+                      label={`${rx.itemName || medicine?.name || rx.itemId}: unit price (MYR)`}
+                      hint={`${humanize(rx.form || 'PILL')} · ${rx.quantity} ${rx.unit || medicine?.unit || 'units'} total`}
+                    >
+                      <input
+                        name={`recorded-price-${rx.itemId}`}
+                        type="number"
+                        min="0"
+                        max="20000000"
+                        step="0.01"
+                        required
+                        defaultValue={(rx.unitPriceCents ?? medicine?.priceCents ?? 0) / 100}
+                      />
+                    </Field>
+                  </div>
+                );
+              })}
+              <PrescriptionRows
+                recordedIds={(selected?.prescriptions || []).map((rx) => rx.itemId)}
+                disabled={selected?.status === 'SIGNED' || role !== 'DOCTOR'}
+                onDirty={() => {
+                  noteDirty.current = true;
+                }}
+              />
+              <p className="form-help">
+                Allergy conflicts prevent saving a prescription. Signing sends prescribed medicines
+                to the dispensary; dispensing uses the earliest eligible expiry.
+              </p>
+            </fieldset>
+            <CheckoutTotal
+              prescriptions={selected?.prescriptions || []}
+              readOnly={
+                selected?.status === 'SIGNED' ||
+                role !== 'DOCTOR' ||
+                (!!selected && selected.practitionerId !== practitionerId)
+              }
+              consultationFeeCents={selected?.consultationFeeCents}
+              procedureFeeCents={selected?.procedureFeeCents}
+            />
           </fieldset>
         </MutationForm>
         {selected?.status === 'SIGNED' && !!selected.prescriptions.length && (
@@ -1090,6 +1527,14 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
           </span>
         </div>
       )}
+      {openingRecord && <Loading />}
+      {recordError && <ErrorNotice>{recordError}</ErrorNotice>}
+      {selected && (
+        <p className="form-help">
+          Viewing consultation #{selected.id} · {dateTime(selected.createdAt)}. Choose another
+          record in Patient history.
+        </p>
+      )}
       <WorkspaceSections
         label="Clinical workspace sections"
         value={section}
@@ -1115,14 +1560,14 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
           {!selectedPatientId && (
             <Empty
               title="Choose a patient first"
-              description="Their consultation history will appear here. Record tools stay locked until you open a consultation."
+              description="Their history, notes, documents and medication records will become available."
             />
           )}
           {selectedPatientId && (
             <Panel title="Patient consultation history">
               <p className="form-help">
-                Patient #{selectedPatientId}. Open a consultation below to unlock Notes &amp;
-                prescription, Documents and Medication logs.
+                Patient #{selectedPatientId}. Other sections show the latest consultation by
+                default. Open any record below to review an earlier visit.
               </p>
               <ConsultationHistory
                 key={`${selectedPatientId}:${historyRevision}`}
@@ -1130,20 +1575,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
                 practitionerId={practitionerId}
                 deletingId={deletingId}
                 onDelete={deleteDraft}
-                onOpen={async (encounter) => {
-                  if (selected?.id === encounter.id) {
-                    setSection('notes');
-                    return;
-                  }
-                  if (!(await keepOrDiscardNote())) return;
-                  suggestionRequest.current++;
-                  noteDirty.current = false;
-                  setAssignedQueue(undefined);
-                  setSelected(encounter);
-                  setSection('notes');
-                  setDoc(undefined);
-                  setPrescriptionSearch('');
-                }}
+                onOpen={(encounter) => setPreviewEncounter(encounter)}
               />
             </Panel>
           )}
@@ -1151,22 +1583,31 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         <WorkspaceSection
           id="create"
           label="New consultation"
-          disabled={role !== 'DOCTOR' || !selectedPatientId}
+          disabled={role !== 'DOCTOR' || !selectedPatientId || openingRecord}
           description="Create a separate consultation for the selected patient. Save before opening its record tools."
         >
-          {!selected && selectedPatientId && consultationForm}
+          {role === 'DOCTOR' && !selected && selectedPatientId && consultationForm}
         </WorkspaceSection>
         <WorkspaceSection
           id="notes"
-          disabled={!selected}
+          disabled={!selectedPatientId || openingRecord}
           label="Notes & prescription"
           description="Record SOAP notes, vitals and prescribed medicines."
         >
-          {selected && consultationForm}
+          {selected ? (
+            consultationForm
+          ) : (
+            <Panel title="Notes & prescription">
+              <Empty
+                title="No consultation recorded"
+                description="This patient has no saved notes or prescriptions. A GP can start a new consultation."
+              />
+            </Panel>
+          )}
         </WorkspaceSection>
         <WorkspaceSection
           id="documents"
-          disabled={!selected}
+          disabled={!selectedPatientId || openingRecord}
           label="Documents"
           description="Issue, preview and review clinical letters."
         >
@@ -1348,8 +1789,12 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
               </>
             ) : (
               <Empty
-                title="Select a consultation"
-                description="Clinical documents are linked to a saved encounter and its attending practitioner."
+                title={selected ? 'Issued documents' : 'No consultation recorded'}
+                description={
+                  selected
+                    ? 'Review issued documents below. Only the attending GP can issue new documents.'
+                    : 'Documents appear after a GP saves a consultation.'
+                }
               />
             )}
           </Panel>
@@ -1368,49 +1813,111 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
         </WorkspaceSection>
         <WorkspaceSection
           id="logs"
-          disabled={!selected}
+          disabled={!selectedPatientId || openingRecord}
           label="Medication logs"
-          description="Review patient doses separately from clinic stock activity."
+          description="One timeline for prescriptions, dispensing and reported doses."
         >
           {selected ? (
             <>
-              <MedicationDoseLog
-                key={`${selected.id}:${selected.version}`}
-                encounterId={selected.id}
-                signed={selected.status === 'SIGNED'}
-                medicines={Array.from(
-                  new Map(
-                    selected.prescriptions.map((rx) => {
-                      const item = items.data?.find((i) => i.id === rx.itemId);
-                      return [
-                        rx.itemId,
-                        {
-                          id: rx.itemId,
-                          name: rx.itemName || item?.name || `Medicine #${rx.itemId}`,
-                          unit: rx.unit || item?.unit || 'unit',
-                        },
-                      ] as const;
-                    }),
-                  ).values(),
-                )}
-              />
-              <Panel title="Prescription activity">
+              {(role === 'DOCTOR' || role === 'NURSE') && (
+                <MedicationDoseLog
+                  key={`${selected.id}:${selected.version}`}
+                  formOnly
+                  onRecorded={() => setMedicationRevision((value) => value + 1)}
+                  encounterId={selected.id}
+                  signed={selected.status === 'SIGNED'}
+                  medicines={Array.from(
+                    new Map(
+                      selected.prescriptions.map((rx) => {
+                        const item = items.data?.find((i) => i.id === rx.itemId);
+                        return [
+                          rx.itemId,
+                          {
+                            id: rx.itemId,
+                            name: rx.itemName || item?.name || `Medicine #${rx.itemId}`,
+                            unit: rx.unit || item?.unit || 'unit',
+                          },
+                        ] as const;
+                      }),
+                    ).values(),
+                  )}
+                />
+              )}
+              <Panel title="Medication timeline">
                 <PrescriptionLog
                   key={`${selected.id}:${selected.version}`}
                   encounterId={selected.id}
+                  includeDoses
+                  revision={medicationRevision}
                 />
               </Panel>
             </>
           ) : (
             <Panel title="Medication logs">
               <Empty
-                title="Select a consultation"
-                description="Open a saved encounter in Patient history to review its doses and prescription activity."
+                title="No medication activity"
+                description="Medication records appear after a GP saves a consultation with prescriptions."
               />
             </Panel>
           )}
         </WorkspaceSection>
       </WorkspaceSections>
+      <DetailDialog
+        open={!!previewEncounter}
+        title={`Consultation #${previewEncounter?.id || ''}`}
+        onClose={() => setPreviewEncounter(undefined)}
+      >
+        {previewEncounter && (
+          <>
+            <p>
+              {dateTime(previewEncounter.createdAt)} · {humanize(previewEncounter.status)}
+            </p>
+            <dl className="detail-grid">
+              {(['subjective', 'objective', 'assessment', 'plan'] as const).map((key) => (
+                <div key={key}>
+                  <dt>{humanize(key)}</dt>
+                  <dd>{previewEncounter[key] || 'Not recorded'}</dd>
+                </div>
+              ))}
+              <div>
+                <dt>Procedure notes</dt>
+                <dd>{previewEncounter.procedureNotes || 'None recorded'}</dd>
+              </div>
+            </dl>
+            <h3>Prescribed medicines</h3>
+            {previewEncounter.prescriptions.length ? (
+              previewEncounter.prescriptions.map((rx, index) => (
+                <p key={index}>
+                  <strong>{rx.itemName || `Medicine #${rx.itemId}`}</strong> · {rx.quantity} units
+                  total{rx.quantityPerDose && ` · ${rx.quantityPerDose} per serving`}
+                  {rx.indication && ` · For ${rx.indication}`}
+                  <br />
+                  {rx.dosage}
+                </p>
+              ))
+            ) : (
+              <p>No medicines prescribed.</p>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                if (!(await keepOrDiscardNote())) return;
+                suggestionRequest.current++;
+                setOpeningRecord(false);
+                noteDirty.current = false;
+                setAssignedQueue(undefined);
+                setSelected(previewEncounter);
+                setPreviewEncounter(undefined);
+                setSection('notes');
+                setDoc(undefined);
+                setPrescriptionSearch('');
+              }}
+            >
+              Open record tools
+            </button>
+          </>
+        )}
+      </DetailDialog>
     </>
   );
 }

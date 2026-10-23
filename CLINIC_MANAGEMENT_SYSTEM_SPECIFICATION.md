@@ -332,3 +332,32 @@ Local infrastructure uses fixed, registered ports: frontend3100, API3101, MySQL3
 ## Spoken waiting-room calls
 
 Enable announcements activates the chime and browser speech with a sample. Each newly called ticket or changed room is read after the chime, for example: “Ticket Q zero zero one, please proceed to Room 2.” Ticket digits preserve leading zeros. Multiple calls are queued individually; unchanged/status-only/removed tickets and initial or branch snapshots do not repeat. Branch changes, disabling and page closure cancel pending/active speech. English browser voices are preferred; unsupported/failed speech shows recovery guidance while the chime remains available. Only anonymous ticket numbers and configured public room names are spoken.
+
+
+## Staff workflow refinement — 21 October 2026
+
+Cashier (`CASHIER`) is a staff role with default Clinic overview, Patients, Clinical workspace and Billing access. Administrators can configure module grants; existing explicit grants remain authoritative. Ordinary staff roles include clinical review by default. Only the attending GP can create, edit or sign consultations and issue clinical documents. Selecting a patient enables history, notes, documents and medication review; the latest saved encounter loads automatically. Patients without encounters show clear empty states. New consultation remains GP-only.
+
+Prescribing captures **pieces per dose**, daily frequency, treatment days and optional medicine purpose (for example, headache or fever). Total supply equals pieces per dose × times daily × days; server validation checks that total. Historical prescriptions without a per-dose count retain their original total and instructions. Stock holds, dispensing and invoice quantities always use total supply.
+
+Successful dispensing opens medicine labels and requests browser printing. Each medicine label includes patient, medicine, purpose, per-dose count when recorded, frequency, meal timing, duration, instructions, total supply, GP and dispensing date. The operator selects the physical printer and paper size; browser cancellation never rolls back saved dispensing. The preview supports printing again while open. Browser demo labels are explicitly marked as samples.
+
+Medication logs use one chronological timeline combining prescribing, reservation, dispensing and Taken/Missed reports. Each event identifies its type, medicine, actor and time. Patient dose reports never change stock. Only authorized GP/nurse accounts can add dose reports.
+
+Stock catalogue contains **Receive stock** and per-item **Restock** actions. Receiving opens a focused popout with the selected item. Select **No batch number** when the manufacturer provides none; separate receipt IDs retain traceability. Supplies and retail items offer **No expiry**. Medication stock still requires a future expiry date. Patient profiles, consultation details, document previews, prescription reviews/activity, inventory details and receipt previews use popouts with Close and Escape support. Catalogue filters remain optional expandable controls.
+
+Forms use a shared responsive grid and consistent spacing. Nationality and country occupy ordinary grid cells; only Others reveals a country-name field. The top bar omits Malaysia · MYT and Find patient; clinical dates still use Asia/Kuala_Lumpur.
+
+Apply migration `026_cashier_and_optional_batches.sql` using the normal migration runner before starting the updated production backend. Back up first; existing migrations remain unchanged. No hosting deployment or printer hardware certification is implied by local validation.
+
+
+## Saved prescription sticker reprints and visible navigation
+
+Dispensary staff can reopen previously dispensed prescriptions from Prescription history and reprint all medicine stickers or one selected medicine. Reprints load saved prescription directions and the original successful dispensing timestamp from the scoped backend; they do not run dispensing again or change stock, reservations, invoices or payments. Pending prescriptions do not expose a reprint action. Historical prescriptions without a recorded per-dose count do not receive an invented value.
+
+Module links lead only to visible, authorized destinations. The obsolete hidden Guide route and its in-tab link are removed; the header User guide remains the guided tour. The brand targets an authorized home module, Ctrl+K requires Patients access, and Skip to main content focuses content without changing the route. Public registration, waiting-room display and permitted document/receipt links remain supported.
+
+
+## Clinical pricing and letterhead update — 23 October 2026
+
+See [clinical pricing, prescribing, minor surgery and letterhead](docs/CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.

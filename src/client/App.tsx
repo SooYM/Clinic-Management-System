@@ -36,7 +36,6 @@ const Appointments = lazy(() => import('./pages/Appointments'));
 const Clinical = lazy(() => import('./pages/Clinical'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Billing = lazy(() => import('./pages/Billing'));
-const Guide = lazy(() => import('./pages/Guide'));
 const PublicRegistration = lazy(() => import('./PublicRegistration'));
 const navigation = [
   { id: 'queue', label: 'Clinic overview', icon: Activity },
@@ -82,8 +81,8 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
           {isDemo && (
             <p className="demo-credentials">
               Demo accounts: admin@example.test, gp@example.test, reception@example.test,
-              nurse@example.test or therapist@example.test. Password: <strong>demo</strong>. Use
-              sample data only.
+              nurse@example.test, therapist@example.test or cashier@example.test. Password:{' '}
+              <strong>demo</strong>. Use sample data only.
             </p>
           )}
           <MutationForm
@@ -118,6 +117,8 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [activeBranch, setActiveBranch] = useState(user.branchId);
   const [branchRevision, setBranchRevision] = useState(0);
   const [tour, setTour] = useState<string>();
+  const homePage =
+    navigation.find((entry) => bootstrap.data?.modules.includes(entry.id))?.id || 'account';
   useEffect(() => {
     const refreshAccess = () => {
       if (document.visibilityState === 'visible') bootstrap.refresh();
@@ -170,26 +171,32 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
       setTour(undefined);
   }, [page, tour, bootstrap.data, user.role]);
   useEffect(() => {
-    if (bootstrap.data && !location.hash) setPage(bootstrap.data.modules[0] || 'guide');
-  }, [bootstrap.data]);
+    if (bootstrap.data && (!location.hash || location.hash === '#main')) setPage(homePage);
+  }, [bootstrap.data, homePage]);
   useEffect(() => {
     function hash() {
-      setPage(location.hash.slice(1) || 'queue');
+      const next = location.hash.slice(1);
+      if (next === 'main') return;
+      setPage(next || homePage);
       setMobileNav(false);
     }
     window.addEventListener('hashchange', hash);
     return () => window.removeEventListener('hashchange', hash);
-  }, []);
+  }, [homePage]);
   useEffect(() => {
     function shortcut(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if (
+        bootstrap.data?.modules.includes('patients') &&
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === 'k'
+      ) {
         e.preventDefault();
         location.hash = 'patients';
       }
     }
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
-  }, []);
+  }, [bootstrap.data]);
   const references = {
     rooms: bootstrap.data?.rooms || [],
     practitioners: bootstrap.data?.practitioners || [],
@@ -198,16 +205,23 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   const modules = bootstrap.data?.modules || [];
   const allowedNavigation = navigation.filter((n) => modules.includes(n.id));
   const permittedPage =
-    ['account', 'guide'].includes(page) ||
+    page === 'account' ||
     (page === 'admin' && user.role === 'ADMIN') ||
     allowedNavigation.some((n) => n.id === page);
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main">
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById('main')?.focus();
+        }}
+      >
         Skip to main content
       </a>
       <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
-        <a href="#queue" className="brand">
+        <a href={`#${homePage}`} className="brand">
           <HeartPulse size={26} />
           Clinic<span>Care, connected.</span>
         </a>
@@ -301,13 +315,11 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
           </button>
           <span>
             {navigation.find((n) => n.id === page)?.label ||
-              (page === 'guide'
-                ? 'User guide'
-                : page === 'admin'
-                  ? 'Administration'
-                  : page === 'account'
-                    ? 'Account security'
-                    : 'Clinic workspace')}
+              (page === 'admin'
+                ? 'Administration'
+                : page === 'account'
+                  ? 'Account security'
+                  : 'Clinic workspace')}
           </span>
           <div>
             {permittedPage && tourNames[page] && (
@@ -319,10 +331,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                 User guide
               </button>
             )}
-            <span className="timezone">Malaysia · MYT</span>
-            <a href="#patients" className="search-shortcut">
-              Find patient <kbd>Ctrl K</kbd>
-            </a>
           </div>
         </header>
         <main id="main" tabIndex={-1}>
@@ -336,8 +344,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                       title="Module access restricted"
                       description="Choose an available module in the sidebar, or ask your administrator to update role access."
                     />
-                  ) : page === 'guide' ? (
-                    <Guide />
                   ) : page === 'account' ? (
                     <Account />
                   ) : page === 'admin' && user.role === 'ADMIN' ? (

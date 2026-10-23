@@ -23,3 +23,8 @@ Inspect desktop and narrow mobile screenshots. Verify login, registration, queue
 ## Task navigation
 
 Operate surfaces with multiple tasks use shared WorkspaceSections: named native buttons, visible current state, sticky wrapping navigation and one visible content region. Inactive areas remain mounted to retain drafts within a module. Avoid nested vertical scroll regions. Desktop navigation reads horizontally; phone controls wrap with at least 44px targets. Single-task screens do not need a section bar.
+
+
+## Detail views and form rhythm
+
+Profiles, saved consultation details, document/receipt previews, inventory details and prescription reviews open native modal dialogs. Close/Escape restores the underlying workflow. Filters may expand inline. Use the existing two-column form grid with 16px row gaps and 24px column gaps; stack at the existing phone breakpoint. Use 24px panel spacing and 32px desktop workspace padding. Nationality/country share this grid without reserving hidden custom-country rows.

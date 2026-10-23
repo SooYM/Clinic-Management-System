@@ -52,7 +52,7 @@ const sectionGuides: Record<string, [string, string, string][]> = {
     [
       'consultations',
       'Patient history',
-      'Choose a patient first, then review only their consultation history. Use Open consultation to select a specific encounter.',
+      'Choose a patient to load their history and latest record tools. Open consultation displays its details in a popout.',
     ],
     [
       'create',
@@ -62,29 +62,24 @@ const sectionGuides: Record<string, [string, string, string][]> = {
     [
       'notes',
       'Notes & prescription',
-      'Select a saved consultation to unlock this tab. Review SOAP notes and medicine instructions; the attending GP can edit drafts. Signed notes remain permanent.',
+      'Choose a patient to review their latest consultation. Review SOAP notes and medicine instructions; the attending GP can edit drafts. Signed notes remain permanent.',
     ],
     [
       'documents',
       'Documents',
-      'Select a consultation to unlock this tab. Issue letters from signed records, preview their contents, download PDFs separately, and review or revoke issued documents.',
+      'Choose a patient to review their latest consultation. Issue letters from signed records, preview their contents, download PDFs separately, and review or revoke issued documents.',
     ],
     [
       'logs',
       'Medication logs',
-      'Select a consultation to unlock this tab. Review clinic prescription activity and separately record patient-reported or staff-observed Taken or Missed doses. Dose logs do not change stock.',
+      'Choose a patient to review their latest consultation. Review one medication timeline for prescribing, stock activity and patient-reported or staff-observed Taken or Missed doses. Dose logs do not change stock.',
     ],
   ],
   inventory: [
     [
       'stock',
       'Stock catalogue',
-      'Search, filter and sort medicines, supplies and retail products. Review available, physical and reserved stock. Administrators maintain item details and archived choices.',
-    ],
-    [
-      'receive',
-      'Receive stock',
-      'Choose an item and record batch, quantity and expiry. Receiving a batch adds stock; creating a catalogue item alone does not.',
+      'Search stock and open item details in a popout. Choose Restock beside an item, or Receive stock, to record deliveries.',
     ],
     [
       'supplies',
@@ -271,7 +266,7 @@ const tours: Record<string, Step[]> = {
     {
       target: field('medicine'),
       title: 'Prescribe from the catalog',
-      text: 'Choose a medicine and its instructions. Add prescription creates another independent medicine row; remove unsaved rows when needed. Clinical decisions remain yours.',
+      text: 'Choose medicine, form, purpose, quantity per serving, frequency, days and instructions. Pill supply is calculated; other forms use a separate stock quantity. Set item prices and consultation/procedure fees before signing. Each medicine appears once.',
     },
     {
       target: field('note-status'),
@@ -297,9 +292,10 @@ const tours: Record<string, Step[]> = {
       text: 'Record its name, SKU, active ingredient, unit and price. The tour opens this form without saving an item.',
     },
     {
-      target: `${panel('receive-a-stock-batch')} ${field('batch-number')}`,
+      target: anchor('receive-stock'),
       title: 'Receive a batch',
-      text: 'Select an item and record batch number and quantity. Medicines need future expiry; supplies and retail items may have no expiry.',
+      section: 'stock',
+      text: 'Restock the selected item. Choose No batch number when absent, or No expiry for undated supplies and retail stock.',
     },
     {
       target: `${panel('use-supplies-and-retail-stock')} .panel-heading`,

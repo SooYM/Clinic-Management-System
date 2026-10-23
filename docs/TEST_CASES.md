@@ -312,3 +312,24 @@ Full payment: disabled for zero invoice; exact cent total filled; chosen method/
 ## Local startup and port reservations
 
 `tests/local-startup.test.ts` checks fixed Clinic ports, stale database/viewer/origin rejection, Progress Tracker port protection and global registry ownership conflicts. Checks use an isolated temporary harness directory and do not start services or connect to a database. PowerShell launcher validation must additionally verify an unrelated listener is rejected and the existing portable MySQL becomes ready before the application starts. A successful application health check must report live MySQL connectivity on the assigned ports.
+
+
+## Workflow refinement acceptance cases (2026-10-21)
+
+- Automated real MySQL: CASHIER creation/grants and clinical write denial; new prescription dose/purpose persistence and total mismatch rejection; unnumbered receipts keep separate IDs; medication expiry remains mandatory.
+- Real browser: GP dose-to-total signing, label print after successful dispense, no-expiry/no-batch restocking, cashier readonly clinical review and successful payment, modal profiles/receipts/details, combined medication timeline, desktop/mobile form grid.
+- Print evidence: one clean single-medicine A6 PDF page; physical printer and label-paper calibration remain manual deployment checks.
+
+
+## Saved sticker and navigation cases (2026-10-21)
+
+- Real API: completed prescription returns saved medicine directions and original dispensing time; pending, missing, foreign-branch and unauthorized-role requests reject. Repeated reads preserve stock, reservations, dispenses and invoices.
+- Real browser: history survives reload, completed prescriptions offer Reprint stickers, pending prescriptions do not, and all/single-medicine printing retains the historical date. Print-all produces one page per medicine; single printing excludes other medicines and app controls.
+- Navigation: all visible module links render authorized pages, no obsolete Guide links remain, skip-link preserves the current route, and an inventory-only staff account's brand returns to Dispensary.
+
+
+## Clinical pricing and letterhead — 23 October 2026
+
+Real Chromium actions against a generated disposable MySQL 8.4.11 database applied migrations 001–028. GP signed quantity per serving2.5, form SYRUP, two stock units at300 cents each, consultation2500 cents and procedure1000 cents. Blood pressure80/120 and temperature50 persisted. Duplicate medicine selection was absent from the second row. Signing consumed three supplies; dispensing deducted two medication units. Administrator saved a PNG logo, header, address and footer. Browser checkout issued an itemized4100-cent branded receipt. Browser stock intake added five units and changed catalog price to125 cents while the signed prescription retained300 cents. SQL verified medication103, supply17 and the original letterhead snapshot. Desktop1440px and phone390px checks found no horizontal overflow. The generated database and owned QA process were removed after checks. Browser artifacts remain ignored.
+
+Normal and demo builds, strict TypeScript, formatting, production dependency audit (zero vulnerabilities), and changed-interface design detector were checked. Signing fee omissions and approved no-charge checkout have dedicated HTTP/MySQL and demo regressions. Render deployment evidence is recorded separately; local checks alone do not establish hosted operation.

@@ -232,3 +232,30 @@ Non-Malaysian patient → Country of nationality → Others → enter country na
 Search text → matching suggestion → click or Arrow/Enter → full label in input and matching record selected, without saving. Unsaved clinical patient switch → Cancel → original patient, query and note preserved. Public display → Enable announcements → sample sound → new call/room → chime; disable/close → release audio context.
 
 Enable announcements → spoken sample and chime → newly called ticket or changed room → chime → read ticket digits and room destination. Multiple new calls → queued spoken sentences. Branch change/off/close → cancel pending speech; unsupported voice → recovery notice with chime retained.
+
+
+## Staff workflow refinement — 21 October 2026
+
+Cashier (`CASHIER`) is a staff role with default Clinic overview, Patients, Clinical workspace and Billing access. Administrators can configure module grants; existing explicit grants remain authoritative. Ordinary staff roles include clinical review by default. Only the attending GP can create, edit or sign consultations and issue clinical documents. Selecting a patient enables history, notes, documents and medication review; the latest saved encounter loads automatically. Patients without encounters show clear empty states. New consultation remains GP-only.
+
+Prescribing captures **pieces per dose**, daily frequency, treatment days and optional medicine purpose (for example, headache or fever). Total supply equals pieces per dose × times daily × days; server validation checks that total. Historical prescriptions without a per-dose count retain their original total and instructions. Stock holds, dispensing and invoice quantities always use total supply.
+
+Successful dispensing opens medicine labels and requests browser printing. Each medicine label includes patient, medicine, purpose, per-dose count when recorded, frequency, meal timing, duration, instructions, total supply, GP and dispensing date. The operator selects the physical printer and paper size; browser cancellation never rolls back saved dispensing. The preview supports printing again while open. Browser demo labels are explicitly marked as samples.
+
+Medication logs use one chronological timeline combining prescribing, reservation, dispensing and Taken/Missed reports. Each event identifies its type, medicine, actor and time. Patient dose reports never change stock. Only authorized GP/nurse accounts can add dose reports.
+
+Stock catalogue contains **Receive stock** and per-item **Restock** actions. Receiving opens a focused popout with the selected item. Select **No batch number** when the manufacturer provides none; separate receipt IDs retain traceability. Supplies and retail items offer **No expiry**. Medication stock still requires a future expiry date. Patient profiles, consultation details, document previews, prescription reviews/activity, inventory details and receipt previews use popouts with Close and Escape support. Catalogue filters remain optional expandable controls.
+
+Forms use a shared responsive grid and consistent spacing. Nationality and country occupy ordinary grid cells; only Others reveals a country-name field. The top bar omits Malaysia · MYT and Find patient; clinical dates still use Asia/Kuala_Lumpur.
+
+Apply migration `026_cashier_and_optional_batches.sql` using the normal migration runner before starting the updated production backend. Back up first; existing migrations remain unchanged. No hosting deployment or printer hardware certification is implied by local validation.
+
+
+## Saved sticker printing
+
+Successful dispensing → saved dispensing record → readonly sticker request → original date and saved directions → print all medicines or one selected sticker. Later: Prescription history → completed prescription → Reprint stickers → same readonly request. Closing or cancelling printing leaves dispensing, reservations, stock and billing unchanged. Pending/foreign prescriptions cannot provide saved stickers. Visible module grants determine cross-module links; Skip to main content changes focus only.
+
+
+## Clinical pricing and letterhead update — 23 October 2026
+
+See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.

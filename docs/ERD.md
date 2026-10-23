@@ -1,6 +1,6 @@
 # Entity relationship diagrams
 
-These diagrams describe the final MySQL 8.4 schema after migrations 001–025, including numeric conversion, general supplies and prescription reservations.
+These diagrams describe the final MySQL 8.4 schema after migrations 001–026, including numeric conversion, general supplies and prescription reservations.
 
 ```mermaid
 erDiagram
@@ -28,6 +28,7 @@ erDiagram
     int version
   }
 ```
+
 Every displayed entity `id` is `BIGINT UNSIGNED AUTO_INCREMENT`; referenced IDs are unsigned BIGINT.
 Mermaid `bigint` labels omit unsigned/auto-increment syntax for readability. Exact SQL remains authoritative.
 Letter previews reuse `clinical_documents.payload`; prescription activity joins encounters, reservations, dispenses and stock movements. Neither read projection adds an entity.
@@ -173,7 +174,7 @@ erDiagram
     text assessment
     text plan
     json vitals
-    json prescriptions
+    json prescriptions "total quantity; optional quantityPerDose and indication"
     varchar status
     int version
     datetime signed_at
@@ -273,7 +274,7 @@ erDiagram
     bigint tenant_id FK
     bigint branch_id FK
     bigint item_id FK
-    varchar batch_number
+    varchar batch_number "nullable when manufacturer has no number"
     date expires_on "nullable for general supplies"
     int quantity
   }
@@ -481,3 +482,11 @@ Inventory items also carry active status, optimistic version and update time aft
 Migration 015 adds branches.active/version/updated_at and invoices.receipt_snapshot (nullable JSON). Entity IDs, table counts and FK relationships stay unchanged. The snapshot copies issued receipt metadata; it creates no new live relationship or entity ID.
 
 Queue tickets now retain nullable expired_at. Generated active-patient and occupied-room uniqueness ignore expired rows; linked encounter foreign keys remain intact.
+
+
+Medicine-sticker reprints read the existing `dispenses.encounter_id` relationship with the signed encounter's prescription JSON and linked patient/practitioner identities. The original timestamp is `dispenses.created_at`. No print table or schema migration is introduced; printing does not create dispensing, stock movement, reservation or billing records.
+
+
+## Clinical pricing and letterhead update — 23 October 2026
+
+See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.

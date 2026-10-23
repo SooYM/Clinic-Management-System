@@ -14,6 +14,8 @@ import {
 } from '../shared/module-permissions.js';
 import { effectiveModules } from './module-access.js';
 import { expireQueue } from './queue-lifecycle.js';
+import { letterheadSchema } from './letterhead.js';
+import { emptyLetterhead } from '../shared/letterhead.js';
 
 const route =
   (fn: (req: Request, res: Response) => Promise<unknown>) =>
@@ -33,7 +35,7 @@ const userInput = z
       .transform((v) => v.toLowerCase()),
     name: z.string().trim().min(1).max(150),
     password,
-    role: z.enum(['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'NURSE', 'THERAPIST']),
+    role: z.enum(roleIds),
     branchId: idSchema,
     licenseNumber: z.string().trim().max(100).nullable().optional(),
   })
@@ -60,6 +62,42 @@ async function audit(db: Database, req: Request, action: string, entity: string,
 
 export function administrationRouter() {
   const router = Router();
+  router.get(
+    '/admin/letterhead',
+    roles('ADMIN'),
+    route(async (req, res) => {
+      const row = (
+        await pool.query('SELECT letterhead,letterhead_version FROM tenants WHERE id=$1', [
+          req.context.actor.tenantId,
+        ])
+      ).rows[0];
+      res.json({ ...emptyLetterhead, ...row.letterhead, version: row.letterhead_version });
+    }),
+  );
+  router.put(
+    '/admin/letterhead',
+    roles('ADMIN'),
+    route(async (req, res) => {
+      const { version, ...letterhead } = letterheadSchema
+        .extend({ version: z.number().int().positive() })
+        .parse(req.body);
+      const result = await transaction(async (db) => {
+        const updated = await db.query(
+          'UPDATE tenants SET letterhead=$2,letterhead_version=letterhead_version+1 WHERE id=$1 AND letterhead_version=$3',
+          [req.context.actor.tenantId, JSON.stringify(letterhead), version],
+        );
+        if (!updated.rowCount)
+          throw new DomainError(
+            'VERSION_CONFLICT',
+            'Letterhead changed. Refresh before saving.',
+            409,
+          );
+        await audit(db, req, 'UPDATE_LETTERHEAD', 'tenant', req.context.actor.tenantId);
+        return { ...letterhead, version: version + 1 };
+      });
+      res.json(result);
+    }),
+  );
   router.get(
     '/admin/clinic',
     roles('ADMIN'),
@@ -123,7 +161,7 @@ export function administrationRouter() {
     route(async (req, res) => {
       const input = z
         .object({
-          role: z.enum(['DOCTOR', 'RECEPTIONIST', 'NURSE', 'THERAPIST']),
+          role: z.enum(['DOCTOR', 'RECEPTIONIST', 'NURSE', 'THERAPIST', 'CASHIER']),
           modules: z
             .array(
               z.enum([

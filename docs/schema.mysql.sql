@@ -202,6 +202,9 @@ CREATE TABLE `encounters` (
   `vitals` json NOT NULL DEFAULT (_utf8mb4'{}'),
   `prescriptions` json NOT NULL DEFAULT (_utf8mb4'[]'),
   `procedure_notes` text NOT NULL,
+  `consultation_fee_cents` int DEFAULT NULL CHECK (`consultation_fee_cents` >= 0),
+  `procedure_fee_cents` int DEFAULT NULL CHECK (`procedure_fee_cents` >= 0),
+  `consumables` json NOT NULL DEFAULT (JSON_ARRAY()),
   `status` varchar(30) NOT NULL DEFAULT 'DRAFT',
   `version` int NOT NULL DEFAULT '1',
   `signed_at` datetime(3) DEFAULT NULL,
@@ -227,7 +230,7 @@ CREATE TABLE `inventory_batches` (
   `tenant_id` bigint unsigned NOT NULL,
   `branch_id` bigint unsigned NOT NULL,
   `item_id` bigint unsigned NOT NULL,
-  `batch_number` varchar(100) NOT NULL,
+  `batch_number` varchar(100) DEFAULT NULL,
   `expires_on` date DEFAULT NULL,
   `quantity` int NOT NULL,
   `received_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -311,7 +314,7 @@ CREATE TABLE `invoices` (
   CONSTRAINT `invoices_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `invoices_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
   CONSTRAINT `invoices_ibfk_3` FOREIGN KEY (`tenant_id`, `practitioner_id`) REFERENCES `users` (`tenant_id`, `id`),
-  CONSTRAINT `invoices_chk_1` CHECK ((`total_cents` > 0)),
+  CONSTRAINT `invoices_chk_1` CHECK ((`total_cents` >= 0)),
   CONSTRAINT `invoices_chk_2` CHECK ((`status` in (_utf8mb4'PAID',_utf8mb4'VOID')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -600,7 +603,7 @@ CREATE TABLE `role_module_permissions` (
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`tenant_id`,`role`),
   CONSTRAINT `role_module_permissions_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
-  CONSTRAINT `role_module_permissions_chk_1` CHECK ((`role` in (_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST'))),
+  CONSTRAINT `role_module_permissions_role_allowed` CHECK ((`role` in (_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST',_utf8mb4'CASHIER'))),
   CONSTRAINT `role_module_permissions_chk_2` CHECK ((json_type(`modules`) = _utf8mb4'ARRAY'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -664,6 +667,8 @@ CREATE TABLE `tenants` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(200) NOT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `letterhead` json DEFAULT NULL,
+  `letterhead_version` int NOT NULL DEFAULT 1 CHECK (`letterhead_version` > 0),
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -720,7 +725,7 @@ CREATE TABLE `users` (
   KEY `users_ibfk_1` (`tenant_id`,`branch_id`),
   CONSTRAINT `users_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `users_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
-  CONSTRAINT `users_chk_1` CHECK ((`role` in (_utf8mb4'ADMIN',_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST'))),
+  CONSTRAINT `users_role_allowed` CHECK ((`role` in (_utf8mb4'ADMIN',_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST',_utf8mb4'CASHIER'))),
   CONSTRAINT `users_super_admin_role` CHECK (((`is_super_admin` = false) or (`role` = _utf8mb4'ADMIN')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

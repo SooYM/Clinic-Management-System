@@ -60,6 +60,11 @@ export interface PrescribedItem {
   itemId: number;
   quantity: number;
   dosage: string;
+  quantityPerDose?: number;
+  form?: 'PILL' | 'PASTE' | 'SYRUP' | 'OTHER';
+  instructions?: string;
+  unitPriceCents?: number;
+  indication?: string;
   durationDays: number;
 }
 export class ClinicalEncounter {

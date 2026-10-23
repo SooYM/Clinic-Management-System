@@ -11,6 +11,7 @@ The [system specification](CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md) defines cu
 | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Front desk       | Register patients, book appointments, check in visits, manage queues, collect payment                              |
 | GP               | Review history and allergies, record SOAP consultations, prescribe medicines, sign notes, issue clinical documents |
+| Cashier          | Review selected patient records and collect itemised payments                                                   |
 | Dispensary staff | Receive batches, review signed prescriptions, dispense eligible stock by earliest expiry                           |
 | Administrator    | Create staff and branches, manage rooms, configure role modules, inspect audit records                             |
 

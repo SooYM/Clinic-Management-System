@@ -79,6 +79,8 @@ describe('demo draft consultation removal', () => {
         patientId: 4,
         queueTicketId: ticket.id,
         status: 'SIGNED',
+        consultationFeeCents: 0,
+        procedureFeeCents: 0,
         assessment: 'Fictional removed draft must remain unavailable',
         prescriptions: [],
         version: result.version,
@@ -188,6 +190,8 @@ describe('demo signed consultation queue handoff', () => {
       prescriptions: [],
       assessment: 'Fictional consultation without medicines',
       status: 'SIGNED',
+      consultationFeeCents: 0,
+      procedureFeeCents: 0,
     });
     expect(
       (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id).status,
@@ -214,6 +218,8 @@ describe('demo signed consultation queue handoff', () => {
           ...body,
           queueTicketId: draft ? undefined : ticket.id,
           status: 'SIGNED',
+          consultationFeeCents: 0,
+          procedureFeeCents: 0,
           version: draft?.version,
         },
       );
@@ -256,6 +262,8 @@ describe('demo signed consultation queue handoff', () => {
         clinic.request(draft ? `/encounters/${draft.id}` : '/encounters', draft ? 'PUT' : 'POST', {
           ...body,
           status: 'SIGNED',
+          consultationFeeCents: 0,
+          procedureFeeCents: 0,
           version: draft?.version,
         }),
       ).rejects.toThrow('Insufficient');
@@ -303,6 +311,8 @@ describe('demo signed consultation queue handoff', () => {
         prescriptions: [],
         assessment: 'Fictional historic review',
         status: 'SIGNED',
+        consultationFeeCents: 0,
+        procedureFeeCents: 0,
         version: draft.version,
       });
       const saved = JSON.parse([...storage.entries.values()][0]).rows.queue.find(
@@ -320,6 +330,8 @@ describe('demo signed consultation queue handoff', () => {
       prescriptions: [],
       assessment: 'Fictional manual chart',
       status: 'SIGNED',
+      consultationFeeCents: 0,
+      procedureFeeCents: 0,
     });
     expect(
       (await clinic.request('/queue')).data.find((row: any) => row.id === ticket.id),
@@ -489,6 +501,8 @@ describe('demo queue expiry and doctor handoff', () => {
         prescriptions: [rx(999)],
         assessment: 'Fictional',
         status: 'SIGNED',
+        consultationFeeCents: 0,
+        procedureFeeCents: 0,
       }),
     ).rejects.toThrow('Insufficient');
     expect(
@@ -587,6 +601,8 @@ describe('demo reservation and supplies workflows', () => {
       prescriptions: [rx(4)],
       assessment: 'Fictional assessment',
       status: 'SIGNED',
+      consultationFeeCents: 0,
+      procedureFeeCents: 0,
       version: draft.version,
     });
     const item = (await clinic.request('/inventory')).data[0];
@@ -608,6 +624,8 @@ describe('demo reservation and supplies workflows', () => {
         prescriptions: [rx(98)],
         assessment: 'Fictional',
         status: 'SIGNED',
+        consultationFeeCents: 0,
+        procedureFeeCents: 0,
       }),
     ).rejects.toThrow('Insufficient');
     expect((await clinic.request('/encounters')).data).toHaveLength(before);

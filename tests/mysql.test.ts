@@ -268,6 +268,147 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       notificationConsent: false,
       ...extra,
     });
+  it('persists doctor prices, consumes surgical supplies atomically, and rejects cashier price overrides', async () => {
+    const p = await patient();
+    const medicine = await item({ name: 'QA syrup' });
+    const supply = await item({ name: 'QA dressing', category: 'CONSUMABLE', ingredient: '' });
+    await service.receiveBatch(ctx, {
+      itemId: medicine.id,
+      quantity: 10,
+      expiresOn: '2099-01-01',
+      priceCents: 250,
+      itemVersion: medicine.version,
+    });
+    await service.receiveBatch(ctx, { itemId: supply.id, quantity: 5 });
+    await expect(
+      service.receiveBatch(ctx, {
+        itemId: medicine.id,
+        quantity: 1,
+        expiresOn: '2099-01-01',
+        priceCents: 500,
+        itemVersion: medicine.version,
+      }),
+    ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+    const chart = await encounter(
+      p.id,
+      [
+        {
+          ...rx(medicine.id, 1),
+          form: 'SYRUP',
+          quantityPerDose: 2.5,
+          instructions: 'QA serving instruction',
+          unitPriceCents: 300,
+        },
+      ],
+      {
+        consultationFeeCents: 1000,
+        procedureFeeCents: 2000,
+        procedureNotes: 'QA minor surgery',
+        consumables: [{ itemId: supply.id, quantity: 2, reason: 'QA dressing' }],
+      },
+    );
+    expect(chart).toMatchObject({
+      consultationFeeCents: 1000,
+      procedureFeeCents: 2000,
+      consumables: [{ itemId: supply.id, quantity: 2, reason: 'QA dressing' }],
+      prescriptions: [
+        expect.objectContaining({ form: 'SYRUP', quantityPerDose: 2.5, unitPriceCents: 300 }),
+      ],
+    });
+    expect(
+      (
+        await rows('SELECT SUM(quantity) quantity FROM inventory_batches WHERE item_id=?', [
+          supply.id,
+        ])
+      )[0].quantity,
+    ).toBe('3');
+    await service.dispense(ctx, { encounterId: chart.id, idempotencyKey: randomUUID() });
+    const { encounterBillingLines } = await import('../src/shared/encounter-billing');
+    const lines = encounterBillingLines(chart)!;
+    const total = lines.reduce((sum, line) => sum + line.quantity * line.unitPriceCents, 0);
+    const bill = invoice(p.id, randomUUID(), {
+      encounterId: chart.id,
+      lines,
+      payments: [{ method: 'CASH', amountCents: total, reference: '' }],
+    });
+    await expect(
+      service.createInvoice(ctx, {
+        ...bill,
+        lines: lines.map((line, index) => (index ? line : { ...line, unitPriceCents: 1 })),
+      }),
+    ).rejects.toMatchObject({ code: 'DOCTOR_PRICE_REQUIRED' });
+    const receipt = await service.createInvoice(ctx, bill);
+    expect(receipt.totalCents).toBe(3300);
+    expect(receipt.lines).toEqual(lines);
+    const fallback = await encounter(p.id, [rx(medicine.id, 1)], { status: 'DRAFT' });
+    expect(fallback.prescriptions[0].unitPriceCents).toBe(250);
+    const before = (
+      await rows('SELECT SUM(quantity) quantity FROM inventory_batches WHERE item_id=?', [
+        supply.id,
+      ])
+    )[0].quantity;
+    await expect(
+      encounter(p.id, [], {
+        consumables: [{ itemId: supply.id, quantity: 10, reason: 'QA unavailable' }],
+      }),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_STOCK' });
+    expect(
+      (
+        await rows('SELECT SUM(quantity) quantity FROM inventory_batches WHERE item_id=?', [
+          supply.id,
+        ])
+      )[0].quantity,
+    ).toBe(before);
+  });
+  it('requires doctor fees at HTTP signing and records approved no-charge checkout without cash payments', async () => {
+    const p = await patient();
+    const auth = { Cookie: 'cms_session=' + doctorToken };
+    const payload = { patientId: p.id, assessment: 'QA free care', status: 'SIGNED' };
+    expect((await http('/encounters', 'POST', payload, auth, settingsBaseUrl)).status).toBe(400);
+    const draft = await encounter(p.id, [], { status: 'DRAFT' });
+    expect(
+      (
+        await http(
+          '/encounters/' + draft.id,
+          'PUT',
+          { ...payload, version: draft.version },
+          auth,
+          settingsBaseUrl,
+        )
+      ).status,
+    ).toBe(400);
+    const response = await http(
+      '/encounters/' + draft.id,
+      'PUT',
+      { ...payload, version: draft.version, consultationFeeCents: 0, procedureFeeCents: 0 },
+      auth,
+      settingsBaseUrl,
+    );
+    expect(response.status).toBe(200);
+    const chart = await response.json();
+    const { encounterBillingLines } = await import('../src/shared/encounter-billing');
+    const receipt = await service.createInvoice(
+      ctx,
+      invoice(p.id, randomUUID(), {
+        encounterId: chart.id,
+        lines: encounterBillingLines(chart),
+        payments: [],
+      }),
+    );
+    expect(receipt.totalCents).toBe(0);
+    expect(await rows('SELECT id FROM payments WHERE invoice_id=?', [receipt.id])).toHaveLength(0);
+    await expect(
+      service.createInvoice(
+        ctx,
+        invoice(p.id, randomUUID(), {
+          lines: [
+            { description: 'QA manual zero', quantity: 1, unitPriceCents: 0, category: 'SERVICE' },
+          ],
+          payments: [],
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'PAYMENT_MISMATCH' });
+  });
   it('persists and edits nationality country without inventing legacy nationality or losing branch scope', async () => {
     const saved = await patient({ nationality: 'NON_MALAYSIAN', countryCode: 'SG' });
     expect(saved.countryCode).toBe('SG');
@@ -446,6 +587,65 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     await expect(service.removeAppointment(ctx, next.id, next.version)).rejects.toMatchObject({
       code: 'VERSION_CONFLICT',
     });
+  });
+  it('persists admin letterhead with conflicts, permissions and immutable document and receipt snapshots', async () => {
+    const before = await (await settingsAdminHttp('/admin/letterhead')).json();
+    const letterhead = {
+      logoDataUrl: '',
+      header: 'QA clinic contact',
+      address: 'QA letterhead address',
+      footer: 'QA printed footer',
+      version: before.version,
+    };
+    expect((await settingsHttp('/admin/letterhead', 'PUT', letterhead)).status).toBe(403);
+    expect((await settingsAdminHttp('/admin/letterhead', 'PUT', letterhead)).status).toBe(200);
+    expect((await settingsAdminHttp('/admin/letterhead', 'PUT', letterhead)).status).toBe(409);
+    try {
+      const p = await patient(),
+        e = await encounter(p.id);
+      const issued = await service.issueDocument(ctx, {
+        encounterId: e.id,
+        kind: 'MC',
+        startDate: '2039-01-01',
+        days: 1,
+        diagnosisRedacted: true,
+        lightDuty: false,
+        employer: '',
+        clinicalNotes: '',
+      });
+      const bill = await service.createInvoice(ctx, invoice(p.id));
+      expect(
+        (
+          await settingsAdminHttp('/admin/letterhead', 'PUT', {
+            ...letterhead,
+            header: 'Changed header',
+            version: before.version + 1,
+          })
+        ).status,
+      ).toBe(200);
+      const preview = await service.documentPreview(ctx, issued.id);
+      expect(preview).toMatchObject({
+        header: letterhead.header,
+        clinicAddress: letterhead.address,
+        footer: letterhead.footer,
+      });
+      const { readReceipt } = await import('../src/server/receipt-service');
+      expect(await readReceipt(ctx, bill.id)).toMatchObject({
+        header: letterhead.header,
+        clinicAddress: letterhead.address,
+        footer: letterhead.footer,
+      });
+    } finally {
+      const current = await (await settingsAdminHttp('/admin/letterhead')).json();
+      expect(
+        (
+          await settingsAdminHttp('/admin/letterhead', 'PUT', {
+            ...before,
+            version: current.version,
+          })
+        ).status,
+      ).toBe(200);
+    }
   });
   it('allows admin clinic rename with optimistic conflict and keeps scoped encounter details read only', async () => {
     const clinic = await (await settingsAdminHttp('/admin/clinic')).json();
@@ -731,8 +931,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect((await http('/encounters', 'POST', { patientId: fixtureId() })).status).toBe(403));
   it('rejects active commission access after retirement', async () =>
     expect((await http('/commissions')).status).toBe(410));
-  it('rejects reception clinical PDF disclosure', async () =>
-    expect((await http(`/documents/${fixtureId()}/pdf`)).status).toBe(403));
+  it('keeps unknown clinical PDFs unavailable with default reception chart access', async () =>
+    expect((await http(`/documents/${fixtureId()}/pdf`)).status).toBe(404));
   it('rejects malicious origin on authenticated writes', async () =>
     expect(
       (
@@ -1719,7 +1919,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(new Set(combined).size).toBe(51);
     expect(combined).toEqual([...ids].sort((a, b) => b - a));
     expect(combined).not.toContain(otherEncounter.id);
-    expect((await http(path)).status).toBe(403);
+    expect((await http(path)).status).toBe(200);
     expect(
       (
         await http(path, 'GET', undefined, {
@@ -2154,6 +2354,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         patientId: p.id,
         specialty: 'GP',
         assessment: 'Clinical',
+        consultationFeeCents: 0,
+        procedureFeeCents: 0,
         prescriptions: [{ ...rx(i.id), frequencyPerDay: 2, mealTiming: 'BEFORE_MEAL' }],
         status: 'SIGNED',
       };
@@ -2518,6 +2720,204 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         .status,
     ).toBe('RELEASED');
   });
+  it('cashier roles and unnumbered receipts persist while prescription dose fields remain immutable', async () => {
+    const cashier = fixtureId();
+    await sql.query(
+      'INSERT INTO users(id,tenant_id,branch_id,email,name,password_hash,role) VALUES(?,?,?,?,?,?,?)',
+      [
+        cashier,
+        tenant,
+        branch,
+        `${randomUUID()}@example.invalid`,
+        'QA Cashier',
+        'test-only',
+        'CASHIER',
+      ],
+    );
+    await sql.query('INSERT INTO role_module_permissions(tenant_id,role,modules) VALUES(?,?,?)', [
+      tenant,
+      'CASHIER',
+      JSON.stringify(['patients', 'billing', 'clinical']),
+    ]);
+    const { effectiveModules } = await import('../src/server/module-access');
+    expect(await effectiveModules(applicationPool, tenant, 'CASHIER')).toEqual([
+      'patients',
+      'clinical',
+      'billing',
+    ]);
+    const supply = await item({ category: 'CONSUMABLE' });
+    const first = await service.receiveBatch(ctx, {
+      itemId: supply.id,
+      batchNumber: null,
+      quantity: 3,
+    });
+    const second = await service.receiveBatch(ctx, {
+      itemId: supply.id,
+      batchNumber: null,
+      quantity: 4,
+    });
+    expect(first.batchNumber).toBeNull();
+    expect(second.id).not.toBe(first.id);
+    expect(second.stockQuantity).toBe(7);
+    const p = await patient(),
+      medicine = await item();
+    await service.receiveBatch(ctx, {
+      itemId: medicine.id,
+      batchNumber: null,
+      quantity: 12,
+      expiresOn: '2035-12-31',
+    });
+    const e = await encounter(p.id, [
+      {
+        ...rx(medicine.id, 12),
+        quantityPerDose: 2,
+        frequencyPerDay: 3,
+        durationDays: 2,
+        indication: 'Fever',
+      },
+    ]);
+    expect(e.prescriptions[0]).toMatchObject({
+      quantity: 12,
+      quantityPerDose: 2,
+      indication: 'Fever',
+    });
+    await expect(
+      encounter(p.id, [
+        { ...rx(medicine.id, 11), quantityPerDose: 2, frequencyPerDay: 3, durationDays: 2 },
+      ]),
+    ).rejects.toThrow('Total quantity');
+    await expect(
+      service.saveEncounter(
+        { ...ctx, actor: { ...ctx.actor, id: cashier, role: 'CASHIER' } },
+        { patientId: p.id },
+      ),
+    ).rejects.toMatchObject({ code: 'DOCTOR_REQUIRED' });
+    await sql.query('DELETE FROM role_module_permissions WHERE tenant_id=? AND role=?', [
+      tenant,
+      'CASHIER',
+    ]);
+  });
+  it('reprints saved medicine directions and original dispense time without changing stock or billing', async () => {
+    const p = await patient(),
+      medicine = await item();
+    await service.receiveBatch(ctx, {
+      itemId: medicine.id,
+      batchNumber: null,
+      quantity: 12,
+      expiresOn: '2035-12-31',
+    });
+    const e = await encounter(p.id, [
+      {
+        ...rx(medicine.id, 12),
+        quantityPerDose: 2,
+        frequencyPerDay: 3,
+        durationDays: 2,
+        indication: 'Fever',
+        mealTiming: 'AFTER_MEAL',
+      },
+    ]);
+    const path = `/encounters/${e.id}/medicine-labels`;
+    expect((await settingsAdminHttp(path)).status).toBe(404);
+    const dispense = await service.dispense(ctx, {
+      encounterId: e.id,
+      idempotencyKey: randomUUID(),
+    });
+    await sql.query('UPDATE dispenses SET created_at=? WHERE id=?', [
+      '2020-01-02 03:04:05.000',
+      dispense.id,
+    ]);
+    await sql.query('UPDATE inventory_items SET name=?,active=0 WHERE id=?', [
+      'Changed catalog name',
+      medicine.id,
+    ]);
+    const state = async () => ({
+      batches: await rows('SELECT id,quantity FROM inventory_batches WHERE item_id=?', [
+        medicine.id,
+      ]),
+      movements: await rows('SELECT id,quantity_delta FROM stock_movements WHERE dispense_id=?', [
+        dispense.id,
+      ]),
+      invoices: await rows('SELECT id FROM invoices WHERE patient_id=?', [p.id]),
+      reservations: await rows(
+        'SELECT id,status,consumed_at FROM prescription_reservations WHERE encounter_id=?',
+        [e.id],
+      ),
+    });
+    const before = await state();
+    const original = await (await settingsAdminHttp('/admin/role-modules')).json();
+    const grants = original.roles.find((role: any) => role.role === 'RECEPTIONIST').modules;
+    try {
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: ['inventory'],
+      });
+      const response = await settingsHttp(path);
+      expect(response.status).toBe(200);
+      const labels = await response.json();
+      expect(labels).toEqual({
+        id: e.id,
+        patientId: p.id,
+        patientName: p.name,
+        practitionerName: 'QA Doctor',
+        dispensedAt: '2020-01-02T03:04:05.000Z',
+        prescriptions: [
+          expect.objectContaining({
+            itemId: medicine.id,
+            itemName: medicine.name,
+            unit: 'tablet',
+            quantity: 12,
+            quantityPerDose: 2,
+            indication: 'Fever',
+            frequencyPerDay: 3,
+            durationDays: 2,
+            mealTiming: 'AFTER_MEAL',
+            dosage: 'One tablet daily',
+          }),
+        ],
+      });
+      expect(JSON.stringify(labels)).not.toMatch(
+        /subjective|assessment|password|idempotencyKey|requestHash/,
+      );
+      expect(await (await settingsHttp(path)).json()).toEqual(labels);
+      expect(await state()).toEqual(before);
+      // Simulate a pre-snapshot historical record only in this disposable database.
+      await sql.query(
+        "UPDATE encounters SET prescriptions=JSON_REMOVE(prescriptions,'$[0].itemName','$[0].unit') WHERE id=?",
+        [e.id],
+      );
+      expect((await (await settingsHttp(path)).json()).prescriptions[0]).toMatchObject({
+        itemName: 'Changed catalog name',
+        unit: 'tablet',
+      });
+      expect(await state()).toEqual(before);
+      expect((await settingsHttp(`/encounters/${e.id}`)).status).toBe(403);
+      expect((await settingsHttp(path, 'GET', undefined, { Cookie: '' })).status).toBe(401);
+      expect((await settingsAdminHttp(`/encounters/${fixtureId()}/medicine-labels`)).status).toBe(
+        404,
+      );
+      expect(
+        (
+          await settingsHttp(path, 'GET', undefined, {
+            Cookie: `cms_session=${adminToken}`,
+            'X-Branch-ID': String(otherBranch),
+          })
+        ).status,
+      ).toBe(404);
+      await expect(
+        service.medicineLabels({ ...ctx, actor: { ...ctx.actor, tenantId: fixtureId() } }, e.id),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: ['clinical'],
+      });
+      expect((await settingsHttp(path)).status).toBe(403);
+    } finally {
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'RECEPTIONIST',
+        modules: grants,
+      });
+    }
+  });
   it('non-expiring supplies support atomic idempotent usage but medication cannot bypass dispensing', async () => {
     const supply = await item({ name: 'QA Gauze', category: 'CONSUMABLE' });
     const batch = await service.receiveBatch(ctx, {
@@ -2644,7 +3044,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     ).json();
     expect(other.data).toEqual([]);
   });
-  it('HTTP rejects unsigned MC and malformed blood pressure while retaining unusual ordered readings', async () => {
+  it('HTTP rejects unsigned MC and malformed blood pressure while retaining unusual readings', async () => {
     const p = await patient(),
       draft = await encounter(p.id, [], { status: 'DRAFT' });
     const auth = { Cookie: 'cms_session=' + doctorToken };
@@ -2667,7 +3067,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
             patientId: p.id,
             specialty: 'GP',
             status: 'DRAFT',
-            vitals: { bloodPressure: '80/120' },
+            vitals: { bloodPressure: '80/120/40' },
           },
           auth,
         )
@@ -2680,14 +3080,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         patientId: p.id,
         specialty: 'GP',
         status: 'SIGNED',
-        vitals: { bloodPressure: '270/220', resp_rate: 18 },
+        vitals: { bloodPressure: '80/120', resp_rate: 18 },
+        consultationFeeCents: 0,
+        procedureFeeCents: 0,
         assessment: 'QA assessment for signed certificate',
       },
       auth,
     );
     expect(valid.status, JSON.stringify(await valid.clone().json())).toBe(201);
     const chart = await valid.json();
-    expect(chart.vitals).toEqual({ bloodPressure: '270/220', resp_rate: 18 });
+    expect(chart.vitals).toEqual({ bloodPressure: '80/120', resp_rate: 18 });
     const issued = await http(
       '/documents',
       'POST',
@@ -2775,7 +3177,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       (await rows('SELECT status FROM prescription_reservations WHERE encounter_id=?', [e.id]))[0]
         .status,
     ).toBe('RESERVED');
-    expect((await http(path)).status).toBe(403);
+    expect((await http(path)).status).toBe(200);
     expect((await adminHttp(path, 'POST', taken)).status).toBe(403);
     expect((await http(path, 'GET', undefined, { Cookie: '' })).status).toBe(401);
     expect(
@@ -2869,8 +3271,15 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     );
     const nurseHeaders = { Cookie: `cms_session=${nurseToken}` };
     try {
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'NURSE',
+        modules: ['inventory'],
+      });
       expect((await http(path, 'POST', input, nurseHeaders)).status).toBe(403);
-      await adminHttp('/admin/role-modules', 'PUT', { role: 'NURSE', modules: ['clinical'] });
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'NURSE',
+        modules: ['clinical'],
+      });
       const written = await http(
         path,
         'POST',
@@ -2887,7 +3296,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         (await (await http(path, 'GET', undefined, nurseHeaders)).json()).entries,
       ).toHaveLength(1);
     } finally {
-      await adminHttp('/admin/role-modules', 'PUT', { role: 'NURSE', modules: nurseModules });
+      await settingsAdminHttp('/admin/role-modules', 'PUT', {
+        role: 'NURSE',
+        modules: nurseModules,
+      });
     }
   });
   it('previews redacted MC safely and serves real PDF inline or explicit attachment with scoped access', async () => {
@@ -2933,6 +3345,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         'documentNumber',
         'clinicName',
         'clinicAddress',
+        'logoDataUrl',
+        'header',
+        'footer',
         'patientName',
         'nationalId',
         'practitionerName',
@@ -2982,7 +3397,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         .status,
     ).toBe(400);
     for (const path of ['/documents/' + issued.id, '/documents/' + issued.id + '/pdf']) {
-      expect((await http(path)).status).toBe(403);
+      const staffResponse = await http(path);
+      expect(staffResponse.status).toBe(200);
+      await staffResponse.arrayBuffer();
       expect((await http(path, 'GET', undefined, { Cookie: '' })).status).toBe(401);
       expect(
         (
@@ -3082,7 +3499,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(after).not.toHaveProperty('subjective');
     expect(after).not.toHaveProperty('assessment');
     expect(JSON.stringify(after)).not.toContain('password');
-    expect((await http('/encounters/' + e.id + '/prescription-log')).status).toBe(403);
+    expect((await http('/encounters/' + e.id + '/prescription-log')).status).toBe(200);
     expect(
       (await http('/encounters/' + e.id + '/prescription-log', 'GET', undefined, { Cookie: '' }))
         .status,
@@ -3513,7 +3930,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       expect((await (await adminHttp('/references/catalogs?kind=LAB_PANEL')).json()).data).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: created.id, label: input.label })]),
       );
-      expect((await http('/references/catalogs?kind=LAB_PANEL')).status).toBe(403);
+      expect((await http('/references/catalogs?kind=LAB_PANEL')).status).toBe(200);
       const archived = await (
         await adminHttp('/admin/catalogs/' + created.id, 'PUT', {
           label: input.label,
@@ -4088,7 +4505,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       (await rows('SELECT occupied_room_id,status FROM queue_tickets WHERE id=?', [old.id]))[0],
     ).toMatchObject({ occupied_room_id: null, status: 'CALLED_TO_ROOM' });
   });
-  it('enforces temperature limits at the API boundary without rewriting history', async () => {
+  it('accepts finite temperature readings without clinical range limits', async () => {
     const p = await patient();
     const payload = {
       patientId: p.id,
@@ -4098,7 +4515,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       plan: 'Fictional',
       prescriptions: [],
     };
-    for (const temperature of [28, 40]) {
+    for (const temperature of [28, 40, 27.9, 40.1]) {
       const response = await settingsHttp(
         '/encounters',
         'POST',
@@ -4108,7 +4525,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       expect(response.status).toBe(201);
       expect((await response.json()).vitals.temperature).toBe(temperature);
     }
-    for (const temperature of [27.9, 40.1]) {
+    for (const temperature of ['invalid']) {
       const response = await settingsHttp(
         '/encounters',
         'POST',
@@ -4117,7 +4534,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       );
       expect(response.status).toBe(400);
     }
-    expect(await rows('SELECT id FROM encounters WHERE patient_id=?', [p.id])).toHaveLength(2);
+    expect(await rows('SELECT id FROM encounters WHERE patient_id=?', [p.id])).toHaveLength(4);
   });
   it('keeps all ten current-day visits visible and resets only the live view at Malaysia midnight', async () => {
     const tickets: any[] = [];
@@ -4328,6 +4745,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
           status: 'SIGNED',
           prescriptions: [rx(first.id, 2), rx(second.id, 4)],
           assessment: 'QA Signed assessment',
+          consultationFeeCents: 0,
+          procedureFeeCents: 0,
         },
         { Cookie: `cms_session=${doctorToken}` },
       );
