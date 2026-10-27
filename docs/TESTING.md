@@ -2,6 +2,8 @@
 
 ## Portal branding and release-test reliability — 27 October 2026
 
+The release audit subsequently identified advisories in Zod, body-parser and Nodemailer. Updated versions are Zod 4.6.7, body-parser 1.20.9 and Nodemailer 10.1.4. Three compatibility edits preserve identifier coercion, forwarded validation issues and optional demo matching. Revalidation passed all 534 tests across 43 files with zero skips, both builds, formatting and build-mode isolation; `npm audit --omit=dev --json` reports zero vulnerabilities. Production request limits and validation requirements remain enforced.
+
 Full sequential regression passed 534 tests across 43 files with zero skips, including guarded real MySQL workflows and new demo branding tests. Additional focused MySQL checks passed saved-logo bootstrap projection and restoration; full letterhead details stay out of staff bootstrap. Both builds, formatting, UI detector and normal/demo bundle-isolation checks passed. Browser actions against a separate disposable MySQL clinic verified immediate uploaded-logo and clinic-name updates, refresh persistence and logo-removal fallback. Desktop and mobile demo captures show the owner-supplied clinic banner and CARE FOR U FAMILY CLINIC on login and sidebar.
 
 GitHub's earlier receipt-PDF assertion exposed a test-only extractor defect: optional CR matching removed a legitimate final byte from certain compressed PDF streams. Extraction now honors PDFKit's direct `/Length`; a deterministic compressed-CR regression passes. Late settings cases use the existing separate settings test server to avoid exhausting the production API request limit within one test minute. Permission assertions and production limits remain unchanged.

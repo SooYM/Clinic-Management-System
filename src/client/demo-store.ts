@@ -1192,7 +1192,7 @@ export class DemoClinic {
                 createdAt: r.createdAt,
                 expiresAt: r.expiresAt,
                 possibleMatch:
-                  match?.branchId === branch
+                  match && match.branchId === branch
                     ? {
                         id: match.id,
                         name: match.name,

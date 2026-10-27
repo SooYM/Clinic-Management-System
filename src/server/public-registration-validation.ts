@@ -15,7 +15,7 @@ export const publicRegistrationInput = z
       .transform((value, ctx) => {
         const parsed = schemas.patient.safeParse(value);
         if (!parsed.success) {
-          for (const issue of parsed.error.issues) ctx.addIssue(issue);
+          for (const issue of parsed.error.issues) ctx.addIssue({ ...issue });
           return z.NEVER;
         }
         if (!parsed.data.nationality) {
