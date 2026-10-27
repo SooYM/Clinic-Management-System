@@ -1,5 +1,15 @@
 # Verification
 
+## Compact workflows, cash reporting and print branding — 27 October 2026
+
+`npm test` passed 550 tests across 46 files with zero skips, including guarded disposable MySQL workflows. Normal and demo builds, TypeScript, formatting, diff checks and the changed-interface design detector passed. The production dependency audit reported zero vulnerabilities. Real tests cover scoped expense creation/correction/voiding, CSRF and administrator permissions, idempotent retries, Malaysia date boundaries, exclusion of historic deposit allocations, immutable checkout groups, actual medication/supply consumption and print-branding snapshots. Retail goods and reservations do not displace medicines or consumables in the usage ranking.
+
+Chromium actions against a separate generated MySQL database recorded paid stock purchases of RM12.34 and rent of RM10.00, completed a RM23.00 checkout and verified RM0.66 net cash income. Checkout and receipt showed the saved insurance group. The dashboard showed one insurance patient, three dispensed medication units and two consumed supply units. Desktop and 390px phone layouts were inspected without document overflow.
+
+The actual receipt endpoint returned a valid 91,705-byte PDF with the configured clinic logo, name, letterhead and address. Saved prescription stickers showed logo, name, branch, header, address and footer. Intercepted automatic and selected-sticker print calls both occurred after images and fonts loaded; physical printer calibration remains unverified. Screen and print layouts were inspected. Fresh browser-demo checks separately verified compact mobile login, dashboard and the supplied clinic logo on receipt samples; these are session simulations, not persistent backend evidence.
+
+Local migrations 032 and 033 followed separate ignored backups. Both backups restored into generated disposable databases with exact baseline row counts. Existing local rows remained present; 33 migrations and API health `ok` were confirmed. Schema and dictionary exports contain definitions only. Browser artifacts and database dumps remain ignored. Hosted Render deployment must be verified separately after publication.
+
 ## System-wide caption cleanup — 27 October 2026
 
 Removed promotional login/portal copy and repeated page/section summaries across eight modules. Both builds, formatting, diff checks and the changed-UI detector passed. Desktop/mobile Chromium checks verified clinic branding, sign-in, navigation through eight modules, absent taglines and no phone overflow. Clinical/security/demo notices and actionable field/workflow guidance remain. Backend, permissions and persistence behavior did not change.
@@ -78,31 +88,25 @@ Task-section UI verification on 7 October 2026 retained the 290/290 regression g
 
 Settings/receipt gate on 7 October 2026 at 16:43 MYT passed 305/305 tests across fourteen files, zero skips. Typecheck, both builds and formatting passed. Five additional real integration cases, seven demo cases and three receipt renderer cases extend the earlier290 gate. Subsequent display-only receipt scrolling/currency wrapping and admin copy fixes passed builds/format and focused browser confirmation; GitHub CI checks final source.
 
-
 ## Workflow refinement gate — 2026-10-08
 
 At 10:00 MYT the full suite passed 329/329 tests across 19 files with zero skips. Actual guarded disposable MySQL tests apply migrations through 017. Coverage includes date boundaries, scoped/versioned appointment removal, attended protection, clinic-name conflicts and receipt snapshot retention, medication ingredient validation and legacy archival compatibility. Browser demo checks use fictional records and prove profile navigation, ID ordering, stable nationality layout, prefix composition, date constraints, deletion confirmation, grouped history, separate creation, disabled tools and highlighted guides at desktop/320px. These checks do not establish a successful hosted Render deployment.
-
 
 ## HCI flow gate — 2026-10-08
 
 Strict typecheck, normal/demo builds and formatting passed. Focused existing list-controls, settings-workflows and demo tests passed 43/43 across three files. Chromium fictional demo verified single task entry controls, preserved registration/SOAP drafts, no history before patient selection, selected patient history, record-lock reset on patient switch, GP creation scoped to selected patient, default ID descending sorting, collapsed catalogue details, GP-only required registration input, Cancel/Escape without committing, explicit confirmation saves, header-only guide, and 320px overflow/consent bounds. Screenshots were inspected at desktop/320px; one modal centering fix was confirmed afterward. Changed-target Impeccable scan returned zero findings. No backend/schema or live clinical data changed; demo evidence does not establish Render deployment or real backend operation. Earlier 329-test backend gate remains historical; this UI revision uses focused tests and browser proof.
 
-
 ## Queue flow gate — 2026-10-14
 
 On 14 October 2026, 185/185 tests across domain, demo, demo-workflows and actual guarded MySQL passed with zero skips. New tests verify direct registered→room transitions, missing/invalid doctor or room, branch/version checks, occupied-room rejection and unchanged ticket on failure. Normal/demo builds, strict typecheck and formatting passed. Fictional Chromium browser verified searchable check-in, enabled patient-specific Call to room entry, required choices, consent cancellation, direct successful call, disabled occupied room, desktop/320px layout, exactly one visible dispensary section and zero forced scroll calls across all five section buttons. Administrator removed appointment access from fictional receptionist role; receptionist navigation/help hid it and direct URL showed restricted access. Browser screenshots were inspected. No live records, schema or migrations changed. This proves local behavior, not hosted Render deployment.
-
 
 ## Queue expiry and clinical handoff gate — 2026-10-14
 
 Full regression passed 339/339 tests across 19 files, zero skips. The actual MySQL file passed 118 cases; focused demo coverage passed 44. Normal/demo builds, strict typecheck and formatting passed. Guarded tests verify exact 12-hour cutoff, prior-day active visits, room release, branch isolation, one expiry audit, concurrent check-in, clinical-only GP suggestions, wrong patient/GP denial, failed-note atomic rollback, concurrent single linked chart and continued edits after queue expiry. Fictional desktop/320px browser checks verified meaningful duplicate error, nurse room/start handoff, GP assignment visibility, prefilled patient/queue context, consent, cancel-preserved SOAP and resuming the existing encounter. Screenshots were inspected; changed UI targets returned no detector findings. Local migration 018 followed backup and preserved baseline rows across 32 tables, 26 numeric entity IDs and 18 migrations; health returned ok. No local demo preload/reset occurred. Browser simulation does not establish hosted Render deployment.
 
-
 ## Multiple prescriptions and signed handoff gate — 2026-10-14
 
 On 14 October 2026, full regression passed 356/356 tests across 19 files, zero skips. Actual MySQL passed 125 cases and focused demo passed 54. Strict typecheck, normal/demo builds and formatting passed. New cases cover direct SIGNED creation, draft signing with preserved queue association, clinical-only GP permission, multiple reservations, insufficient second item complete rollback, zero medicines, manual/unlinked and expired/advanced visits. Fictional desktop/320px browser verified independent two-medicine fields, add/remove consent and neighboring draft retention, blank-row skipping, unchanged draft resave count, signed input locks, automatic queue Waiting for medicines and pending dispense presence. Screenshots were inspected; changed-page detector had zero findings. Schema and API payload remain unchanged; local clinical data was not edited by QA. Browser evidence is simulation, not successful Render deployment.
-
 
 ## Draft removal and reset gate — 2026-10-14
 
@@ -110,13 +114,11 @@ Full regression completed successfully, including 133 actual guarded MySQL cases
 
 Synchronized handoffs include real MySQL stock/queue/invoice transactions and a separate fictional browser-demo suite. Both enforce idempotent dispense/checkout, patient/GP matching, permission/branch scope and expired-ticket preservation. Browser coverage additionally verifies first/default sections and phone layouts.
 
-
 ### Waiting room call sound
 
 On `/display`, choose **Enable announcements** to unlock browser audio and play a short sample. Check the display device’s volume. New calls chime, then speak the ticket and room after each 15-second refresh. Initial loading and branch switches establish a silent baseline. Removing tickets, sorting them, or moving the same call into consultation does not repeat the sound. **Announcements on · Disable** stops audio; page closure releases the audio context. If browser sound is blocked or interrupted, the display shows a retry notice.
 
 Audio validation checks first-call detection, room changes, silent removals and branch baselines, persistent context resume, oscillator scheduling, cancellation and cleanup. Scheduling confirms browser playback requests, not physical speaker audibility.
-
 
 ## Clinical and stock workflow validation — 21 October 2026
 
@@ -132,9 +134,7 @@ Before local migration026, a full MySQL schema/data backup and row-count baselin
 
 The changed-target Impeccable scan found one existing thick timeline border; it was reduced to1px. Final browser confirmation verified printing, named expiry/batch checkboxes and no extra activity modal after label closure. All screenshots, PDFs, browser state, backups and fixture scripts remain ignored. These checks establish local behavior, not hosted deployment or physical printer certification.
 
-
 Final gate: `npm test -- --reporter=dot` passed **497/497 tests across34 files, zero skips**. The full run includes guarded real MySQL, migration, reset, permission, CSRF, transaction and demo suites. Normal/demo builds and source formatting passed. `npm audit --omit=dev` reported zero vulnerabilities. Disposable browser QA database was removed, its listener closed and lifecycle logged; the normal local clinic remains running on its reserved ports. No hosted deployment was performed.
-
 
 ## Saved sticker reprint and navigation validation — 21 October 2026
 
@@ -146,9 +146,7 @@ SQL proof after repeated reprints matched the fixture baseline exactly:1 dispens
 
 The new read endpoint enforces inventory permission and tenant/branch scope, rejects pending/missing/foreign records, preserves saved snapshots and fills only missing legacy medicine names/units from the scoped catalog, including archived items. Demo parity remains separate from real persistence evidence. The changed-target Impeccable detector returned no findings. Browser scripts, PDFs, screenshots and SQL proofs remain ignored in `.local`.
 
-
 Final reprint gate: `npm test -- --reporter=dot` passed501/501 tests across36 files with zero skips, including the extended real MySQL legacy-label case. Strict TypeScript, normal/demo builds, source formatting and diff-whitespace checks passed. Local web3100 returned200 and API3101 health returned `ok`; QA3110 was closed. No hosted deployment was performed.
-
 
 ## Clinical pricing and letterhead — 23 October 2026
 

@@ -1,5 +1,17 @@
 # Clinic system flow
 
+## Clinic branding on printed output
+
+Administrator saves clinic name and letterhead logo/header/address/footer → future receipt/document issuance and dispensing capture branding → preview or print renders saved branding. Newly issued clinical documents use the tenant clinic name. Existing signed clinical payloads remain unchanged. Receipt legacy defaults fill only absent snapshot fields; explicit saved blanks remain blank. A receipt without a snapshot uses the configured address or branch address.
+
+Dispense transaction → save `label_snapshot` alongside stock allocation → fetch stickers using inventory permission and tenant/branch scope → wait for logo images and fonts → print all medicines or one selected sticker with its own branding. Reprint → reuse saved branding and original dispensing date. Legacy null sticker snapshots read current scoped branding without updates. Cancelling printing does not undo dispensing.
+
+## Checkout groups and cash reporting
+
+Select a checkout patient or prepare a signed consultation handoff → show the current patient group → confirm payment → save the group alongside the immutable receipt snapshot. Subsequent patient/group changes affect future checkouts only.
+
+Administrator selects branch and report dates → server validates administrator, scope and Malaysia date bounds → read a consistent transaction snapshot of payment collections, recorded paid expenses, patient-group counts and real stock use → display cash-basis net income and item rankings. Stock purchase quantities do not create costs automatically. Record each actual paid supplier bill or operating expense once in Expenses → idempotent create → audited/versioned correction or void → dashboard refreshes. Voids preserve history and stop contributing to totals.
+
 Patient ticket tracking: pending reception → checked in/waiting → called to assigned room → consultation → dispensary → payment → completed. The same capability receipt refreshes current queue progress every 10 seconds while visible, including room changes and undo/skip actions. Skipped/expired visits prompt reception assistance. Only the linked visit is projected; other patients' tickets and clinical records remain private.
 
 QR arrival: admin enables branch QR → patient scans → completes demographics and consent → confirms submission → reserved ticket appears as Awaiting reception confirmation → patient proceeds to counter → staff verifies IC/passport and creates or explicitly links profile → same ticket enters active queue → call to room. Pending reservations never appear in GP/callable suggestions. The receipt updates after confirmation; rejected/expired tickets direct patients to reception. Counter check-in and QR reservation allocate numbers under the same branch/day lock.
@@ -167,37 +179,32 @@ Admin selects setting → edits name or removes → unused room deletes / refere
 
 Checkout captures receipt metadata → Invoice history → Preview receipt → readable HTML → Open printable PDF or Download PDF explicitly. Demo displays a sample preview only. Later branch/staff/patient renames do not change newly captured receipt identity.
 
-
 ## Profile, booking and clinical navigation
 
 Directory → patient row/Open profile → full demographics/contact/address and consultation history. Registration → nationality/country in fixed form cell → visible phone prefix → save existing shared validated payload. Appointments → single Book appointment section → ID-sorted patient → today/future Malaysia date → conflict validation → save. Unused booked/cancelled appointment → Delete appointment → confirm → version-checked soft removal and audit. Clinical → grouped patient → paginated history → Open consultation → enabled record tools. New consultation → fresh creation form → save → selected Notes & prescription. Administration → Clinic settings → optimistic name save → future receipt snapshot. User guide → highlighted tabs/functions → close → continue normal workflow.
-
 
 ## Single-entry task and consent flow
 
 Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout. Patient registration retains a prominent header shortcut; other duplicate actions are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Valid form → popup → Cancel/Escape (no mutation, preserve draft), or Confirm → existing API → success/error. Direct persistent actions use the same popup. Invalid native required fields prevent form submission before the popup.
 
-
 ## Simplified arrivals and room calls
 
 Check in patient → Waiting for doctor → Call to room beside that patient → choose available room and doctor → Confirm call → popup consent → Called to room. The previous Ready for triage step is no longer required. Historical TRIAGE_WAITING tickets remain supported. Missing room/doctor configuration and occupied rooms explain why final confirmation is unavailable; the entry action stays available. Patient search is available at check-in, and advanced queue filters are collapsed. Shared section switches retain mounted drafts and no longer force scrollIntoView; overflow anchoring is disabled within the changing task area. Guided tours still scroll deliberately to their targets. Navigation uses current module grants; bootstrap access refreshes every 15 seconds while visible and on focus/visibility return. Unpermitted appointment navigation and written help topics are hidden, and direct routes remain access restricted. Server access checks remain authoritative.
-
 
 ## Check-in expiry and nurse-to-GP flow
 
 Check in → active visit until 12 hours or Malaysia midnight → nurse calls assigned doctor/room → GP Assigned patients → Start consultation → prefilled SOAP form → consented save, linked encounter and atomic start. If nurse already started consultation, suggestion is still shown. Existing encounter → Open consultation. Exact 12-hour cutoff → mark expired/release operational locks → new check-in; prior clinical history retained. Duplicate before cutoff → clear existing-ticket error.
 
-
 ## Signed consultation to dispensary
 
 Assigned patient → Start consultation → SOAP and one or more medicine rows → draft save or SIGNED → popup consent → validate all medicines → reserve all stock → linked active visit DISPENSARY_WAITING → pharmacist pending prescription. Any failure rolls back the complete signed handoff. Existing draft → append rows → save → no duplicates on unchanged resave.
-
 
 ## Draft and reset workflows
 
 Patient → compact history → Open full note, or own Delete draft → consent → versioned soft removal → history/suggestions refresh; selected record tools lock. Signed record → no individual delete. Super Admin → Danger zone → affected-count preview → Reset database → exact phrase + current password + acknowledgment → final erase → transactional reset/default recreation → session ends → sign in with configured bootstrap credentials. Ordinary Admin → no reset controls and server denial.
 
 ## Automatic visit stages
+
 ```mermaid
 flowchart LR
   A[Patient check-in] --> B[Call to room and assign GP]
@@ -209,6 +216,7 @@ flowchart LR
   G --> H[Review charges and confirm payment]
   H --> I[Visit completed]
 ```
+
 Drafts remain editable without stock holds. Signing rejects insufficient eligible stock atomically. Dispensing and payment preserve idempotency. Automatic transitions apply only to the linked active queue ticket; expired visits stay expired.
 
 Prepare checkout → confirm replacement if needed → prefill patient/GP/charges → scroll to checkout below sticky navigation. Cancel → retain entries and scroll position.
@@ -233,7 +241,6 @@ Search text → matching suggestion → click or Arrow/Enter → full label in i
 
 Enable announcements → spoken sample and chime → newly called ticket or changed room → chime → read ticket digits and room destination. Multiple new calls → queued spoken sentences. Branch change/off/close → cancel pending speech; unsupported voice → recovery notice with chime retained.
 
-
 ## Staff workflow refinement — 21 October 2026
 
 Cashier (`CASHIER`) is a staff role with default Clinic overview, Patients, Clinical workspace and Billing access. Administrators can configure module grants; existing explicit grants remain authoritative. Ordinary staff roles include clinical review by default. Only the attending GP can create, edit or sign consultations and issue clinical documents. Selecting a patient enables history, notes, documents and medication review; the latest saved encounter loads automatically. Patients without encounters show clear empty states. New consultation remains GP-only.
@@ -250,11 +257,9 @@ Forms use a shared responsive grid and consistent spacing. Nationality and count
 
 Apply migration `026_cashier_and_optional_batches.sql` using the normal migration runner before starting the updated production backend. Back up first; existing migrations remain unchanged. No hosting deployment or printer hardware certification is implied by local validation.
 
-
 ## Saved sticker printing
 
 Successful dispensing → saved dispensing record → readonly sticker request → original date and saved directions → print all medicines or one selected sticker. Later: Prescription history → completed prescription → Reprint stickers → same readonly request. Closing or cancelling printing leaves dispensing, reservations, stock and billing unchanged. Pending/foreign prescriptions cannot provide saved stickers. Visible module grants determine cross-module links; Skip to main content changes focus only.
-
 
 ## Clinical pricing and letterhead update — 23 October 2026
 
@@ -263,7 +268,6 @@ See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICI
 ## Custom staff role flow
 
 Administrator opens Settings → Role access → Custom staff roles, enters a role name, selects modules, and saves. Under Staff accounts, select the custom module role while creating or editing staff. Staff keep their professional role for restricted clinical actions. Changes apply to their next backend request. Select Use professional role defaults to remove the assignment. Administrators always retain full access.
-
 
 ### Patient group workflow
 

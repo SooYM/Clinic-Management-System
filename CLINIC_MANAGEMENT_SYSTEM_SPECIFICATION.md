@@ -1,5 +1,17 @@
 # Clinic Management System V2 — System Specification
 
+## Branding on receipts, clinical documents and prescription stickers
+
+Printable receipt and clinical previews/PDFs and every medicine sticker render available clinic logo, letterhead header/contact text, address and footer. New clinical documents store the tenant clinic name separately from branch name. Existing signed document payloads remain unchanged. Unconfigured branding does not create a substitute logo.
+
+Migration 033 adds nullable object-only JSON `dispenses.label_snapshot`. Successful new dispensing captures clinic/branch names, configured logo/header/address/footer and effective clinic address inside the dispense transaction. Effective address is configured letterhead address or branch address. Reprints preserve the saved branding and original dispensing date without stock or billing mutations. Legacy null snapshots use current tenant/branch branding without backfilling. Receipt reads supply current scoped defaults only beneath existing legacy snapshot fields, preserving explicit blanks; receipts without snapshots use current branding and effective address. Sticker printing waits for images and fonts, retains branding when printing one medicine, and allows content to wrap without fixed-height clipping. Existing module grants, clinical authority and tenant/branch checks remain enforced.
+
+## Administrative income, expenses and usage
+
+Administration opens an administrator-only Dashboard for the selected branch. Date filters use inclusive Malaysia civil dates, defaulting to the current month through today, with a maximum of 366 days. Revenue collected sums actual CASH/CARD/QR payments on paid invoices by payment time; historical DEPOSIT allocations and void invoices are excluded. Net cash income equals collected revenue less recorded paid stock purchases and operating expenses. This is cash-basis reporting, not an accrual profit statement; stock quantities and selling prices never invent purchase costs. Administrators record all paid costs in Expenses, including stock purchases, rent, salaries, utilities and other expenses. Creation is idempotent; edits use optimistic versions; voiding preserves the record and before/after audit history.
+
+The Dashboard also shows all currently registered branch patients by assigned group, including unassigned patients and archived groups. Top-use rankings show actual dispensed and used inventory quantities for the selected period, with item type and unit. Receipts, reservations and undispensed prescriptions do not increase consumption. Checkout selectors and handoff suggestions show patient groups. Newly issued receipts snapshot group ID and label; later group edits do not rewrite them. Historical receipts without a group snapshot show Not recorded.
+
 ## Clinic portal branding
 
 The authenticated staff portal uses its tenant's saved clinic name and uploaded letterhead logo. Administrator saves and removals refresh portal branding immediately; removal restores the generic clinic icon. Staff bootstrap exposes only the clinic name and logo, while full letterhead settings remain administrator-only. Historical documents retain their snapshots. The separate Render demo defaults to CARE FOR U FAMILY CLINIC with the supplied clinic image on login and sidebar; these assets and defaults do not enter the normal application build.

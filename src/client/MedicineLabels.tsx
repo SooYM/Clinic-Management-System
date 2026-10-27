@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DetailDialog from './DetailDialog';
 import { isDemo } from './api';
 import { humanize } from './types';
-import { ResourceState, useResource } from './components';
+import { ErrorNotice, ResourceState, useResource } from './components';
 import type { MedicineLabelPrescription } from '../shared/medicine-labels';
+import './MedicineLabels.css';
 
 export default function MedicineLabels({
   encounterId,
@@ -18,10 +19,28 @@ export default function MedicineLabels({
   const prescription = resource.data;
   const [printIndex, setPrintIndex] = useState<number | null>(null);
   const [printRequest, setPrintRequest] = useState(0);
+  const [printError, setPrintError] = useState('');
+  const sheet = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!prescription) return;
-    const frame = requestAnimationFrame(() => window.print());
-    return () => cancelAnimationFrame(frame);
+    let cancelled = false,
+      frame = 0;
+    setPrintError('');
+    Promise.all(
+      Array.from(sheet.current?.querySelectorAll('img') || []).map((image) => image.decode()),
+    )
+      .then(() => document.fonts.ready)
+      .then(() => {
+        if (!cancelled) frame = requestAnimationFrame(() => window.print());
+      })
+      .catch(() => {
+        if (!cancelled)
+          setPrintError('Clinic logo could not load. Retry printing after checking the logo.');
+      });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [prescription?.id, printRequest]);
   function print(index: number | null) {
     setPrintIndex(index);
@@ -38,7 +57,8 @@ export default function MedicineLabels({
                 Print all stickers
               </button>
             </div>
-            <div className="medicine-label-sheet">
+            {printError && <ErrorNotice>{printError}</ErrorNotice>}
+            <div className="medicine-label-sheet" ref={sheet}>
               {prescription.prescriptions.map((rx, index) => (
                 <article
                   className="medicine-label"
@@ -46,6 +66,15 @@ export default function MedicineLabels({
                   data-print-hidden={printIndex !== null && printIndex !== index}
                 >
                   {isDemo && <strong>DEMO SAMPLE · Not for clinical use</strong>}
+                  <header className="medicine-label-branding">
+                    {prescription.logoDataUrl && (
+                      <img src={prescription.logoDataUrl} alt={`${prescription.clinicName} logo`} />
+                    )}
+                    <strong>{prescription.clinicName}</strong>
+                    {prescription.branchName && <p>{prescription.branchName}</p>}
+                    {prescription.header && <p>{prescription.header}</p>}
+                    {prescription.clinicAddress && <p>{prescription.clinicAddress}</p>}
+                  </header>
                   <h2>{prescription.patientName}</h2>
                   <p>
                     Patient #{prescription.patientId} · Prescription #{prescription.id}
@@ -77,6 +106,9 @@ export default function MedicineLabels({
                         }).format(new Date(prescription.dispensedAt))
                       : 'Date not recorded'}
                   </p>
+                  {prescription.footer && (
+                    <footer className="medicine-label-footer">{prescription.footer}</footer>
+                  )}
                   <button
                     type="button"
                     className="secondary medicine-label-action"

@@ -61,7 +61,9 @@ export function referenceRouter() {
         .max(200)
         .parse(req.query.search || '');
       const { rows } = await pool.query(
-        'SELECT id,id patient_number,name,national_id,phone FROM patients WHERE tenant_id=$1 AND branch_id=$2 AND (name LIKE $3 OR national_id LIKE $3 OR phone LIKE $3) ORDER BY id LIMIT 200',
+        `SELECT p.id,p.id patient_number,p.name,p.national_id,p.phone,p.patient_group_id,c.label patient_group_label
+         FROM patients p LEFT JOIN reference_catalogs c ON c.id=p.patient_group_id AND c.tenant_id=p.tenant_id AND c.branch_id=p.branch_id AND c.kind='PATIENT_GROUP'
+         WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.id LIMIT 200`,
         [req.context.actor.tenantId, req.context.branchId, `%${search}%`],
       );
       await audit(req, 'READ_REFERENCES', 'patient', null, rows.length);
@@ -174,8 +176,9 @@ export function referenceRouter() {
       anyModule(req, ['billing']);
       const search = z.string().max(200).default('').parse(req.query.search);
       const { rows } = await pool.query(
-        `SELECT e.id,e.id encounter_id,e.patient_id,p.id patient_number,p.name patient_name,e.practitioner_id,u.name practitioner_name,e.queue_ticket_id,e.signed_at,d.created_at dispensed_at,e.prescriptions,e.consultation_fee_cents,e.procedure_fee_cents
+        `SELECT e.id,e.id encounter_id,e.patient_id,p.id patient_number,p.name patient_name,p.patient_group_id,c.label patient_group_label,e.practitioner_id,u.name practitioner_name,e.queue_ticket_id,e.signed_at,d.created_at dispensed_at,e.prescriptions,e.consultation_fee_cents,e.procedure_fee_cents
          FROM encounters e JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id
+         LEFT JOIN reference_catalogs c ON c.id=p.patient_group_id AND c.tenant_id=p.tenant_id AND c.branch_id=p.branch_id AND c.kind='PATIENT_GROUP'
          JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id LEFT JOIN dispenses d ON d.encounter_id=e.id
          WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.deleted_at IS NULL AND e.status='SIGNED'
            AND (JSON_LENGTH(e.prescriptions)=0 OR d.id IS NOT NULL)

@@ -3,8 +3,14 @@ import { catalogKinds, defaultBillingCategories, defaultPatientGroups } from '..
 import { malaysiaDate } from '../shared/clinic-dates';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { buildReceiptView } from '../shared/receipt-view';
-import { emptyLetterhead } from '../shared/letterhead';
+import { emptyLetterhead, type PrintBranding } from '../shared/letterhead';
 import { demoBranding } from './demo-branding';
+import {
+  expenseCreateInput,
+  expenseInput,
+  parseAnalyticsRange,
+  type AdminAnalytics,
+} from '../shared/admin-analytics';
 import { encounterBillingLines } from '../shared/encounter-billing';
 import { schemas, encounterWriteSchema, validateItemIngredient } from '../server/validation';
 import {
@@ -415,6 +421,7 @@ function seed(): State {
       },
     ],
     usages: [],
+    expenses: [],
     medicationDoses: [],
     audit: [],
   };
@@ -519,6 +526,7 @@ export class DemoClinic {
       'medicationDoses',
       'registrations',
       'customRoles',
+      'expenses',
     ]) {
       this.state.rows[table] ||= [];
       this.state.counters[table] ??= Math.max(0, ...this.state.rows[table].map((r) => r.id));
@@ -779,6 +787,108 @@ export class DemoClinic {
   }
   private letterheadSnapshot() {
     return { ...emptyLetterhead, ...this.state.rows.tenants[0].letterhead };
+  }
+  private printBranding(branch: number): PrintBranding {
+    const letterhead = this.letterheadSnapshot();
+    const clinicBranch = this.state.rows.branches.find((row) => row.id === branch)!;
+    return {
+      ...letterhead,
+      clinicName: this.state.rows.tenants[0].name,
+      branchName: clinicBranch.name,
+      clinicAddress: letterhead.address || clinicBranch.address,
+    };
+  }
+  private adminAnalytics(branch: number, range: { from: string; to: string }): AdminAnalytics {
+    const inRange = (value: string) => {
+      const date = malaysiaDate(new Date(value));
+      return date >= range.from && date <= range.to;
+    };
+    const exact = (value: number) => {
+      if (!Number.isSafeInteger(value)) fail('Report exceeds supported numeric range.', 422);
+      return value;
+    };
+    const expenses = this.scoped('expenses', branch).filter(
+      (row) => !row.voidedAt && row.paidOn >= range.from && row.paidOn <= range.to,
+    );
+    const totalExpenseCents = exact(expenses.reduce((sum, row) => sum + row.amountCents, 0));
+    const stockPurchaseCents = exact(
+      expenses
+        .filter((row) => row.category === 'STOCK_PURCHASE')
+        .reduce((sum, row) => sum + row.amountCents, 0),
+    );
+    const invoices = this.scoped('invoices', branch).filter((row) => row.status === 'PAID');
+    const collectedCents = exact(
+      invoices.reduce(
+        (sum, row) =>
+          sum +
+          (row.payments || [])
+            .filter(
+              (payment: Row) =>
+                ['CASH', 'CARD', 'QR'].includes(payment.method) &&
+                inRange(payment.createdAt || row.createdAt),
+            )
+            .reduce((paid: number, payment: Row) => paid + payment.amountCents, 0),
+        0,
+      ),
+    );
+    const groups = new Map<number | null, AdminAnalytics['patientGroups'][number]>();
+    for (const patient of this.scoped('patients', branch)) {
+      const id = patient.patientGroupId ?? null;
+      const value = groups.get(id) || {
+        patientGroupId: id,
+        label: this.patientWithGroup(patient, branch).patientGroupLabel || 'No group assigned',
+        patients: 0,
+      };
+      value.patients++;
+      groups.set(id, value);
+    }
+    const usage = new Map<number, AdminAnalytics['topUsage'][number]>();
+    const addUsage = (
+      itemId: number,
+      quantity: number,
+      type: 'dispensedQuantity' | 'usedQuantity',
+    ) => {
+      const item = this.scoped('inventory', branch).find((row) => row.id === itemId);
+      if (!item || !['MEDICATION', 'CONSUMABLE'].includes(item.category)) return;
+      const value = usage.get(itemId) || {
+        itemId,
+        name: item.name,
+        category: item.category,
+        unit: item.unit,
+        dispensedQuantity: 0,
+        usedQuantity: 0,
+        totalQuantity: 0,
+      };
+      value[type] = exact(value[type] + quantity);
+      value.totalQuantity = exact(value.dispensedQuantity + value.usedQuantity);
+      usage.set(itemId, value);
+    };
+    for (const dispense of this.scoped('dispenses', branch).filter((row) =>
+      inRange(row.createdAt),
+    )) {
+      const encounter = this.scoped('encounters', branch).find(
+        (row) => row.id === dispense.encounterId,
+      );
+      for (const allocation of dispense.allocations || encounter?.prescriptions || [])
+        addUsage(allocation.itemId, allocation.quantity, 'dispensedQuantity');
+    }
+    for (const row of this.scoped('usages', branch).filter((row) => inRange(row.createdAt)))
+      addUsage(row.itemId, row.quantity, 'usedQuantity');
+    return {
+      ...range,
+      collectedCents,
+      stockPurchaseCents,
+      operatingExpenseCents: exact(totalExpenseCents - stockPurchaseCents),
+      totalExpenseCents,
+      netCashIncomeCents: exact(collectedCents - totalExpenseCents),
+      paidInvoiceCount: invoices.filter((row) => inRange(row.createdAt)).length,
+      patientGroups: [...groups.values()].sort(
+        (a, b) => b.patients - a.patients || a.label.localeCompare(b.label),
+      ),
+      topUsage: [...usage.values()]
+        .sort((a, b) => b.totalQuantity - a.totalQuantity || a.itemId - b.itemId)
+        .slice(0, 10),
+    };
   }
   private reserve(encounter: Row, branch: number) {
     for (const supply of encounter.consumables || []) {
@@ -1126,6 +1236,103 @@ export class DemoClinic {
                           : undefined;
     if (module && !modules.includes(module as any))
       fail('This demo role has no access to that module.', 403);
+    if (route === '/admin/analytics' && method === 'GET') {
+      return this.adminAnalytics(branch, parseAnalyticsRange(Object.fromEntries(url.searchParams)));
+    }
+    if (route === '/admin/expenses' || /^\/admin\/expenses\/\d+$/.test(route)) {
+      const view = (row: Row) => ({
+        id: row.id,
+        paidOn: row.paidOn,
+        category: row.category,
+        description: row.description,
+        amountCents: row.amountCents,
+        reference: row.reference,
+        version: row.version,
+        voidedAt: row.voidedAt,
+      });
+      const auditExpense = (action: string, row: Row, before?: Row) =>
+        this.add(
+          'audit',
+          {
+            actorId: user.id,
+            actorName: user.name,
+            action,
+            entityType: 'expense',
+            entityId: row.id,
+            requestId: 'browser-demo',
+            metadata: { before: before ? view(before) : null, after: view(row) },
+          },
+          branch,
+        );
+      const expenseId = route.match(/^\/admin\/expenses\/(\d+)$/)?.[1];
+      if (method === 'GET' && !expenseId) {
+        const beforeId = url.searchParams.get('beforeId');
+        const query = Object.fromEntries(url.searchParams);
+        delete query.beforeId;
+        const range = parseAnalyticsRange(query);
+        const before = beforeId ? idSchema.parse(beforeId) : undefined;
+        return {
+          data: this.scoped('expenses', branch)
+            .filter(
+              (row) =>
+                !row.voidedAt &&
+                row.paidOn >= range.from &&
+                row.paidOn <= range.to &&
+                (!before || row.id < before),
+            )
+            .sort((a, b) => b.id - a.id)
+            .slice(0, 200)
+            .map(view),
+        };
+      }
+      if (method === 'POST' && !expenseId) {
+        const { idempotencyKey, ...value } = expenseCreateInput.parse(body);
+        const hash = JSON.stringify(value);
+        const previous = this.scoped('expenses', branch).find(
+          (row) => row.idempotencyKey === idempotencyKey,
+        );
+        if (previous) {
+          if (previous.requestHash !== hash)
+            fail('This expense key already records different details.', 409);
+          return view(previous);
+        }
+        const created = this.add(
+          'expenses',
+          {
+            ...value,
+            idempotencyKey,
+            requestHash: hash,
+            actorId: user.id,
+            voidedAt: null,
+            updatedAt: now(),
+          },
+          branch,
+        );
+        auditExpense('EXPENSE_CREATED', created);
+        return view(created);
+      }
+      if (expenseId && (method === 'PUT' || method === 'DELETE')) {
+        const row = this.record('expenses', idSchema.parse(expenseId), branch);
+        const input =
+          method === 'PUT'
+            ? expenseInput.extend({ version: z.number().int().positive() }).parse(body)
+            : z.object({ version: z.number().int().positive() }).strict().parse(body);
+        if (row.voidedAt || row.version !== input.version)
+          fail('Expense changed or was already voided. Refresh before saving.', 409);
+        const before = structuredClone(row);
+        if (method === 'DELETE') {
+          row.voidedAt = now();
+          row.updatedAt = now();
+          row.version++;
+          auditExpense('EXPENSE_VOIDED', row, before);
+          return { id: row.id, voided: true };
+        }
+        Object.assign(row, input, { version: row.version + 1, updatedAt: now(), actorId: user.id });
+        auditExpense('EXPENSE_UPDATED', row, before);
+        return view(row);
+      }
+      fail('Expense route not found.', 404);
+    }
     const foundId = route.match(/^\/(?:admin\/)?[^/]+\/(\d+)(?:\/|$)/),
       id = foundId ? idSchema.parse(foundId[1]) : undefined;
     if (
@@ -1364,6 +1571,8 @@ export class DemoClinic {
             name: p.name,
             nationalId: p.nationalId,
             phone: p.phone,
+            patientGroupId: p.patientGroupId ?? null,
+            patientGroupLabel: this.patientWithGroup(p, branch).patientGroupLabel || null,
           })),
       };
     }
@@ -2180,6 +2389,7 @@ export class DemoClinic {
         fail('Dispensed prescription not found.', 404);
       if (encounter.status !== 'SIGNED') fail('Dispensed prescription not found.', 404);
       return {
+        ...(dispense.labelSnapshot ?? this.printBranding(branch)),
         id: encounter.id,
         patientId: encounter.patientId,
         patientName: this.record('patients', encounter.patientId, branch).name,
@@ -2342,7 +2552,13 @@ export class DemoClinic {
       }
       const dispense = this.add(
         'dispenses',
-        { ...v, patientId: e.patientId, actorId: user.id, allocations: usedAllocations },
+        {
+          ...v,
+          patientId: e.patientId,
+          actorId: user.id,
+          allocations: usedAllocations,
+          labelSnapshot: this.printBranding(branch),
+        },
         branch,
       );
       this.advanceVisit(e, branch, user.name, 'DISPENSARY_WAITING', 'PAYMENT_WAITING', 'DISPENSE');
@@ -2369,6 +2585,8 @@ export class DemoClinic {
               patientId: e.patientId,
               patientNumber: e.patientId,
               patientName: patient.name,
+              patientGroupId: patient.patientGroupId ?? null,
+              patientGroupLabel: this.patientWithGroup(patient, branch).patientGroupLabel || null,
               practitionerId: e.practitionerId,
               practitionerName: this.state.rows.users.find((u) => u.id === e.practitionerId)?.name,
               queueTicketId: e.queueTicketId || null,
@@ -2395,6 +2613,10 @@ export class DemoClinic {
       const invoice = this.record('invoices', id!, branch),
         patient = this.record('patients', invoice.patientId, branch),
         clinicBranch = this.state.rows.branches.find((b) => b.id === branch)!;
+      const snapshot = invoice.receiptSnapshot;
+      const legacy =
+        !snapshot || ['logoDataUrl', 'header', 'footer'].some((key) => !(key in snapshot));
+      const branding = this.printBranding(branch);
       return buildReceiptView({
         id: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
@@ -2402,10 +2624,11 @@ export class DemoClinic {
         clinicName: this.state.rows.tenants[0].name,
         branchName: clinicBranch.name,
         clinicAddress: clinicBranch.address,
+        ...(legacy ? branding : {}),
         patientName: patient.name,
         nationalId: patient.nationalId,
         receivedBy: '',
-        receiptSnapshot: invoice.receiptSnapshot,
+        receiptSnapshot: snapshot && legacy ? { ...branding, ...snapshot } : snapshot,
         lines: invoice.lines,
         totalCents: invoice.totalCents,
         payments: invoice.payments,
@@ -2493,6 +2716,9 @@ export class DemoClinic {
             clinicAddress: this.state.rows.tenants[0].letterhead?.address || clinicBranch.address,
             patientName: patient.name,
             nationalId: patient.nationalId,
+            patientGroupId: patient.patientGroupId ?? null,
+            patientGroupLabel:
+              this.patientWithGroup(patient, branch).patientGroupLabel || 'No group assigned',
             receivedBy: user.name,
           },
         },
@@ -2552,6 +2778,7 @@ export class DemoClinic {
             endDate,
             demo: true,
             employer: v.employer,
+            clinicName: this.state.rows.tenants[0].name,
             branchName: this.state.rows.branches.find((b) => b.id === branch)?.name,
             branchAddress:
               this.state.rows.tenants[0].letterhead?.address ||

@@ -5,3 +5,9 @@ export interface Letterhead {
   footer: string;
 }
 export const emptyLetterhead: Letterhead = { logoDataUrl: '', header: '', address: '', footer: '' };
+
+export interface PrintBranding extends Letterhead {
+  clinicName: string;
+  branchName: string;
+  clinicAddress: string;
+}

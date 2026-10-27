@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-031, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-033, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -190,6 +190,7 @@ CREATE TABLE `dispenses` (
   `actor_id` bigint unsigned NOT NULL,
   `idempotency_key` varchar(200) NOT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `label_snapshot` json DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `encounter_id` (`encounter_id`),
   UNIQUE KEY `branch_id` (`branch_id`,`idempotency_key`),
@@ -199,7 +200,8 @@ CREATE TABLE `dispenses` (
   KEY `dispenses_ibfk_3` (`tenant_id`,`actor_id`),
   CONSTRAINT `dispenses_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `encounter_id`) REFERENCES `encounters` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `dispenses_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
-  CONSTRAINT `dispenses_ibfk_3` FOREIGN KEY (`tenant_id`, `actor_id`) REFERENCES `users` (`tenant_id`, `id`)
+  CONSTRAINT `dispenses_ibfk_3` FOREIGN KEY (`tenant_id`, `actor_id`) REFERENCES `users` (`tenant_id`, `id`),
+  CONSTRAINT `dispense_label_snapshot` CHECK (((`label_snapshot` is null) or (json_type(`label_snapshot`) = _utf8mb4'OBJECT')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `encounters` (
@@ -240,6 +242,33 @@ CREATE TABLE `encounters` (
   CONSTRAINT `encounters_chk_2` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'SIGNED'))),
   CONSTRAINT `encounters_chk_3` CHECK ((`consultation_fee_cents` >= 0)),
   CONSTRAINT `encounters_chk_4` CHECK ((`procedure_fee_cents` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `expenses` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint unsigned NOT NULL,
+  `branch_id` bigint unsigned NOT NULL,
+  `actor_id` bigint unsigned NOT NULL,
+  `paid_on` date NOT NULL,
+  `category` varchar(30) NOT NULL,
+  `description` varchar(500) NOT NULL,
+  `amount_cents` int unsigned NOT NULL,
+  `reference` varchar(200) NOT NULL DEFAULT '',
+  `idempotency_key` varchar(100) NOT NULL,
+  `request_hash` char(64) NOT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  `voided_at` datetime(3) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `expenses_idempotency` (`branch_id`,`idempotency_key`),
+  KEY `expenses_period` (`tenant_id`,`branch_id`,`paid_on`,`voided_at`,`id`),
+  KEY `tenant_id` (`tenant_id`,`actor_id`),
+  CONSTRAINT `expenses_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
+  CONSTRAINT `expenses_ibfk_2` FOREIGN KEY (`tenant_id`, `actor_id`) REFERENCES `users` (`tenant_id`, `id`),
+  CONSTRAINT `expenses_chk_1` CHECK ((`category` in (_utf8mb4'STOCK_PURCHASE',_utf8mb4'RENT',_utf8mb4'SALARY',_utf8mb4'UTILITIES',_utf8mb4'OTHER'))),
+  CONSTRAINT `expenses_chk_2` CHECK (((`amount_cents` > 0) and (`amount_cents` <= 2000000000))),
+  CONSTRAINT `expenses_chk_3` CHECK ((`version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `inventory_batches` (
@@ -327,6 +356,7 @@ CREATE TABLE `invoices` (
   KEY `invoices_ibfk_2` (`tenant_id`,`patient_id`),
   KEY `invoices_ibfk_3` (`tenant_id`,`practitioner_id`),
   KEY `invoices_encounter_scope` (`tenant_id`,`branch_id`,`encounter_id`),
+  KEY `invoices_paid_period` (`tenant_id`,`branch_id`,`status`,`created_at`),
   CONSTRAINT `invoices_encounter_scope` FOREIGN KEY (`tenant_id`, `branch_id`, `encounter_id`) REFERENCES `encounters` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `invoices_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `invoices_ibfk_2` FOREIGN KEY (`tenant_id`, `patient_id`) REFERENCES `patients` (`tenant_id`, `id`),
@@ -450,6 +480,7 @@ CREATE TABLE `payments` (
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   KEY `payments_ibfk_1` (`tenant_id`,`branch_id`,`invoice_id`),
+  KEY `payments_cash_period` (`tenant_id`,`branch_id`,`created_at`,`method`,`invoice_id`),
   CONSTRAINT `payments_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `invoice_id`) REFERENCES `invoices` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `payments_chk_1` CHECK ((`method` in (_utf8mb4'CASH',_utf8mb4'CARD',_utf8mb4'QR',_utf8mb4'DEPOSIT'))),
   CONSTRAINT `payments_chk_2` CHECK ((`amount_cents` > 0))
@@ -677,6 +708,7 @@ CREATE TABLE `stock_movements` (
   KEY `stock_movements_ibfk_2` (`tenant_id`,`branch_id`,`dispense_id`),
   KEY `stock_movements_ibfk_3` (`tenant_id`,`actor_id`),
   KEY `movement_usage_fk` (`tenant_id`,`branch_id`,`usage_id`),
+  KEY `stock_usage_period` (`tenant_id`,`branch_id`,`created_at`),
   CONSTRAINT `movement_usage_fk` FOREIGN KEY (`tenant_id`, `branch_id`, `usage_id`) REFERENCES `inventory_usages` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `stock_movements_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `batch_id`) REFERENCES `inventory_batches` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `stock_movements_ibfk_2` FOREIGN KEY (`tenant_id`, `branch_id`, `dispense_id`) REFERENCES `dispenses` (`tenant_id`, `branch_id`, `id`),

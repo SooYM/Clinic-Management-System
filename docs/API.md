@@ -1,5 +1,19 @@
 # HTTP API contract
 
+## Printed clinic branding
+
+`GET /api/encounters/:id/medicine-labels` additionally returns flat `clinicName`, `branchName`, `clinicAddress`, `logoDataUrl`, `header`, `address` and `footer` fields. A successful new dispense captures these fields in `dispenses.label_snapshot` within its transaction. Reads preserve that snapshot; legacy null snapshots use current tenant/branch branding without writing a backfill. `clinicAddress` uses the configured letterhead address, falling back to the selected branch address. Existing inventory permission and tenant/branch checks apply.
+
+Receipt views and PDFs preserve issued receipt snapshots. Legacy snapshots receive current scoped defaults only beneath existing fields; explicit empty branding values stay empty. Receipts without a snapshot use current scoped branding and the configured letterhead address or branch fallback. These read fallbacks never update stored receipts. Newly issued clinical document payloads include the tenant's `clinicName`; old signed payloads retain their existing branch-name fallback without being rewritten. Receipt/document previews and PDFs and every medicine sticker render their available saved logo, header, address and footer.
+
+## Administrative reporting and paid expenses
+
+All routes below require an authenticated ADMIN and the current authorized tenant/branch. Mutations also require CSRF protection. `GET /api/admin/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD` returns `{from,to,collectedCents,stockPurchaseCents,operatingExpenseCents,totalExpenseCents,netCashIncomeCents,paidInvoiceCount,patientGroups,topUsage}`. Dates default to the current Malaysia month through today; ranges must be valid, ordered and at most 366 days. Revenue is CASH/CARD/QR payment collections joined to paid invoices, using Malaysia payment dates. DEPOSIT allocations are excluded. Patient group counts cover all registered patients in the selected branch. Usage counts actual negative stock movements linked to dispensing or inventory usage, excluding receipts and reservations.
+
+`GET /api/admin/expenses?from=...&to=...&beforeId=...` returns up to 200 active rows in descending ID order; optional beforeId retrieves older rows. `POST /api/admin/expenses` accepts `{paidOn,category,description,amountCents,reference,idempotencyKey}`. Categories are STOCK_PURCHASE, RENT, SALARY, UTILITIES and OTHER. Paid dates cannot be future dates; amounts are positive integer cents up to 2,000,000,000. Keys are 8–100 characters and unique per branch. Same-key identical creates replay the existing record; changed input returns 409. `PUT /api/admin/expenses/:id` accepts the expense fields plus current version; `DELETE /api/admin/expenses/:id` accepts `{version}` and voids the record. Concurrent changes return 409. Creation, changes and voids audit stored before/after values. Responses omit request hashes and keys.
+
+Patient references and billing suggestions now include nullable `patientGroupId` and `patientGroupLabel`. New invoice receipt snapshots include both fields, including an explicit No group assigned label. Receipt views retain the stored label; older snapshots return null and display Not recorded.
+
 ## Public registration and reception review
 
 - `GET /api/public/registration/branches/:branchId` returns active branch branding and registration availability.
@@ -29,7 +43,7 @@ Successful collection reads return `{ "data": [] }`; single-resource and mutatio
 | `/api/auth/login`                      | POST       | Email/password; session and CSRF token                                                                   |
 | `/api/auth/me`                         | GET        | Current authenticated actor                                                                              |
 | `/api/auth/logout`                     | POST       | Delete current session                                                                                   |
-| `/api/bootstrap`                       | GET        | User, tenant name/logo, authorized branches, rooms and practitioners                                      |
+| `/api/bootstrap`                       | GET        | User, tenant name/logo, authorized branches, rooms and practitioners                                     |
 | `/api/dashboard`                       | GET        | Selected branch counts and revenue                                                                       |
 | `/api/patients`                        | GET / POST | Search / registry write                                                                                  |
 | `/api/patients/:id`                    | GET / PUT  | Selected branch patient; edit requires version                                                           |
@@ -229,7 +243,6 @@ Each POST/PUT `/api/encounters` prescription optionally accepts positive integer
 
 POST `/api/inventory/batches` accepts `batchNumber: null` or an omitted batch number. A supplied number must contain 1–100 trimmed characters. SQL NULL represents missing manufacturer numbering; repeated unnumbered receipts create distinct tracked rows and movements. Named batch numbers remain unique per item. `expiresOn: null` remains accepted only for CONSUMABLE/RETAIL categories; MEDICATION still requires a future expiry date. Tenant/branch checks, stock transactions and audit records apply to every receipt.
 
-
 ## Clinical pricing and letterhead update — 23 October 2026
 
 See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
@@ -239,7 +252,6 @@ See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICI
 Administrator-only endpoints: `GET /admin/custom-roles` returns `{data:[{id,name,modules,version}]}`. `POST /admin/custom-roles` accepts `{name,modules}` and returns the created role. `PUT /admin/custom-roles/:id` accepts `{name,modules,version}` and returns the next version. Names are trimmed, 1–100 characters, unique within the tenant. Modules must be known module IDs; an empty list denies all modules. Stale updates and duplicate names return 409.
 
 `POST /admin/users` and `PUT /admin/users/:id` accept optional nullable `customRoleId`. Assignments require a role in the same tenant. Administrators cannot receive custom role assignments. A null assignment restores professional role defaults. Every request reevaluates module permissions without changing professional action restrictions.
-
 
 ### Patient group catalog and assignment
 

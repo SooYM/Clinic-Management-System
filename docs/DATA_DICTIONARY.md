@@ -1,6 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–031. No records or credentials are included.
+Schema-only reference after migrations001–033. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -143,6 +143,7 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | actor_id        | bigint unsigned | NO       | NULL                 |                              |
 | idempotency_key | varchar(200)    | NO       | NULL                 |                              |
 | created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| label_snapshot  | json            | YES      | NULL                 |                              |
 
 ## encounters
 
@@ -171,6 +172,26 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | consultation_fee_cents | int             | YES      | NULL                 |                              |
 | procedure_fee_cents    | int             | YES      | NULL                 |                              |
 | consumables            | json            | NO       | json_array()         | DEFAULT_GENERATED            |
+
+## expenses
+
+| Column          | Type            | Nullable | Default              | Extra / generated expression |
+| --------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id              | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id       | bigint unsigned | NO       | NULL                 |                              |
+| branch_id       | bigint unsigned | NO       | NULL                 |                              |
+| actor_id        | bigint unsigned | NO       | NULL                 |                              |
+| paid_on         | date            | NO       | NULL                 |                              |
+| category        | varchar(30)     | NO       | NULL                 |                              |
+| description     | varchar(500)    | NO       | NULL                 |                              |
+| amount_cents    | int unsigned    | NO       | NULL                 |                              |
+| reference       | varchar(200)    | NO       |                      |                              |
+| idempotency_key | varchar(100)    | NO       | NULL                 |                              |
+| request_hash    | char(64)        | NO       | NULL                 |                              |
+| version         | int             | NO       | 1                    |                              |
+| voided_at       | datetime(3)     | YES      | NULL                 |                              |
+| created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| updated_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
 ## inventory_batches
 

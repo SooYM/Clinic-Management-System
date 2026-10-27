@@ -20,6 +20,7 @@ import { DomainError } from '../domain/models.js';
 import { schemas, encounterWriteSchema } from './validation.js';
 import { recordRouter } from './record-router.js';
 import { administrationRouter } from './administration.js';
+import { adminAnalyticsRouter } from './admin-analytics-router.js';
 import { authorizeModules } from './module-access.js';
 import { referenceRouter } from './reference-router.js';
 import { buildDocumentView } from '../shared/document-view.js';
@@ -148,6 +149,7 @@ export function createApp(service = new ClinicService()) {
   api.use(referenceRouter());
   api.use(recordRouter());
   api.use(administrationRouter());
+  api.use(adminAnalyticsRouter());
   api.use(databaseResetRouter());
   api.use(catalogRouter());
   api.use(registrationStaffRouter());

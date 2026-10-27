@@ -2,6 +2,7 @@ import { pool, camel } from './db.js';
 import type { Context } from './security.js';
 import { DomainError } from '../domain/models.js';
 import { buildReceiptView } from '../shared/receipt-view.js';
+import { readPrintBranding } from './letterhead.js';
 
 export async function readReceipt(ctx: Context, id: number) {
   const invoice = (
@@ -17,6 +18,12 @@ export async function readReceipt(ctx: Context, id: number) {
     )
   ).rows[0];
   if (!invoice) throw new DomainError('NOT_FOUND', 'Invoice not found.', 404);
+  const snapshot = invoice.receipt_snapshot;
+  const needsLegacyBranding =
+    !snapshot || ['logoDataUrl', 'header', 'footer'].some((key) => !(key in snapshot));
+  const branding = needsLegacyBranding
+    ? await readPrintBranding(pool, ctx.actor.tenantId, ctx.branchId)
+    : undefined;
   const payments = (
     await pool.query(
       'SELECT method,amount_cents,reference FROM payments WHERE invoice_id=$1 AND tenant_id=$2 AND branch_id=$3 ORDER BY id',
@@ -24,7 +31,10 @@ export async function readReceipt(ctx: Context, id: number) {
     )
   ).rows;
   return buildReceiptView({
+    ...branding,
     ...camel(invoice),
+    ...(!snapshot && branding ? { clinicAddress: branding.clinicAddress } : {}),
+    ...(snapshot && branding ? { receiptSnapshot: { ...branding, ...snapshot } } : {}),
     receivedBy: invoice.received_by || '',
     payments: camel(payments),
   });

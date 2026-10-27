@@ -1,5 +1,6 @@
-/** Saved prescription directions and the original successful dispensing time. */
-export interface MedicineLabelPrescription {
+import type { PrintBranding } from './letterhead';
+/** Saved prescription directions, print branding and the original successful dispensing time. */
+export interface MedicineLabelPrescription extends PrintBranding {
   id: number;
   patientId: number;
   patientName: string;

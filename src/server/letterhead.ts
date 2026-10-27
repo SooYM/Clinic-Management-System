@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { inflateSync } from 'node:zlib';
 import type { Database } from './db.js';
-import { emptyLetterhead, type Letterhead } from '../shared/letterhead.js';
+import { emptyLetterhead, type Letterhead, type PrintBranding } from '../shared/letterhead.js';
+import { DomainError } from '../domain/models.js';
 
 /** Embedded raster logos avoid remote requests, SVG scripts, and mutable document assets. */
 export function validLogo(value: string): boolean {
@@ -86,4 +87,25 @@ export const letterheadSchema = z
 export async function readLetterhead(db: Database, tenantId: number): Promise<Letterhead> {
   const row = (await db.query('SELECT letterhead FROM tenants WHERE id=$1', [tenantId])).rows[0];
   return { ...emptyLetterhead, ...row?.letterhead };
+}
+
+export async function readPrintBranding(
+  db: Database,
+  tenantId: number,
+  branchId: number,
+): Promise<PrintBranding> {
+  const row = (
+    await db.query(
+      'SELECT t.name clinic_name,b.name branch_name,b.address clinic_address FROM tenants t JOIN branches b ON b.tenant_id=t.id WHERE t.id=$1 AND b.id=$2',
+      [tenantId, branchId],
+    )
+  ).rows[0];
+  if (!row) throw new DomainError('NOT_FOUND', 'Clinic branch not found.', 404);
+  const letterhead = await readLetterhead(db, tenantId);
+  return {
+    ...letterhead,
+    clinicName: row.clinic_name,
+    branchName: row.branch_name,
+    clinicAddress: letterhead.address || row.clinic_address,
+  };
 }

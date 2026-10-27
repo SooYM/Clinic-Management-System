@@ -6,6 +6,8 @@ export interface ReceiptSnapshot {
   header?: string;
   footer?: string;
   patientName: string;
+  patientGroupId?: number | null;
+  patientGroupLabel?: string | null;
   nationalId: string;
   receivedBy: string;
 }
@@ -45,6 +47,8 @@ export function buildReceiptView(
     header: p.header || '',
     footer: p.footer || '',
     patientName: p.patientName,
+    patientGroupId: p.patientGroupId ?? null,
+    patientGroupLabel: p.patientGroupLabel ?? null,
     nationalId: p.nationalId,
     receivedBy: p.receivedBy || 'Not recorded',
     issuedDate: new Intl.DateTimeFormat('en-GB', {

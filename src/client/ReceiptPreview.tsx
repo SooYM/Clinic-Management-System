@@ -51,6 +51,10 @@ export default function ReceiptPreview({
                   <dd>{receipt.patientName}</dd>
                 </div>
                 <div>
+                  <dt>Patient group</dt>
+                  <dd>{receipt.patientGroupLabel ?? 'Not recorded'}</dd>
+                </div>
+                <div>
                   <dt>Date</dt>
                   <dd>{receipt.issuedDate}</dd>
                 </div>

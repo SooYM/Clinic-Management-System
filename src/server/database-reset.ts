@@ -9,6 +9,7 @@ import { bootstrapConfiguration, createBootstrapDefaults } from './db/bootstrap-
 
 /** Reviewed child-first order. Unknown tables stop reset instead of silently retaining data. */
 export const RESET_TABLES = [
+  'expenses',
   'stock_movements',
   'prescription_reservations',
   'prescription_dose_logs',

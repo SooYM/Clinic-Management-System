@@ -1,5 +1,15 @@
 # Entity relationship diagrams
 
+## Dispense branding snapshot
+
+Migration 033 adds nullable JSON `dispenses.label_snapshot`, constrained to an object when present. New dispensing transactions capture `clinicName`, `branchName`, `clinicAddress`, `logoDataUrl`, `header`, `address` and `footer`. The snapshot adds no entity or foreign-key relationship. Existing rows remain null and use current scoped branding on sticker reads; reprints never backfill or replace snapshots. Receipt legacy-branding fallback and newly issued clinical payload `clinicName` reuse existing JSON columns without further schema changes.
+
+## Paid expense ledger
+
+Migration 032 adds `expenses`: numeric ID; tenant/branch and actor foreign keys; paid_on; category; description; amount_cents; reference; branch-unique idempotency_key and request_hash; version; nullable voided_at; created/updated timestamps. Tenant/branch scope references `branches(tenant_id,id)` and actor scope references `users(tenant_id,id)`. Expenses are voided rather than deleted through ordinary workflows. Reset includes expenses before users/branches. Audit metadata retains previous and resulting values. Report-period indexes cover expenses, payments, invoices and stock movements.
+
+Receipt JSON adds patientGroupId/patientGroupLabel snapshots without a new invoice relationship or historical backfill. Current selectors continue to resolve patients' existing branch-scoped group relationship.
+
 These diagrams describe the final MySQL 8.4 schema after migrations 001–026, including numeric conversion, general supplies and prescription reservations.
 
 ```mermaid
@@ -295,6 +305,7 @@ erDiagram
     bigint patient_id FK
     bigint actor_id FK
     varchar idempotency_key
+    json label_snapshot "nullable legacy branding"
   }
   inventory_usages {
     bigint id PK
@@ -492,13 +503,10 @@ Migration 015 adds branches.active/version/updated_at and invoices.receipt_snaps
 
 Queue tickets now retain nullable expired_at. Generated active-patient and occupied-room uniqueness ignore expired rows; linked encounter foreign keys remain intact.
 
-
-Medicine-sticker reprints read the existing `dispenses.encounter_id` relationship with the signed encounter's prescription JSON and linked patient/practitioner identities. The original timestamp is `dispenses.created_at`. No print table or schema migration is introduced; printing does not create dispensing, stock movement, reservation or billing records.
-
+Medicine-sticker reprints read the existing `dispenses.encounter_id` relationship with the signed encounter's prescription JSON and linked patient/practitioner identities. The original timestamp is `dispenses.created_at`. Migration 033 adds branding to the dispense row; no separate print table is introduced. Printing does not create dispensing, stock movement, reservation or billing records.
 
 ## Clinical pricing and letterhead update — 23 October 2026
 
 See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
-
 
 Patient group relationship: `patients(tenant_id, branch_id, patient_group_id)` optionally references `reference_catalogs(tenant_id, branch_id, id)`. Catalog kind must be `PATIENT_GROUP`, enforced by patient writes. Composite foreign key prevents cross-scope assignment. Group rows are archived instead of deleted; renames resolve through stable numeric IDs. Migration: `030_patient_groups.sql`.

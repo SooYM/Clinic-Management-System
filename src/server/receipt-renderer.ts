@@ -60,6 +60,10 @@ export function renderReceiptPdf(doc: PDFKit.PDFDocument, receipt: ReceiptView) 
     const nameBottom = doc.y;
     doc.text(`Date: ${receipt.issuedDate}`, left + half, nameY, { width: half });
     doc.y = Math.max(doc.y, nameBottom) + 22;
+    doc.text(`Patient group: ${wrap(receipt.patientGroupLabel ?? 'Not recorded')}`, left, doc.y, {
+      width,
+    });
+    doc.y += 10;
     if (fees) tableHead();
   }
   function tableHead() {

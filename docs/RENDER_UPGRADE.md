@@ -1,5 +1,11 @@
 # Free Render browser demo
 
+## Print-branding update
+
+Rebuild demo assets to include clinic logo, letterhead header/contact text, address and footer on receipt/document previews and every prescription sticker. New simulated dispenses capture branding for later reprints; older simulated dispenses use current session branding. Legacy receipt defaults preserve existing snapshot values, including explicit empty fields. Newly issued simulated documents store the tenant clinic name. Reset demo restores CARE FOR U FAMILY CLINIC and the supplied banner. Sticker printing waits for logo/fonts and supports branding on one selected medicine.
+
+This browser-demo update requires no database migration or Blueprint change. The full MySQL application separately requires migration 033 for durable dispense branding snapshots. Demo receipt/document PDFs remain unavailable; simulated records do not certify real clinical issuance. Verify Render health and hosted browser behavior after publication; Git publication alone does not prove deployment.
+
 The demo defaults to **CARE FOR U FAMILY CLINIC** with the owner-supplied clinic banner, bundled only in the demo transport. Login and the authenticated sidebar show this branding. Saved logo/name changes update the sidebar immediately and survive tab refresh. Reset demo restores these defaults. Existing sessions upgrade the old untouched clinic name while preserving custom names, saved letterhead details and deliberate logo removals. This revision requires a demo rebuild, not a database migration or Blueprint change.
 
 The GitHub main release replaces the previous V1 demo. Render runs **one free native Node web service**, serving compiled demo assets. No MySQL, PostgreSQL, paid worker, persistent disk, secret, migration, or bootstrap job is needed for this demo.
@@ -48,26 +54,21 @@ V1's recovery Git tag preserves prior source. Reverting a main commit restores s
 
 The browser demo includes settings lifecycle parity and in-page official-receipt samples. Receipt PDFs and actual payment verification remain unavailable in demo mode. The normal MySQL application now requires migrations through 017.
 
-
 ## Current demo workflow update
 
 The demo includes profile row navigation, fixed nationality controls, prefixed phone entry, grouped clinical history, separate creation, booking removal, clinic name settings and contextual tab guides. Reports & delivery is removed from navigation. Session data remains fictional and temporary. Git publication does not prove Blueprint sync, health or hosted browser success; verify those separately after Render deploys.
-
 
 ## HCI demo revision
 
 Rebuild demo assets to include single-entry task tabs, patient-first consultation selection, catalogue disclosures, default-ID direction selection and popup consent. Header User guide remains available. No Blueprint environment or persistent migration change is needed for this revision. Confirm actual Render health and browser assets separately after Git publication.
 
-
 ## Demo expiry and handoff
 
 Demo mirrors 12-hour queue expiry, clear duplicate errors, assigned GP suggestions and linked-note creation/resume. Fictional data remains session-scoped. Rebuild demo assets; no persistent database is added. Git publication does not establish successful Render deployment.
 
-
 ## Multiple prescription demo update
 
 Demo mirrors repeatable medicine rows and atomic signed-consultation queue handoff. Rebuild frontend assets. No migration or Blueprint environment change is required; verify hosted deployment separately after publication.
-
 
 ## Draft removal and demo reset
 

@@ -229,10 +229,22 @@ export function SelectReference({
     </Field>
   );
 }
-export function PatientSelect({ patients }: { patients: Patient[] }) {
+export function PatientSelect({
+  patients,
+  onSelect,
+}: {
+  patients: Patient[];
+  onSelect?: (patient: Patient | undefined) => void;
+}) {
   return (
     <Field label="Patient">
-      <select name="patientId" required>
+      <select
+        name="patientId"
+        required
+        onChange={(event) =>
+          onSelect?.(patients.find((patient) => patient.id === Number(event.target.value)))
+        }
+      >
         <option value="">Select patient</option>
         {[...patients]
           .sort((a, b) => a.id - b.id)

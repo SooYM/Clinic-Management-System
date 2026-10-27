@@ -53,7 +53,7 @@ export function buildDocumentView(d: DocumentSnapshot): DocumentView {
     id: d.id,
     kind: d.kind,
     documentNumber: d.documentNumber,
-    clinicName: String(p.branchName || ''),
+    clinicName: String(p.clinicName || p.branchName || ''),
     clinicAddress: String(p.branchAddress || ''),
     logoDataUrl: String(p.logoDataUrl || ''),
     header: String(p.header || ''),

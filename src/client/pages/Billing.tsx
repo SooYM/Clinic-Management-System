@@ -29,6 +29,8 @@ interface BillingSuggestion {
   patientId: number;
   patientNumber: string;
   patientName: string;
+  patientGroupId?: number | null;
+  patientGroupLabel?: string | null;
   practitionerId: number;
   practitionerName: string;
   dispensedAt: string | null;
@@ -70,6 +72,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     activeCategories.find((entry) => entry.billingDefault === preferred)?.label || '';
   const initialCategoriesLoaded = useRef(false);
   const [selectedVisit, setSelectedVisit] = useState<BillingSuggestion>();
+  const [manualPatient, setManualPatient] = useState<Patient>();
   const doctorPriced =
     selectedVisit?.consultationFeeCents != null && selectedVisit?.procedureFeeCents != null;
   const handoffConsumed = useRef(false);
@@ -140,6 +143,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     if (!(await discardCheckout())) return;
     checkoutDirty.current = false;
     setSelectedVisit(visit);
+    setManualPatient(undefined);
     setHandoffMissing(false);
     setSection('checkout');
     setCheckoutKey(crypto.randomUUID());
@@ -218,6 +222,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           Patient #{visit.patientId} · Consultation #{visit.encounterId} ·{' '}
                           {visit.practitionerName}
                         </p>
+                        <p className="form-help">
+                          Patient group: {visit.patientGroupLabel || 'No group assigned'}
+                        </p>
                       </div>
                       <button className="secondary" onClick={() => chooseVisit(visit)}>
                         Prepare checkout
@@ -244,6 +251,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   invoices.refresh();
                   suggestions.refresh();
                   setSelectedVisit(undefined);
+                  setManualPatient(undefined);
                   checkoutDirty.current = false;
                   setLines([
                     {
@@ -291,6 +299,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           Patient #{selectedVisit.patientId} · Consultation #
                           {selectedVisit.encounterId} · GP {selectedVisit.practitionerName}
                         </p>
+                        <p className="form-help">
+                          Patient group: {selectedVisit.patientGroupLabel || 'No group assigned'}
+                        </p>
                         <input type="hidden" name="patientId" value={selectedVisit.patientId} />
                         <input
                           type="hidden"
@@ -305,6 +316,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           if (!(await discardCheckout())) return;
                           checkoutDirty.current = false;
                           setSelectedVisit(undefined);
+                          setManualPatient(undefined);
                           setCheckoutKey(crypto.randomUUID());
                           setLines([
                             {
@@ -322,7 +334,14 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                     </>
                   ) : (
                     <>
-                      <PatientSelect patients={patients.data || []} />
+                      <div>
+                        <PatientSelect patients={patients.data || []} onSelect={setManualPatient} />
+                        {manualPatient && (
+                          <p className="form-help">
+                            Patient group: {manualPatient.patientGroupLabel || 'No group assigned'}
+                          </p>
+                        )}
+                      </div>
                       <SelectReference
                         name="practitionerId"
                         label="Practitioner"

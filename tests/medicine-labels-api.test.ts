@@ -15,6 +15,59 @@ class Storage {
 }
 
 describe('demo saved medicine labels', () => {
+  it('snapshots sticker branding and applies scoped current branding only to legacy print records', async () => {
+    const storage = new Storage(),
+      clinic = new DemoClinic(storage);
+    await clinic.request('/auth/login', 'POST', { email: 'admin@example.test', password: 'demo' });
+    const current = await clinic.request('/admin/letterhead');
+    const branding = {
+      logoDataUrl:
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC9sAAAAASUVORK5CYII=',
+      header: 'Fictional clinic contact',
+      address: 'Fictional printed address',
+      footer: 'Fictional clinic footer',
+    };
+    await clinic.request('/admin/letterhead', 'PUT', { ...branding, version: current.version });
+    const encounter = (await clinic.request('/dispensary/encounters')).data[0];
+    const dispense = await clinic.request('/dispenses', 'POST', {
+      encounterId: encounter.id,
+      idempotencyKey: 'BRANDED-LABEL-TEST',
+    });
+    const path = `/encounters/${encounter.id}/medicine-labels`;
+    expect(await clinic.request(path)).toMatchObject({
+      ...branding,
+      clinicAddress: branding.address,
+    });
+    expect(await clinic.request('/invoices/1/receipt-view')).toMatchObject({
+      logoDataUrl: branding.logoDataUrl,
+      header: branding.header,
+      footer: branding.footer,
+      clinicAddress: branding.address,
+    });
+    const saved = await clinic.request('/admin/letterhead');
+    await clinic.request('/admin/letterhead', 'PUT', {
+      ...branding,
+      header: 'Changed clinic contact',
+      address: 'Changed printed address',
+      version: saved.version,
+    });
+    expect(await new DemoClinic(storage).request(path)).toMatchObject({
+      ...branding,
+      clinicAddress: branding.address,
+    });
+    expect(await clinic.request('/invoices/1/receipt-view')).toMatchObject({
+      header: 'Changed clinic contact',
+      clinicAddress: 'Changed printed address',
+    });
+    const state = JSON.parse(storage.getItem('clinic-session-demo-v1')!);
+    state.rows.dispenses.find((row: any) => row.id === dispense.id).labelSnapshot = null;
+    storage.setItem('clinic-session-demo-v1', JSON.stringify(state));
+    expect(await new DemoClinic(storage).request(path)).toMatchObject({
+      logoDataUrl: branding.logoDataUrl,
+      header: 'Changed clinic contact',
+      clinicAddress: 'Changed printed address',
+    });
+  });
   it('fills only missing historical snapshots from the scoped catalog, including archived medicine', async () => {
     const storage = new Storage(),
       clinic = new DemoClinic(storage);

@@ -24,6 +24,7 @@ import { useListControls } from '../ListControls';
 import { useConfirm } from '../Confirmation';
 import LetterheadSettings from '../LetterheadSettings';
 import CustomRoles from '../CustomRoles';
+import { AdminDashboard, ExpenseLedger } from '../AdminAnalytics';
 import type { CustomRole } from '../../shared/custom-roles';
 interface Staff extends User {
   active: boolean;
@@ -74,7 +75,7 @@ export default function Admin({
   const [showRemovedStaff, setShowRemovedStaff] = useState(false);
   const [showRemovedBranches, setShowRemovedBranches] = useState(false);
   const [showRemovedRooms, setShowRemovedRooms] = useState(false);
-  const [section, setSection] = useState('staff');
+  const [section, setSection] = useState('dashboard');
   const [staffError, setStaffError] = useState('');
   const [branchError, setBranchError] = useState('');
   const [roomError, setRoomError] = useState('');
@@ -148,6 +149,12 @@ export default function Admin({
     <>
       <PageTitle title="Clinic administration" />
       <WorkspaceSections label="Administration sections" value={section} onChange={setSection}>
+        <WorkspaceSection id="dashboard" label="Dashboard">
+          <AdminDashboard />
+        </WorkspaceSection>
+        <WorkspaceSection id="expenses" label="Expenses">
+          <ExpenseLedger />
+        </WorkspaceSection>
         <WorkspaceSection id="clinic" label="Clinic settings">
           <Panel title="Clinic name">
             <ResourceState {...clinic}>

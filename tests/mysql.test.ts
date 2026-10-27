@@ -335,6 +335,79 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ]),
     );
   });
+  it('shows scoped checkout groups and preserves the paid receipt group after later membership changes', async () => {
+    const catalogs = new (await import('../src/server/catalog-service')).CatalogService();
+    const adminCtx = { ...ctx, actor: { ...ctx.actor, id: administrator, role: 'ADMIN' } };
+    const group = await catalogs.create(adminCtx, {
+      kind: 'PATIENT_GROUP',
+      label: 'QA Checkout Insurance',
+    });
+    const p = await patient({ patientGroupId: group.id });
+    const chart = await encounter(p.id);
+    const references = await (await settingsHttp('/references/patients')).json();
+    expect(references.data.find((row: any) => row.id === p.id)).toMatchObject({
+      patientGroupId: group.id,
+      patientGroupLabel: 'QA Checkout Insurance',
+    });
+    const suggestions = await (await settingsHttp('/billing/suggestions')).json();
+    expect(suggestions.data.find((row: any) => row.encounterId === chart.id)).toMatchObject({
+      patientId: p.id,
+      patientGroupId: group.id,
+      patientGroupLabel: 'QA Checkout Insurance',
+    });
+    expect(
+      (await settingsHttp('/billing/suggestions', 'GET', undefined, { Cookie: '' })).status,
+    ).toBe(401);
+    const foreign = await (
+      await settingsHttp('/references/patients', 'GET', undefined, {
+        Cookie: `cms_session=${adminToken}`,
+        'X-Branch-ID': String(otherBranch),
+      })
+    ).json();
+    expect(foreign.data.some((row: any) => row.id === p.id)).toBe(false);
+    const archived = await catalogs.update(adminCtx, group.id, {
+      label: group.label,
+      active: false,
+      sortOrder: 0,
+      version: group.version,
+    });
+    const archivedReferences = await (await settingsHttp('/references/patients')).json();
+    expect(archivedReferences.data.find((row: any) => row.id === p.id).patientGroupLabel).toBe(
+      'QA Checkout Insurance',
+    );
+    const bill = await service.createInvoice(
+      ctx,
+      invoice(p.id, randomUUID(), { encounterId: chart.id }),
+    );
+    expect(bill.receiptSnapshot).toMatchObject({
+      patientGroupId: group.id,
+      patientGroupLabel: 'QA Checkout Insurance',
+    });
+    await catalogs.update(adminCtx, group.id, {
+      label: 'QA Checkout Company',
+      active: false,
+      sortOrder: 0,
+      version: archived.version,
+    });
+    await service.savePatient(ctx, { ...p, patientGroupId: null }, p.id);
+    const paidView = await (await settingsHttp(`/invoices/${bill.id}/receipt-view`)).json();
+    expect(paidView).toMatchObject({
+      patientGroupId: group.id,
+      patientGroupLabel: 'QA Checkout Insurance',
+    });
+    const unassigned = await service.createInvoice(ctx, invoice((await patient()).id));
+    expect(unassigned.receiptSnapshot).toMatchObject({
+      patientGroupId: null,
+      patientGroupLabel: 'No group assigned',
+    });
+    await sql.query(
+      "UPDATE invoices SET receipt_snapshot=JSON_REMOVE(receipt_snapshot,'$.patientGroupId','$.patientGroupLabel') WHERE id=?",
+      [unassigned.id],
+    );
+    const legacy = await (await settingsHttp(`/invoices/${unassigned.id}/receipt-view`)).json();
+    expect(legacy.patientGroupId).toBeNull();
+    expect(legacy.patientGroupLabel).toBeNull();
+  });
   it('persists doctor prices, consumes surgical supplies atomically, and rejects cashier price overrides', async () => {
     const p = await patient();
     const medicine = await item({ name: 'QA syrup' });
@@ -595,6 +668,245 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   ) => http(path, method, body, extra, legacyBaseUrl);
   const legacyAdminHttp = (path: string, method = 'GET', body?: any) =>
     legacyHttp(path, method, body, { Cookie: `cms_session=${adminToken}` });
+  it('persists admin expenses with idempotency, branch scope, CSRF, versions and audited corrections', async () => {
+    const input = {
+      paidOn: '2020-04-02',
+      category: 'OTHER',
+      description: 'QA paid expense',
+      amountCents: 1000,
+      reference: 'QA-EXPENSE',
+      idempotencyKey: randomUUID(),
+    };
+    expect((await settingsHttp('/admin/expenses', 'POST', input)).status).toBe(403);
+    expect(
+      (
+        await settingsHttp('/admin/expenses', 'POST', input, {
+          Cookie: `cms_session=${adminToken}`,
+          'X-CSRF-Token': 'wrong',
+        })
+      ).status,
+    ).toBe(403);
+    expect((await settingsHttp('/admin/analytics')).status).toBe(403);
+    expect(
+      (await settingsAdminHttp('/admin/expenses', 'POST', { ...input, amountCents: 1.5 })).status,
+    ).toBe(400);
+    expect(
+      (await settingsAdminHttp('/admin/expenses', 'POST', { ...input, paidOn: '0000-01-01' }))
+        .status,
+    ).toBe(400);
+    expect((await settingsAdminHttp('/admin/analytics?from=2020-02-30&to=2020-03-01')).status).toBe(
+      400,
+    );
+    const [first, replay] = await Promise.all([
+      settingsAdminHttp('/admin/expenses', 'POST', input),
+      settingsAdminHttp('/admin/expenses', 'POST', input),
+    ]);
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(201);
+    const saved = await first.json();
+    expect((await replay.json()).id).toBe(saved.id);
+    expect(
+      await rows('SELECT id FROM expenses WHERE branch_id=? AND idempotency_key=?', [
+        branch,
+        input.idempotencyKey,
+      ]),
+    ).toHaveLength(1);
+    expect(
+      (await settingsAdminHttp('/admin/expenses', 'POST', { ...input, amountCents: 2000 })).status,
+    ).toBe(409);
+    const edit = {
+      paidOn: input.paidOn,
+      category: input.category,
+      description: input.description,
+      amountCents: 1500,
+      reference: input.reference,
+      version: saved.version,
+    };
+    expect(
+      (
+        await settingsHttp('/admin/expenses/' + saved.id, 'PUT', edit, {
+          Cookie: `cms_session=${adminToken}`,
+          'X-Branch-ID': String(otherBranch),
+        })
+      ).status,
+    ).toBe(409);
+    expect((await settingsAdminHttp('/admin/expenses/' + saved.id, 'PUT', edit)).status).toBe(200);
+    expect((await settingsAdminHttp('/admin/expenses/' + saved.id, 'PUT', edit)).status).toBe(409);
+    const audit = (
+      await rows(
+        "SELECT metadata FROM audit_logs WHERE entity_type='expense' AND entity_id=? AND action='EXPENSE_UPDATED'",
+        [saved.id],
+      )
+    )[0].metadata;
+    const metadata = typeof audit === 'string' ? JSON.parse(audit) : audit;
+    expect(metadata.before.amountCents).toBe(1000);
+    expect(metadata.after.amountCents).toBe(1500);
+    expect(
+      (await settingsAdminHttp('/admin/expenses/' + saved.id, 'DELETE', { version: saved.version }))
+        .status,
+    ).toBe(409);
+    expect(
+      (
+        await settingsAdminHttp('/admin/expenses/' + saved.id, 'DELETE', {
+          version: saved.version + 1,
+        })
+      ).status,
+    ).toBe(200);
+    const list = await (
+      await settingsAdminHttp('/admin/expenses?from=2020-04-02&to=2020-04-02')
+    ).json();
+    expect(list.data.some((row: any) => row.id === saved.id)).toBe(false);
+    expect((await settingsAdminHttp('/admin/expenses', 'POST', input)).status).toBe(201);
+    expect(
+      await rows(
+        "SELECT id FROM audit_logs WHERE entity_type='expense' AND entity_id=? AND action='EXPENSE_CREATED'",
+        [saved.id],
+      ),
+    ).toHaveLength(1);
+    expect(
+      (await rows('SELECT voided_at FROM expenses WHERE id=?', [saved.id]))[0].voided_at,
+    ).not.toBeNull();
+  });
+  it('reports Malaysia cash receipts minus recorded costs and real stock use without leaking branches or counting holds', async () => {
+    const adminCtx = { ...ctx, actor: { ...ctx.actor, id: administrator, role: 'ADMIN' } };
+    const catalogs = new (await import('../src/server/catalog-service')).CatalogService();
+    const group = await catalogs.create(adminCtx, {
+      kind: 'PATIENT_GROUP',
+      label: 'QA Analytics Insurance',
+    });
+    const p = await patient({ patientGroupId: group.id });
+    await catalogs.update(adminCtx, group.id, {
+      label: group.label,
+      active: false,
+      sortOrder: 0,
+      version: group.version,
+    });
+    const paid = await service.createInvoice(ctx, invoice(p.id));
+    const before = await service.createInvoice(ctx, invoice(p.id));
+    const deposit = await service.createInvoice(ctx, invoice(p.id));
+    for (const bill of [paid, deposit]) {
+      await sql.query("UPDATE invoices SET created_at='2020-04-01 16:00:00' WHERE id=?", [bill.id]);
+      await sql.query("UPDATE payments SET created_at='2020-04-01 16:00:00' WHERE invoice_id=?", [
+        bill.id,
+      ]);
+    }
+    await sql.query("UPDATE invoices SET created_at='2020-04-01 15:59:59' WHERE id=?", [before.id]);
+    await sql.query("UPDATE payments SET created_at='2020-04-01 15:59:59' WHERE invoice_id=?", [
+      before.id,
+    ]);
+    await sql.query("UPDATE payments SET method='DEPOSIT' WHERE invoice_id=?", [deposit.id]);
+    const stock = {
+      paidOn: '2020-04-02',
+      category: 'STOCK_PURCHASE',
+      description: 'QA stock purchase',
+      amountCents: 1600,
+      reference: 'QA-STOCK',
+      idempotencyKey: randomUUID(),
+    };
+    expect((await settingsAdminHttp('/admin/expenses', 'POST', stock)).status).toBe(201);
+    expect(
+      (
+        await settingsAdminHttp('/admin/expenses', 'POST', {
+          ...stock,
+          category: 'RENT',
+          amountCents: 500,
+          idempotencyKey: randomUUID(),
+        })
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await settingsHttp(
+          '/admin/expenses',
+          'POST',
+          { ...stock, amountCents: 99999, idempotencyKey: randomUUID() },
+          { Cookie: `cms_session=${adminToken}`, 'X-Branch-ID': String(otherBranch) },
+        )
+      ).status,
+    ).toBe(201);
+    const medicine = await item({ name: 'QA Analytics Medicine' }),
+      supply = await item({
+        name: 'QA Analytics Dressing',
+        ingredient: '',
+        category: 'CONSUMABLE',
+        unit: 'piece',
+      });
+    const retail = await item({
+      name: 'QA Analytics Retail',
+      ingredient: '',
+      category: 'RETAIL',
+      unit: 'piece',
+    });
+    for (const current of [medicine, supply, retail])
+      await service.receiveBatch(ctx, {
+        itemId: current.id,
+        batchNumber: randomUUID(),
+        quantity: 20,
+        expiresOn: '2039-01-01',
+      });
+    const chart = await encounter(p.id, [rx(medicine.id, 3)]);
+    await service.dispense(ctx, { encounterId: chart.id, idempotencyKey: randomUUID() });
+    await encounter(p.id, [rx(medicine.id, 1)]);
+    await service.useInventory(ctx, {
+      itemId: supply.id,
+      quantity: 2,
+      reason: 'QA Analytics supply',
+      idempotencyKey: randomUUID(),
+    });
+    await service.useInventory(ctx, {
+      itemId: retail.id,
+      quantity: 10,
+      reason: 'QA Analytics retail',
+      idempotencyKey: randomUUID(),
+    });
+    await sql.query(
+      "UPDATE stock_movements m JOIN inventory_batches b ON b.id=m.batch_id SET m.created_at='2020-04-01 16:00:00' WHERE b.item_id IN (?,?,?)",
+      [medicine.id, supply.id, retail.id],
+    );
+    const response = await settingsAdminHttp('/admin/analytics?from=2020-04-02&to=2020-04-02');
+    expect(response.status).toBe(200);
+    const report = await response.json();
+    expect(report.topUsage.some((entry: any) => entry.itemId === retail.id)).toBe(false);
+    expect(report).toMatchObject({
+      collectedCents: 1000,
+      stockPurchaseCents: 1600,
+      operatingExpenseCents: 500,
+      totalExpenseCents: 2100,
+      netCashIncomeCents: -1100,
+      paidInvoiceCount: 2,
+    });
+    expect(report.patientGroups).toContainEqual({
+      patientGroupId: group.id,
+      label: group.label,
+      patients: 1,
+    });
+    expect(
+      report.patientGroups.some((row: any) => row.patientGroupId === null && row.patients > 0),
+    ).toBe(true);
+    expect(report.topUsage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: medicine.id,
+          dispensedQuantity: 3,
+          usedQuantity: 0,
+          totalQuantity: 3,
+        }),
+        expect.objectContaining({
+          itemId: supply.id,
+          dispensedQuantity: 0,
+          usedQuantity: 2,
+          totalQuantity: 2,
+        }),
+      ]),
+    );
+    const other = await settingsHttp(
+      '/admin/analytics?from=2020-04-02&to=2020-04-02',
+      'GET',
+      undefined,
+      { Cookie: `cms_session=${adminToken}`, 'X-Branch-ID': String(otherBranch) },
+    );
+    expect((await other.json()).totalExpenseCents).toBe(99999);
+  });
   it('assigns tenant custom roles and immediately enforces module changes on active sessions', async () => {
     expect(
       (await settingsHttp('/admin/custom-roles', 'POST', { name: 'Denied', modules: [] })).status,
@@ -778,6 +1090,116 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
         ).status,
       ).toBe(200);
       expect((await service.bootstrap(ctx)).tenant.logoDataUrl).toBe(before.logoDataUrl);
+    }
+  });
+  it('snapshots complete branding for stickers and clinical documents and safely brands legacy receipts', async () => {
+    const before = await (await settingsAdminHttp('/admin/letterhead')).json();
+    const clinic = await (await settingsAdminHttp('/admin/clinic')).json();
+    const branding = {
+      logoDataUrl:
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC9sAAAAASUVORK5CYII=',
+      header: 'QA print contact',
+      address: 'QA print address',
+      footer: 'QA print footer',
+    };
+    expect(
+      (
+        await settingsAdminHttp('/admin/letterhead', 'PUT', {
+          ...branding,
+          version: before.version,
+        })
+      ).status,
+    ).toBe(200);
+    try {
+      const p = await patient(),
+        medicine = await item();
+      await service.receiveBatch(ctx, {
+        itemId: medicine.id,
+        batchNumber: randomUUID(),
+        quantity: 10,
+        expiresOn: '2039-01-01',
+      });
+      const chart = await encounter(p.id, [rx(medicine.id, 2)]);
+      const key = randomUUID();
+      const dispensed = await service.dispense(ctx, { encounterId: chart.id, idempotencyKey: key });
+      const labels = await service.medicineLabels(ctx, chart.id);
+      expect(labels).toMatchObject({
+        ...branding,
+        clinicName: clinic.name,
+        clinicAddress: branding.address,
+      });
+      const issued = await service.issueDocument(ctx, {
+        encounterId: chart.id,
+        kind: 'MC',
+        startDate: '2039-01-01',
+        days: 1,
+        diagnosisRedacted: true,
+        lightDuty: false,
+        employer: '',
+        clinicalNotes: '',
+      });
+      expect(await service.documentPreview(ctx, issued.id)).toMatchObject({
+        clinicName: clinic.name,
+        clinicAddress: branding.address,
+        header: branding.header,
+        logoDataUrl: branding.logoDataUrl,
+      });
+      const bill = await service.createInvoice(ctx, invoice(p.id));
+      const stored = (await rows('SELECT receipt_snapshot FROM invoices WHERE id=?', [bill.id]))[0]
+        .receipt_snapshot;
+      const snapshot = typeof stored === 'string' ? JSON.parse(stored) : stored;
+      const settings = await (await settingsAdminHttp('/admin/letterhead')).json();
+      expect(
+        (
+          await settingsAdminHttp('/admin/letterhead', 'PUT', {
+            ...branding,
+            header: 'Changed print contact',
+            address: 'Changed print address',
+            version: settings.version,
+          })
+        ).status,
+      ).toBe(200);
+      expect(await service.medicineLabels(ctx, chart.id)).toEqual(labels);
+      expect((await service.dispense(ctx, { encounterId: chart.id, idempotencyKey: key })).id).toBe(
+        dispensed.id,
+      );
+      await sql.query('UPDATE dispenses SET label_snapshot=NULL WHERE id=?', [dispensed.id]);
+      expect(await service.medicineLabels(ctx, chart.id)).toMatchObject({
+        header: 'Changed print contact',
+        clinicAddress: 'Changed print address',
+        logoDataUrl: branding.logoDataUrl,
+      });
+      expect(
+        (await rows('SELECT label_snapshot FROM dispenses WHERE id=?', [dispensed.id]))[0]
+          .label_snapshot,
+      ).toBeNull();
+      await sql.query('UPDATE invoices SET receipt_snapshot=NULL WHERE id=?', [bill.id]);
+      const { readReceipt } = await import('../src/server/receipt-service');
+      expect(await readReceipt(ctx, bill.id)).toMatchObject({
+        header: 'Changed print contact',
+        clinicAddress: 'Changed print address',
+        logoDataUrl: branding.logoDataUrl,
+      });
+      await sql.query('UPDATE invoices SET receipt_snapshot=? WHERE id=?', [
+        JSON.stringify({ ...snapshot, logoDataUrl: '', header: '', footer: '' }),
+        bill.id,
+      ]);
+      expect(await readReceipt(ctx, bill.id)).toMatchObject({
+        logoDataUrl: '',
+        header: '',
+        footer: '',
+        clinicAddress: branding.address,
+      });
+    } finally {
+      const current = await (await settingsAdminHttp('/admin/letterhead')).json();
+      expect(
+        (
+          await settingsAdminHttp('/admin/letterhead', 'PUT', {
+            ...before,
+            version: current.version,
+          })
+        ).status,
+      ).toBe(200);
     }
   });
   it('allows admin clinic rename with optimistic conflict and keeps scoped encounter details read only', async () => {
@@ -2426,7 +2848,15 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ).json();
       expect(refs.data).toHaveLength(1);
       expect(Object.keys(refs.data[0]).sort()).toEqual(
-        ['id', 'patientNumber', 'name', 'nationalId', 'phone'].sort(),
+        [
+          'id',
+          'patientNumber',
+          'name',
+          'nationalId',
+          'phone',
+          'patientGroupId',
+          'patientGroupLabel',
+        ].sort(),
       );
       expect(
         (
@@ -2988,6 +3418,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       expect(response.status).toBe(200);
       const labels = await response.json();
       expect(labels).toEqual({
+        clinicName: dispense.labelSnapshot.clinicName,
+        branchName: dispense.labelSnapshot.branchName,
+        clinicAddress: dispense.labelSnapshot.clinicAddress,
+        address: dispense.labelSnapshot.address,
+        logoDataUrl: dispense.labelSnapshot.logoDataUrl,
+        header: dispense.labelSnapshot.header,
+        footer: dispense.labelSnapshot.footer,
         id: e.id,
         patientId: p.id,
         patientName: p.name,
@@ -3462,7 +3899,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       patientName: p.name,
       diagnosis: null,
       diagnosisRedacted: true,
-      clinicName: 'QA Main',
+      clinicName: 'QA Tenant',
       practitionerName: 'QA Doctor',
     });
     expect(preview.fields).toEqual(

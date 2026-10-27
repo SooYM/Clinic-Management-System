@@ -40,18 +40,24 @@ describe('receipt view and printable layout', () => {
       ...input,
       clinicName: 'Changed clinic',
       patientName: 'Changed patient',
+      patientGroupId: 22,
+      patientGroupLabel: 'Changed company',
       receivedBy: 'Changed cashier',
       receiptSnapshot: {
         clinicName: input.clinicName,
         branchName: input.branchName,
         clinicAddress: input.clinicAddress,
         patientName: input.patientName,
+        patientGroupId: 11,
+        patientGroupLabel: 'Saved insurance',
         nationalId: input.nationalId,
         receivedBy: input.receivedBy,
       },
     });
     expect(v.clinicName).toBe(input.clinicName);
     expect(v.patientName).toBe(input.patientName);
+    expect(v.patientGroupId).toBe(11);
+    expect(v.patientGroupLabel).toBe('Saved insurance');
     expect(v.receivedBy).toBe(input.receivedBy);
     expect(v.issuedDate).toBe('08/10/2026');
     expect(v.issuedTime).toBe('00:30 MYT');
@@ -60,6 +66,27 @@ describe('receipt view and printable layout', () => {
     expect(v).not.toHaveProperty('receiptSnapshot');
     expect(v).not.toHaveProperty('requestHash');
     expect(v).not.toHaveProperty('taxCents');
+  });
+  it('does not infer a historical receipt group from the patient’s current group', () => {
+    const receiptSnapshot = {
+      clinicName: input.clinicName,
+      branchName: input.branchName,
+      clinicAddress: input.clinicAddress,
+      patientName: input.patientName,
+      nationalId: input.nationalId,
+      receivedBy: input.receivedBy,
+    };
+    const view = buildReceiptView({
+      ...input,
+      patientGroupId: 22,
+      patientGroupLabel: 'Current company',
+      receiptSnapshot,
+    });
+    expect(view.patientGroupId).toBeNull();
+    expect(view.patientGroupLabel).toBeNull();
+    expect(
+      buildReceiptView({ ...input, patientGroupId: null, patientGroupLabel: 'No group assigned' }),
+    ).toMatchObject({ patientGroupId: null, patientGroupLabel: 'No group assigned' });
   });
   it('renders a complete one-page ordinary receipt', async () => {
     const pdf = await render();

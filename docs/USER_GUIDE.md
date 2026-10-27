@@ -1,5 +1,17 @@
 # Clinic staff user guide
 
+## Logo and letterhead on printed materials
+
+In Administration → Clinic settings, save the clinic name and document letterhead logo, header/contact text, address and footer. Receipt and clinical previews/PDFs and each medicine sticker show the configured branding. If the letterhead address is empty, new receipts and stickers use the selected branch address. Newly issued clinical documents show the clinic name.
+
+New receipts, clinical documents and dispensing stickers retain branding saved when issued. Later edits apply to future records. Older stickers without saved branding use current clinic/branch settings. Older receipts fill missing branding fields from current settings while preserving saved values, including deliberately empty fields. Existing signed clinical documents remain unchanged. Sticker printing waits for the logo to load; if a logo-load error appears, correct or reload the logo and retry. **Print this sticker** includes branding on that selected medicine; cancelling the printer dialog never reverses dispensing.
+
+## Admin dashboard and expenses
+
+Open Administration → Dashboard. Select dates to review collected revenue, paid stock purchases, operating expenses and net cash income for the current branch. Enter all actual paid costs under Expenses; stock receipt quantities and selling prices do not record purchase costs. Choose paid date, category, amount, description and supplier/receipt reference, then confirm. Edit corrections or void an entry to exclude it from totals while retaining its audit history. Older expenses retrieves earlier ledger pages.
+
+Patients by group counts all currently registered patients in the branch. Top medicines and consumables uses actual dispensed/used units during the report period; compare items using the units shown. Reserved or undispensed medicines do not count. Checkout now shows the patient's group; receipts keep the group recorded at checkout.
+
 ## Portal logo and clinic name
 
 In Administration → Clinic settings, save your clinic name and document letterhead logo. The sidebar updates after each successful save. Uploading another logo replaces the portal logo; removing it restores the generic clinic icon. Refresh retains saved settings. The Render demo starts with CARE FOR U FAMILY CLINIC and its supplied banner; Reset demo restores this branding within the fictional session.
@@ -162,7 +174,7 @@ Use the section buttons below each module title. The highlighted button identifi
 | Appointments       | Scheduled visits; Book appointment                                                      |
 | Clinical workspace | Consultations; Note & prescription; Documents; Medication logs                          |
 | Dispensary         | Stock catalogue; Receive stock; Use supplies; Dispense medicines; Prescription history  |
-| Billing            | Patient checkout; Invoice history                                     |
+| Billing            | Patient checkout; Invoice history                                                       |
 | Administration     | Staff accounts; Branches; Consultation rooms; Catalog choices; Role access; Audit trail |
 | User guide         | Visual walkthroughs; Written instructions                                               |
 
@@ -178,14 +190,11 @@ Switch away from a branch before removing it. Branches assigned as home branch t
 
 In Billing → Invoice history, select **Preview receipt**. The official-receipt layout shows actual clinic/patient details, itemized fees, totals, tender methods, cashier and issue time. The MySQL app provides separate printable PDF and Download PDF actions. Demo previews are sample receipts, with no real payment or PDF verification. New receipt identities stay fixed after later name edits; old invoices use existing current records.
 
-
 ## Current task navigation and confirmation
 
 Tasks use one section-tab entry point: Clinic overview → Check in patient; Patients → Patient registration; Billing → Patient checkout. Header duplicates are removed; submit buttons still commit the entered form. Clinical workspace starts at Choose patient: search/select → Patient history → Open consultation, or New consultation for the selected patient. Changing patient clears previous record tools. Catalogue rows show concise stock summaries; View details expands metadata, batches and administrator actions. Filter and sort loaded stock reveals advanced controls; Default: Item ID supports both directions. Practitioner registration number is shown and required only for GP/DOCTOR creation; other roles submit null. User guide remains in the header and is removed from the sidebar. Before saving, review the popup and choose the named action to consent. Cancel or Escape returns to the unchanged form. Unsaved line edits, navigation, previews, filters and search remain immediate. No consultation history is shown until you select a patient. Only GPs can create consultations.
 
-
 Section buttons change the task without forcing a jump to the top. Appointment navigation and help appear only when your role has access. Role access refreshes while the workspace is visible and when you return to it.
-
 
 ## Twelve-hour check-in and assigned patients
 
@@ -193,11 +202,9 @@ An unfinished check-in expires after 12 hours or at midnight Malaysia time, whic
 
 After the nurse calls or starts the visit with the assigned GP, the GP opens Clinical workspace → Assigned patients. Start consultation fills the patient and queue reference automatically; confirm the completed note to save. Open consultation resumes an existing note. Suggestions refresh automatically or with Refresh assignments. If none appear, verify branch, assigned GP, visit state and the 12-hour/day-end lifetime. Manual patient selection remains available.
 
-
 ## Add multiple medicines and send to dispensary
 
 Use Add prescription for each additional medicine. Give each row its own quantity, frequency, meal timing, instructions and supply days. Remove unwanted unsaved rows; blank rows are skipped. Save a draft while working. Choose SIGNED and confirm when complete: all eligible stock is reserved and the linked active visit moves to dispensary automatically. If any medicine lacks stock, neither signing nor handoff completes. Signed notes cannot be edited. A signed visit without medicines still reaches dispensary, but has nothing to dispense; staff can continue it to payment.
-
 
 ## Compact history and draft removal
 
@@ -208,12 +215,13 @@ History now shows concise previews. Expand Search, filter & sort history only wh
 Only an explicitly privileged Super Admin sees Administration → Danger zone. Review the scope and affected counts, then Reset database. Type RESET ALL CLINIC DATA exactly, enter your current password, acknowledge erasure, and choose Erase all clinic data. This permanently clears the entire database across all clinics, including signed notes, and restores one configured default administrator/main branch/three rooms. Back up before deliberately using it. Cancel/Escape clears the fields without resetting; pressing Enter while typing does not erase. After success every session ends; sign in using configured bootstrap credentials. IDs continue increasing. This control is the explicit exception to normal signed-record protection.
 
 ## Check-in through checkout
+
 1. Check in the patient, then **Call to room** and assign the doctor.
 2. GP opens **Clinical workspace → Assigned patients → Start consultation**. Record SOAP and choose medicines. Choices show available stock; the selected medicine shows eligible stock and reservations.
 3. Choose **Signed** and confirm saving when the note is complete. Medicines are reserved automatically and the patient appears in **Dispensary → Dispense medicines**, now the first/default section. Without medicines, the patient goes directly to billing.
 4. Review the suggested prescription and confirm **Dispense medicines**. The visit moves to payment automatically. Staff with billing access can click **Open patient checkout**; other billing staff see the patient in their own suggestions.
 5. **Billing & payments → Patient checkout** opens first. Choose **Prepare checkout** to fill patient, GP and medicine charge lines. Review prices, add consultation charges where appropriate, enter payments, and confirm **Complete checkout**. The linked visit completes and leaves billing suggestions.
-Suggestions and stock update automatically within 15 seconds while visible and when returning to the window. **Prescription history** has compact rows, collapsed filters, and a bounded scroll area. Opening usage logs is optional. Nothing records a payment merely by opening a suggestion.
+   Suggestions and stock update automatically within 15 seconds while visible and when returning to the window. **Prescription history** has compact rows, collapsed filters, and a bounded scroll area. Opening usage logs is optional. Nothing records a payment merely by opening a suggestion.
 
 Click **Prepare checkout** to fill the patient and charges and scroll directly to the checkout form. Canceling replacement keeps the existing checkout and position.
 
@@ -241,11 +249,9 @@ Open `/display` on the clinic website; locally use `http://127.0.0.1:3100/displa
 
 For a non-Malaysian patient, choose Others in Country of nationality and enter the country name. The name is required and supports up to100 characters. Profiles and later edits retain it. Choosing a listed country clears the custom name; Malaysian records use Malaysia internally. Nationality country remains separate from the phone calling code and postal address.
 
-
 ### Waiting room call sound
 
 On `/display`, choose **Enable announcements** to unlock browser audio and play a short sample. Check the display device’s volume. New calls chime, then speak the ticket and room after each 15-second refresh. Initial loading and branch switches establish a silent baseline. Removing tickets, sorting them, or moving the same call into consultation does not repeat the sound. **Announcements on · Disable** stops audio; page closure releases the audio context. If browser sound is blocked or interrupted, the display shows a retry notice.
-
 
 ### Search suggestions
 
@@ -254,7 +260,6 @@ Type part of a name, then click a matching result or use the arrow keys and Ente
 ### Spoken ticket and room announcements
 
 Choose **Enable announcements** on the waiting-room display and check the spoken sample. Each new call chimes, then reads its ticket and destination room. For Q-001 and Room 2, it says “Ticket Q zero zero one, please proceed to Room 2.” Voice availability depends on the browser/device. If speech fails, turn announcements off and on to retry; the chime remains available. Changing branches or disabling announcements stops queued speech.
-
 
 ## Staff workflow refinement — 21 October 2026
 
@@ -272,13 +277,11 @@ Forms use a shared responsive grid and consistent spacing. Nationality and count
 
 Apply migration `026_cashier_and_optional_batches.sql` using the normal migration runner before starting the updated production backend. Back up first; existing migrations remain unchanged. No hosting deployment or printer hardware certification is implied by local validation.
 
-
 ## Reprint prescription stickers
 
 Open **Dispensary → Prescription history**, find a completed prescription, then choose **Reprint stickers**. You can also use the reprint action inside its activity popout. The print dialog initially includes all medicines. Select **Print this sticker** beside one medicine to print only that sticker, or **Print all stickers** to print the whole prescription. Choose your physical label printer and paper size. You can close the preview, refresh or sign in later and reprint from history again.
 
 Stickers retain the original dispensing date, quantities and saved directions. Reprinting does not dispense again, reduce stock or create charges. Pending prescriptions must be dispensed first. User guide remains available in the page header as an in-place guided tour; obsolete links to the hidden Guide page are removed.
-
 
 ## Clinical pricing and letterhead update — 23 October 2026
 
@@ -287,7 +290,6 @@ See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICI
 ## Custom staff roles
 
 In Administration → Role access, create named custom roles and choose allowed modules. Under Staff accounts, create or edit a staff account and choose its custom module role. Keep the professional role appropriate to the staff member; clinical signing still requires GP credentials. Select Use professional role defaults to remove the custom assignment. Saving role access affects assigned staff on their next request. Administrators always retain full module access.
-
 
 ### Patient groups
 

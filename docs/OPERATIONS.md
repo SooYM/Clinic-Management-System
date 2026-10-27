@@ -1,5 +1,17 @@
 # Clinic operations
 
+## Migration 033 and print branding
+
+After backing up MySQL and rehearsing restore, run `npm run db:migrate` through migration 033 before restarting the updated API. This adds nullable object-only `dispenses.label_snapshot`; existing rows stay null. Deploy the matching frontend and API together. Do not edit applied migrations or backfill old clinical signatures to change branding.
+
+Configure clinic name and letterhead logo, header/contact text, address and footer in Administration. Verify receipt and clinical previews/PDFs, then dispense and print all stickers and one selected sticker using the intended printer/paper. New dispenses preserve branding for future reprints. Legacy stickers use current scoped branding; legacy receipts fill only missing snapshot fields, preserving explicit blanks. Without a receipt snapshot, configured letterhead address takes precedence over branch address. New clinical documents use the tenant clinic name; old signed payloads remain unchanged. A logo-load error requires correcting/reloading the logo before retrying sticker printing. Printer cancellation leaves saved dispensing intact. Local tests do not certify printer hardware or hosted deployment.
+
+## Migration 032 and cash reporting
+
+Back up MySQL and rehearse restore before `npm run db:migrate`. Migration 032 adds the paid-expense ledger and scoped report indexes; existing records remain unchanged. Restart the API and rebuild the frontend after migration. Normal startup does not seed costs. Enter historical paid costs deliberately using their actual paid dates; do not infer costs from stock selling prices or count the same supplier payment twice. Net cash income includes only recorded costs, so incomplete expense entry gives an incomplete result.
+
+Rollback should use a schema-compatible application release while retaining expense and audit records. Existing migrations remain immutable. The free Render demo simulates the ledger in the current browser session; rebuilding that demo does not apply MySQL migrations or provide durable accounting storage.
+
 ## Patient groups and custom role rollout
 
 Back up MySQL and verify a restore into a guarded disposable database before deploying migrations 030–031. Run `npm run db:migrate`, then build/restart through the configured hosting process; local startup remains `webapp clinic`. Check `/api/health` and staff/group workflows. These migrations add nullable assignments, group defaults and a custom-role table without modifying applied migrations or assigning existing patients automatically. Preserve the schema during application rollback; use a compatible release. Restoring an older backup requires a maintenance window and a plan to retain records written since that backup.
@@ -40,6 +52,7 @@ Migration `009_numeric_identifiers.sql` runs through `npm run db:migrate`; its i
 The migration preserves clinical text, verification tokens and encrypted photo content. It updates document identifier snapshots and signs their new representation with the original key. Audit metadata retains original entity references; references to deleted entities become null. Resource locks are cleared while application writes are stopped. Historical invoice idempotency hashes retain the original request representation: do not replay pre-upgrade UUID checkout requests against the numeric API.
 
 If migration fails after schema changes begin, keep the application stopped and restore the pre-upgrade backup. Mapping tables retained after failure aid diagnosis; do not rerun against a partially converted database. Entity IDs are predictable, so authorization must always enforce tenant, branch and module access independently.
+
 ## Fixed local startup
 
 Run `webapp clinic management` from PowerShell after installing the global harness, or run `.\start.ps1` inside this repository. Both use the existing portable MySQL data directory and verify authenticated `@@port`/`@@datadir` before starting the API/frontend. `webapp check clinic management` performs configuration/ownership checks without starting services. The global command replaces verified existing Clinic web/API workers before starting one instance on3100/3101; MySQL stays running. An unverified listener aborts before cleanup. Direct `.\start.ps1` refuses occupied ports. Neither path selects fallback ports.
@@ -47,7 +60,6 @@ Run `webapp clinic management` from PowerShell after installing the global harne
 Clinic owns frontend 3100, API 3101, MySQL 3310, read-only viewer 3102 and local demo 3103. Progress Tracker exclusively owns 3001. Keep private `.env` and portable `.local/mysql.ini` synchronized with the global reservation registry. Never initialize or replace the data directory to change a port. The Docker service uses API 3101; hosted environments may explicitly supply their infrastructure-assigned `PORT`.
 
 To stop only the portable database, first stop Clinic API/frontend, then use `scripts/start-local-mysql.ps1 -Stop`. This checks the exact executable/defaults file, loopback port and authenticated data directory before requesting administrative `SHUTDOWN`. It refuses shutdown while API/frontend ports remain active. Use `-Stop -Check` to validate without stopping anything. No unrelated process is terminated.
-
 
 ## Clinical pricing and letterhead update — 23 October 2026
 

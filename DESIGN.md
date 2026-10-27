@@ -26,7 +26,10 @@ Inspect desktop and narrow mobile screenshots. Verify login, registration, queue
 
 Operate surfaces with multiple tasks use shared WorkspaceSections: named native buttons, visible current state, sticky wrapping navigation and one visible content region. Inactive areas remain mounted to retain drafts within a module. Avoid nested vertical scroll regions. Desktop navigation reads horizontally; phone controls wrap with at least 44px targets. Single-task screens do not need a section bar.
 
-
 ## Detail views and form rhythm
 
-Profiles, saved consultation details, document/receipt previews, inventory details and prescription reviews open native modal dialogs. Close/Escape restores the underlying workflow. Filters may expand inline. Use the existing two-column form grid with 16px row gaps and 24px column gaps; stack at the existing phone breakpoint. Use 24px panel spacing and 32px desktop workspace padding. Nationality/country share this grid without reserving hidden custom-country rows.
+Profiles, saved consultation details, document/receipt previews, inventory details and prescription reviews open native modal dialogs. Close/Escape restores the underlying workflow. Filters may expand inline. Use the two-column form grid with 12px row gaps and 16px column gaps; stack at the existing phone breakpoint. Use 16px panel spacing/padding and 20px desktop workspace padding, reducing outer padding to 12px and panels to 14px on phones. Nationality/country share this grid without reserving hidden custom-country rows.
+
+## Compact operations density
+
+Desktop controls use 36px minimum height and table cells use 10px padding. Keep body text at 14px and visible field labels; compactness comes from spacing rather than tiny type. Phone controls and section navigation retain 44px minimum targets. Keep inactive workspace sections hidden without reserved height. The login is a bounded single-column form with clinic branding instead of a full-viewport split panel. Public waiting-room display and printed document sizing remain purpose-specific.

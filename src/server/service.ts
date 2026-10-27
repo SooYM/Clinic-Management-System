@@ -23,7 +23,7 @@ import type { MedicineLabelPrescription } from '../shared/medicine-labels.js';
 import { validateCatalogChoices } from './catalog-service.js';
 import { expireQueue } from './queue-lifecycle.js';
 import { encounterBillingLines } from '../shared/encounter-billing.js';
-import { readLetterhead } from './letterhead.js';
+import { readLetterhead, readPrintBranding } from './letterhead.js';
 
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -1204,9 +1204,18 @@ export class ClinicService {
         throw new DomainError('NO_PRESCRIPTION', 'Encounter has no medication to dispense.');
       const patient = await this.patient(db, ctx, e.patient_id);
       await this.validatePrescriptions(db, ctx, patient, e.prescriptions, true);
+      const labelSnapshot = await readPrintBranding(db, ctx.actor.tenantId, ctx.branchId);
       const record = await db.query(
-        `INSERT INTO dispenses(tenant_id,branch_id,patient_id,encounter_id,actor_id,idempotency_key) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [ctx.actor.tenantId, ctx.branchId, e.patient_id, e.id, ctx.actor.id, input.idempotencyKey],
+        `INSERT INTO dispenses(tenant_id,branch_id,patient_id,encounter_id,actor_id,idempotency_key,label_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [
+          ctx.actor.tenantId,
+          ctx.branchId,
+          e.patient_id,
+          e.id,
+          ctx.actor.id,
+          input.idempotencyKey,
+          JSON.stringify(labelSnapshot),
+        ],
       );
       // Close this encounter's holds inside the same transaction before reallocating.
       // This permits fresh FEFO allocation when originally reserved batches expired.
@@ -1449,6 +1458,8 @@ export class ClinicService {
         branchName: branding.branch_name,
         clinicAddress: letterhead.address || branding.address,
         patientName: patient.name,
+        patientGroupId: patient.patient_group_id ?? null,
+        patientGroupLabel: patient.patient_group_label || 'No group assigned',
         nationalId: patient.national_id,
         receivedBy: ctx.actor.name,
       };
@@ -1572,7 +1583,7 @@ export class ClinicService {
             ).rows.map((item) => [item.id, item.name]),
           )
         : new Map();
-      const letterhead = await readLetterhead(db, ctx.actor.tenantId);
+      const letterhead = await readPrintBranding(db, ctx.actor.tenantId, ctx.branchId);
       const payload = {
         ...letterhead,
         ...input,
@@ -1772,11 +1783,13 @@ export class ClinicService {
   async medicineLabels(ctx: Context, id: number): Promise<MedicineLabelPrescription> {
     const row = (
       await this.db.query(
-        "SELECT e.id,e.patient_id,e.prescriptions,p.name patient_name,u.name practitioner_name,d.created_at dispensed_at FROM encounters e JOIN dispenses d ON d.encounter_id=e.id AND d.tenant_id=e.tenant_id AND d.branch_id=e.branch_id JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL AND e.status='SIGNED'",
+        "SELECT e.id,e.patient_id,e.prescriptions,p.name patient_name,u.name practitioner_name,d.created_at dispensed_at,d.label_snapshot FROM encounters e JOIN dispenses d ON d.encounter_id=e.id AND d.tenant_id=e.tenant_id AND d.branch_id=e.branch_id JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id AND p.branch_id=e.branch_id JOIN users u ON u.id=e.practitioner_id AND u.tenant_id=e.tenant_id WHERE e.id=$1 AND e.tenant_id=$2 AND e.branch_id=$3 AND e.deleted_at IS NULL AND e.status='SIGNED'",
         [id, ctx.actor.tenantId, ctx.branchId],
       )
     ).rows[0];
     if (!row) throw missing();
+    const branding =
+      row.label_snapshot ?? (await readPrintBranding(this.db, ctx.actor.tenantId, ctx.branchId));
     const missingSnapshots = row.prescriptions.filter((rx: any) => !rx.itemName || !rx.unit);
     const items = missingSnapshots.length
       ? (
@@ -1788,6 +1801,7 @@ export class ClinicService {
       : [];
     const catalog = new Map(items.map((item) => [item.id, item]));
     return {
+      ...branding,
       id: row.id,
       patientId: row.patient_id,
       patientName: row.patient_name,
@@ -1968,7 +1982,7 @@ export class ClinicService {
       valid: !d.revoked_at && this.documentIntact(d),
       documentNumber: d.document_number,
       kind: d.kind,
-      clinicName: d.payload?.branchName,
+      clinicName: d.payload?.clinicName || d.payload?.branchName,
       practitionerName: d.payload?.practitionerName,
       startDate: d.start_date,
       endDate: d.end_date,
