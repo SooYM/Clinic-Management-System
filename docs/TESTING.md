@@ -1,5 +1,9 @@
 # Verification
 
+## System-wide caption cleanup — 27 October 2026
+
+Removed promotional login/portal copy and repeated page/section summaries across eight modules. Both builds, formatting, diff checks and the changed-UI detector passed. Desktop/mobile Chromium checks verified clinic branding, sign-in, navigation through eight modules, absent taglines and no phone overflow. Clinical/security/demo notices and actionable field/workflow guidance remain. Backend, permissions and persistence behavior did not change.
+
 ## Portal branding and release-test reliability — 27 October 2026
 
 The release audit subsequently identified advisories in Zod, body-parser and Nodemailer. Updated versions are Zod 4.6.7, body-parser 1.20.9 and Nodemailer 10.1.4. Three compatibility edits preserve identifier coercion, forwarded validation issues and optional demo matching. Revalidation passed all 534 tests across 43 files with zero skips, both builds, formatting and build-mode isolation; `npm audit --omit=dev --json` reports zero vulnerabilities. Production request limits and validation requirements remain enforced.

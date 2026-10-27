@@ -58,14 +58,10 @@ export default function Appointments({ practitioners }: { practitioners: Referen
     <>
       <PageTitle
         title="Appointments"
-        description="Plan practitioner time. A room is assigned when the patient is called."
+        description="A room is assigned when the patient is called."
       />
       <WorkspaceSections label="Appointment sections" value={section} onChange={setSection}>
-        <WorkspaceSection
-          id="visits"
-          label="Scheduled visits"
-          description="Review booked visits and their current status."
-        >
+        <WorkspaceSection id="visits" label="Scheduled visits">
           <Panel title="Scheduled visits">
             {deleteSuccess && (
               <p className="notice success" role="status">
@@ -161,11 +157,7 @@ export default function Appointments({ practitioners }: { practitioners: Referen
             </ResourceState>
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="booking"
-          label="Book appointment"
-          description="Choose a patient, practitioner and consultation slot before confirming the visit."
-        >
+        <WorkspaceSection id="booking" label="Book appointment">
           <Panel title="New appointment">
             <MutationForm
               key={bookingRevision}

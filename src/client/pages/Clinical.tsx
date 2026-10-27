@@ -1386,10 +1386,7 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
   );
   return (
     <>
-      <PageTitle
-        title="Clinical workspace"
-        description="Record the consultation, prescribe safely, and issue clinical documents."
-      />
+      <PageTitle title="Clinical workspace" />
       {deletionError && <ErrorNotice>{deletionError}</ErrorNotice>}
       {deletionSuccess && (
         <p className="notice success" role="status">
@@ -1592,7 +1589,6 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
           id="notes"
           disabled={!selectedPatientId || openingRecord}
           label="Notes & prescription"
-          description="Record SOAP notes, vitals and prescribed medicines."
         >
           {selected ? (
             consultationForm
@@ -1609,7 +1605,6 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
           id="documents"
           disabled={!selectedPatientId || openingRecord}
           label="Documents"
-          description="Issue, preview and review clinical letters."
         >
           <Panel title="Clinical documents">
             {selected && role === 'DOCTOR' ? (
@@ -1815,7 +1810,6 @@ export default function Clinical({ practitionerId }: { practitionerId: number })
           id="logs"
           disabled={!selectedPatientId || openingRecord}
           label="Medication logs"
-          description="One timeline for prescriptions, dispensing and reported doses."
         >
           {selected ? (
             <>

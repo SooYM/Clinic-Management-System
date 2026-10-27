@@ -101,16 +101,9 @@ export default function Guide() {
   );
   return (
     <>
-      <PageTitle
-        title="User guide"
-        description="Practical steps for patient registration, clinical care, dispensary, and checkout."
-      />
+      <PageTitle title="User guide" />
       <WorkspaceSections label="User guide sections">
-        <WorkspaceSection
-          id="walkthroughs"
-          label="Visual walkthroughs"
-          description="Choose a task to highlight its actual controls in the app."
-        >
+        <WorkspaceSection id="walkthroughs" label="Visual walkthroughs">
           <Panel title="User guide on the screen">
             <p className="form-help">
               Choose a walkthrough to circle the actual controls. Use Next, Back or Close; nothing
@@ -126,11 +119,7 @@ export default function Guide() {
             </div>
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="instructions"
-          label="Written instructions"
-          description="Open a topic for step-by-step reference."
-        >
+        <WorkspaceSection id="instructions" label="Written instructions">
           <Panel title="Using your clinic workspace">
             <p className="form-help">
               Choose a topic below. Staff permissions may limit the actions available to your

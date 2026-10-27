@@ -232,7 +232,6 @@ export default function Patients() {
     <>
       <PageTitle
         title="Patients"
-        description="Find a patient, review their profile, or register a first visit."
         action={
           <button type="button" onClick={() => void openRegistration()}>
             Register patient
@@ -250,11 +249,7 @@ export default function Patients() {
           setSection(next);
         }}
       >
-        <WorkspaceSection
-          id="directory"
-          label="Patient directory"
-          description="Find patients and review their recorded details and consultation history."
-        >
+        <WorkspaceSection id="directory" label="Patient directory">
           <DetailDialog
             title="Patient profile"
             open={!!selected && !editing}
@@ -467,7 +462,6 @@ export default function Patients() {
         <WorkspaceSection
           id="registration"
           label={editing ? 'Edit patient' : 'Patient registration'}
-          description="Register a first visit or update the selected patient's demographic details."
         >
           <div
             ref={registrationPanel}

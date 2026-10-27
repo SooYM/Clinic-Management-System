@@ -195,7 +195,6 @@ export default function Queue({
     <>
       <PageTitle
         title="Today's clinic"
-        description="Keep each visit moving, from arrival to checkout."
         action={
           <div className="actions">
             <a
@@ -289,11 +288,7 @@ export default function Queue({
         value={checkIn ? 'check-in' : 'queue'}
         onChange={(id) => setCheckIn(id === 'check-in')}
       >
-        <WorkspaceSection
-          id="queue"
-          label="Live queue"
-          description="Review room availability and move today's visits through care."
-        >
+        <WorkspaceSection id="queue" label="Live queue">
           <div className="room-strip">
             {rooms.length ? (
               rooms.map((r) => {
@@ -555,11 +550,7 @@ export default function Queue({
             </ResourceState>
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="check-in"
-          label="Check in patient"
-          description="Add a registered patient to today's queue."
-        >
+        <WorkspaceSection id="check-in" label="Check in patient">
           <Panel
             title="Check in"
             action={

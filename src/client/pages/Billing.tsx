@@ -194,16 +194,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
   }, [suggestions.data, categories.data]);
   return (
     <>
-      <PageTitle
-        title="Billing & payments"
-        description="Clear itemised charges, split payments, and traceable receipts."
-      />
+      <PageTitle title="Billing & payments" />
       <WorkspaceSections label="Billing sections" value={section} onChange={setSection}>
-        <WorkspaceSection
-          id="checkout"
-          label="Patient checkout"
-          description="Prepare itemised charges and allocate payments before issuing the invoice."
-        >
+        <WorkspaceSection id="checkout" label="Patient checkout">
           <Panel title="Patients ready for billing">
             <p className="form-help">
               Completed dispensing and signed visits without medicines appear automatically. Review
@@ -543,11 +536,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
             </div>
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="invoices"
-          label="Invoice history"
-          description="Review issued invoices, recorded payments and receipts."
-        >
+        <WorkspaceSection id="invoices" label="Invoice history">
           {previewInvoice && (
             <ReceiptPreview
               key={previewInvoice}

@@ -66,7 +66,6 @@ function ClinicBrand({ name, logoDataUrl }: ClinicBranding) {
         <HeartPulse size={27} aria-hidden="true" />
       )}
       <strong className="brand-name">{name}</strong>
-      <span>Care, connected.</span>
     </>
   );
 }
@@ -87,23 +86,10 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
         <div className={`brand clinic-brand ${branding.logoDataUrl ? 'logo-brand' : ''}`}>
           <ClinicBrand {...branding} />
         </div>
-        <div>
-          <h1>
-            A clear view.
-            <br />A calmer clinic.
-          </h1>
-          <p>
-            Patient arrivals, consultations, and checkout.
-            <br />
-            One workspace for your care team.
-          </p>
-        </div>
-        <span className="login-footer">Clinic management system · Staff access</span>
       </section>
       <section className="login-form">
         <div>
-          <h2>Welcome back</h2>
-          <p>Sign in with your clinic staff account.</p>
+          <h1>Sign in</h1>
           {isDemo && (
             <p className="demo-credentials">
               Demo accounts: admin@example.test, gp@example.test, reception@example.test,

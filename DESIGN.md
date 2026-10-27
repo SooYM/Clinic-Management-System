@@ -14,6 +14,8 @@ Persistent navigation, branch and user context, explicit screen title, primary a
 
 ## Interaction
 
+Use concise screen titles and controls throughout the system. Omit promotional taglines and captions that only repeat a page or section title. Retain field guidance, validation, workflow rules, empty-state next steps and safety/privacy/demo notices.
+
 Visible loading and connection state. Retain entered form content on failures. Every input has a label. Every mutation gives success or readable error feedback. Keyboard focus is visible. Mobile navigation wraps without hiding actions. Public TV board shows ticket numbers and rooms only; sound requires explicit user activation.
 
 ## Verification

@@ -352,15 +352,6 @@ legend {
 .brand svg {
   color: #2563eb;
 }
-.brand span {
-  display: block;
-  width: 100%;
-  margin: 2px 0 0 36px;
-  font-size: 11px;
-  color: #64748b;
-  letter-spacing: 0;
-  font-weight: 500;
-}
 .clinic-brand .brand-name {
   flex: 1;
   min-width: 0;
@@ -379,9 +370,6 @@ legend {
   max-height: 72px;
   object-fit: contain;
   object-position: left center;
-}
-.clinic-brand.logo-brand span {
-  margin: 0;
 }
 .login-context .clinic-brand {
   width: 100%;
@@ -956,27 +944,12 @@ dd {
 .login-context {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   padding: 60px 70px 40px;
   background: #eaf2ff;
 }
 .login-context .brand {
   padding: 0;
-}
-.login-context h1 {
-  font-size: 48px;
-  font-weight: 650;
-  line-height: 1.18;
-  margin-bottom: 25px;
-  color: #163469;
-}
-.login-context p {
-  color: #486184;
-  font-size: 16px;
-}
-.login-footer {
-  color: #486184;
-  font-size: 12px;
 }
 .login-form {
   display: flex;
@@ -989,7 +962,7 @@ dd {
   width: 100%;
   max-width: 365px;
 }
-.login-form h2 {
+.login-form h1 {
   font-size: 27px;
   margin-bottom: 10px;
 }
@@ -1192,9 +1165,6 @@ dd {
   .login-context {
     padding: 50px 35px;
   }
-  .login-context h1 {
-    font-size: 38px;
-  }
 }
 @media (max-width: 600px) {
   .topbar {
@@ -1262,14 +1232,6 @@ dd {
   .login-context {
     padding: 25px;
     gap: 25px;
-  }
-  .login-context h1 {
-    font-size: 30px;
-    margin-bottom: 13px;
-  }
-  .login-context p,
-  .login-footer {
-    display: none;
   }
   .login-form {
     padding: 35px 25px;

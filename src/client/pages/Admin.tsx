@@ -146,16 +146,9 @@ export default function Admin({
   });
   return (
     <>
-      <PageTitle
-        title="Clinic administration"
-        description="Manage staff access, branches, and the system audit trail."
-      />
+      <PageTitle title="Clinic administration" />
       <WorkspaceSections label="Administration sections" value={section} onChange={setSection}>
-        <WorkspaceSection
-          id="clinic"
-          label="Clinic settings"
-          description="Customize clinic identity and letterhead for future documents and receipts."
-        >
+        <WorkspaceSection id="clinic" label="Clinic settings">
           <Panel title="Clinic name">
             <ResourceState {...clinic}>
               {clinic.data && (
@@ -198,11 +191,7 @@ export default function Admin({
           </Panel>
           <LetterheadSettings onSaved={onBranchCreated} />
         </WorkspaceSection>
-        <WorkspaceSection
-          id="staff"
-          label="Staff accounts"
-          description="Create accounts and manage existing staff access."
-        >
+        <WorkspaceSection id="staff" label="Staff accounts">
           <Panel title="Create staff account">
             <MutationForm
               label="Create account"
@@ -465,11 +454,7 @@ export default function Admin({
             </ResourceState>
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="branches"
-          label="Branches"
-          description="Create clinic branches and review their record identifiers."
-        >
+        <WorkspaceSection id="branches" label="Branches">
           <Panel title="Create branch">
             <MutationForm
               label="Create branch"
@@ -594,11 +579,7 @@ export default function Admin({
             )}
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="rooms"
-          label="Consultation rooms"
-          description="Create, rename or archive rooms in this branch."
-        >
+        <WorkspaceSection id="rooms" label="Consultation rooms">
           <Panel title="Consultation rooms">
             <p className="form-help">
               Remove deletes unused rooms or archives rooms with history. Busy rooms and rooms with
@@ -707,11 +688,7 @@ export default function Admin({
             )}
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="catalogs"
-          label="Catalog choices"
-          description="Manage the active choices available to clinic staff."
-        >
+        <WorkspaceSection id="catalogs" label="Catalog choices">
           <AdminCatalogs />
         </WorkspaceSection>
         <WorkspaceSection
@@ -721,11 +698,7 @@ export default function Admin({
         >
           <RegistrationSettings />
         </WorkspaceSection>
-        <WorkspaceSection
-          id="access"
-          label="Role access"
-          description="Choose the modules each staff role may use."
-        >
+        <WorkspaceSection id="access" label="Role access">
           <RoleModules onSaved={onBranchCreated} />
           <CustomRoles
             onSaved={() => {
@@ -734,11 +707,7 @@ export default function Admin({
             }}
           />
         </WorkspaceSection>
-        <WorkspaceSection
-          id="audit"
-          label="Audit trail"
-          description="Review recorded access and changes to clinic records."
-        >
+        <WorkspaceSection id="audit" label="Audit trail">
           <Panel title="Audit trail">
             {auditList.controls}
             <ResourceState {...audit}>

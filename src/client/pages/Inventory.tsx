@@ -242,7 +242,7 @@ export default function Inventory() {
     <>
       <PageTitle
         title="Dispensary"
-        description="Manage medicines, consumables and retail stock; dispense signed GP prescriptions by first expiry, first out."
+        description="Dispense signed GP prescriptions by first expiry, first out."
         action={
           <div className="actions">
             <button className="secondary" onClick={refresh}>
@@ -265,11 +265,7 @@ export default function Inventory() {
         }
       />
       <WorkspaceSections label="Dispensary sections" value={section} onChange={setSection}>
-        <WorkspaceSection
-          id="dispense"
-          label="Dispense medicines"
-          description="Review and complete signed GP prescriptions."
-        >
+        <WorkspaceSection id="dispense" label="Dispense medicines">
           <Panel title="Patients ready for dispensing">
             <p className="form-help">
               Signed prescriptions appear automatically. This list updates every 15 seconds and when
@@ -443,11 +439,7 @@ export default function Inventory() {
             </ResourceState>
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="stock"
-          label="Stock catalogue"
-          description="Review stock levels, medicine holds and inventory catalogue details."
-        >
+        <WorkspaceSection id="stock" label="Stock catalogue">
           <div ref={editorRef}>
             {' '}
             {(create || editingItem) && (
@@ -740,11 +732,7 @@ export default function Inventory() {
             </ResourceState>
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="supplies"
-          label="Use supplies"
-          description="Record non-medication stock issued or used by clinic staff."
-        >
+        <WorkspaceSection id="supplies" label="Use supplies">
           <Panel title="Use supplies and retail stock">
             {usageRecorded && (
               <p className="notice success" role="status">
@@ -803,11 +791,7 @@ export default function Inventory() {
             )}
           </Panel>
         </WorkspaceSection>
-        <WorkspaceSection
-          id="history"
-          label="Prescription history"
-          description="Find pending or completed prescriptions and their clinic activity."
-        >
+        <WorkspaceSection id="history" label="Prescription history">
           <Panel title="Prescription history and activity">
             <Field
               label="Search prescription history"
