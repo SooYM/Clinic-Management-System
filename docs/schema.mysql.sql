@@ -1,4 +1,4 @@
--- V2 reference schema after migrations001-025, MySQL8.4/InnoDB.
+-- V2 reference schema after migrations001-031, MySQL8.4/InnoDB.
 -- No data or allocated sequence values. Install with npm run db:migrate, not this snapshot.
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -166,6 +166,21 @@ CREATE TABLE `commission_policies` (
   CONSTRAINT `commission_policies_chk_4` CHECK ((`service_threshold_cents` >= 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `custom_roles` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint unsigned NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `modules` json NOT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `custom_roles_tenant_id` (`tenant_id`,`id`),
+  UNIQUE KEY `custom_roles_name` (`tenant_id`,`name`),
+  CONSTRAINT `custom_roles_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
+  CONSTRAINT `custom_roles_chk_1` CHECK ((json_type(`modules`) = _utf8mb4'ARRAY'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `dispenses` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `tenant_id` bigint unsigned NOT NULL,
@@ -202,15 +217,15 @@ CREATE TABLE `encounters` (
   `vitals` json NOT NULL DEFAULT (_utf8mb4'{}'),
   `prescriptions` json NOT NULL DEFAULT (_utf8mb4'[]'),
   `procedure_notes` text NOT NULL,
-  `consultation_fee_cents` int DEFAULT NULL CHECK (`consultation_fee_cents` >= 0),
-  `procedure_fee_cents` int DEFAULT NULL CHECK (`procedure_fee_cents` >= 0),
-  `consumables` json NOT NULL DEFAULT (JSON_ARRAY()),
   `status` varchar(30) NOT NULL DEFAULT 'DRAFT',
   `version` int NOT NULL DEFAULT '1',
   `signed_at` datetime(3) DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `deleted_at` datetime(3) DEFAULT NULL,
+  `consultation_fee_cents` int DEFAULT NULL,
+  `procedure_fee_cents` int DEFAULT NULL,
+  `consumables` json NOT NULL DEFAULT (json_array()),
   PRIMARY KEY (`id`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
   KEY `encounters_history` (`tenant_id`,`patient_id`,`created_at` DESC),
@@ -222,7 +237,9 @@ CREATE TABLE `encounters` (
   CONSTRAINT `encounters_ibfk_3` FOREIGN KEY (`tenant_id`, `practitioner_id`) REFERENCES `users` (`tenant_id`, `id`),
   CONSTRAINT `encounters_ibfk_4` FOREIGN KEY (`tenant_id`, `branch_id`, `queue_ticket_id`) REFERENCES `queue_tickets` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `encounters_chk_1` CHECK ((`specialty` in (_utf8mb4'GP',_utf8mb4'DENTAL',_utf8mb4'AESTHETIC'))),
-  CONSTRAINT `encounters_chk_2` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'SIGNED')))
+  CONSTRAINT `encounters_chk_2` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'SIGNED'))),
+  CONSTRAINT `encounters_chk_3` CHECK ((`consultation_fee_cents` >= 0)),
+  CONSTRAINT `encounters_chk_4` CHECK ((`procedure_fee_cents` >= 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `inventory_batches` (
@@ -235,9 +252,9 @@ CREATE TABLE `inventory_batches` (
   `quantity` int NOT NULL,
   `received_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `item_id` (`item_id`,`batch_number`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`branch_id`,`id`),
   UNIQUE KEY `batch_item_scope` (`tenant_id`,`branch_id`,`item_id`,`id`),
+  UNIQUE KEY `item_id` (`item_id`,`batch_number`),
   KEY `batches_fefo` (`item_id`,`expires_on`,`received_at`),
   CONSTRAINT `inventory_batches_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`, `item_id`) REFERENCES `inventory_items` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `inventory_batches_chk_1` CHECK ((`quantity` >= 0))
@@ -407,10 +424,13 @@ CREATE TABLE `patients` (
   `city` varchar(100) NOT NULL DEFAULT '',
   `country_code` varchar(5) DEFAULT NULL,
   `country_name` varchar(100) DEFAULT NULL,
+  `patient_group_id` bigint unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`national_id`),
   UNIQUE KEY `tenant_id_2` (`tenant_id`,`id`),
   KEY `patients_branch_search` (`tenant_id`,`branch_id`,`name`),
+  KEY `patient_group_scope` (`tenant_id`,`branch_id`,`patient_group_id`),
+  CONSTRAINT `patient_group_scope` FOREIGN KEY (`tenant_id`, `branch_id`, `patient_group_id`) REFERENCES `reference_catalogs` (`tenant_id`, `branch_id`, `id`),
   CONSTRAINT `patients_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `patients_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
   CONSTRAINT `patients_chk_1` CHECK ((`sex` in (_utf8mb4'MALE',_utf8mb4'FEMALE',_utf8mb4'OTHER'))),
@@ -582,11 +602,12 @@ CREATE TABLE `reference_catalogs` (
   `billing_default` varchar(10) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `catalog_label` (`branch_id`,`kind`,`label`),
+  UNIQUE KEY `catalog_scope_id` (`tenant_id`,`branch_id`,`id`),
   UNIQUE KEY `billing_category_default_once` (`branch_id`,`kind`,`billing_default`),
   KEY `catalog_choices` (`tenant_id`,`branch_id`,`kind`,`active`,`sort_order`,`id`),
   CONSTRAINT `reference_catalogs_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `billing_category_default` CHECK (((`billing_default` is null) or ((`kind` = _utf8mb4'BILLING_CATEGORY') and (`billing_default` in (_utf8mb4'SERVICE',_utf8mb4'PRODUCT'))))),
-  CONSTRAINT `reference_catalog_kind` CHECK ((`kind` in (_utf8mb4'LAB_PANEL',_utf8mb4'SPECIMEN_TYPE',_utf8mb4'INVENTORY_UNIT',_utf8mb4'REFERRAL_DESTINATION',_utf8mb4'BILLING_CATEGORY'))),
+  CONSTRAINT `reference_catalog_kind` CHECK ((`kind` in (_utf8mb4'LAB_PANEL',_utf8mb4'SPECIMEN_TYPE',_utf8mb4'INVENTORY_UNIT',_utf8mb4'REFERRAL_DESTINATION',_utf8mb4'BILLING_CATEGORY',_utf8mb4'PATIENT_GROUP'))),
   CONSTRAINT `reference_catalogs_chk_2` CHECK (((`sort_order` >= 0) and (`sort_order` <= 1000000))),
   CONSTRAINT `reference_catalogs_chk_3` CHECK ((`version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -603,8 +624,8 @@ CREATE TABLE `role_module_permissions` (
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`tenant_id`,`role`),
   CONSTRAINT `role_module_permissions_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
-  CONSTRAINT `role_module_permissions_role_allowed` CHECK ((`role` in (_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST',_utf8mb4'CASHIER'))),
-  CONSTRAINT `role_module_permissions_chk_2` CHECK ((json_type(`modules`) = _utf8mb4'ARRAY'))
+  CONSTRAINT `role_module_permissions_chk_2` CHECK ((json_type(`modules`) = _utf8mb4'ARRAY')),
+  CONSTRAINT `role_module_permissions_role_allowed` CHECK ((`role` in (_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST',_utf8mb4'CASHIER')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `rooms` (
@@ -667,9 +688,10 @@ CREATE TABLE `tenants` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(200) NOT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `letterhead` json DEFAULT NULL,
-  `letterhead_version` int NOT NULL DEFAULT 1 CHECK (`letterhead_version` > 0),
-  PRIMARY KEY (`id`)
+  `letterhead` json DEFAULT NULL,
+  `letterhead_version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `tenants_chk_1` CHECK ((`letterhead_version` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `treatment_packages` (
@@ -719,12 +741,16 @@ CREATE TABLE `users` (
   `active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `is_super_admin` tinyint(1) NOT NULL DEFAULT '0',
+  `custom_role_id` bigint unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `tenant_id` (`tenant_id`,`id`),
   KEY `users_ibfk_1` (`tenant_id`,`branch_id`),
+  KEY `users_custom_role` (`tenant_id`,`custom_role_id`),
+  CONSTRAINT `users_custom_role` FOREIGN KEY (`tenant_id`, `custom_role_id`) REFERENCES `custom_roles` (`tenant_id`, `id`),
   CONSTRAINT `users_ibfk_1` FOREIGN KEY (`tenant_id`, `branch_id`) REFERENCES `branches` (`tenant_id`, `id`),
   CONSTRAINT `users_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`),
+  CONSTRAINT `users_admin_custom_role` CHECK (((`role` <> _utf8mb4'ADMIN') or (`custom_role_id` is null))),
   CONSTRAINT `users_role_allowed` CHECK ((`role` in (_utf8mb4'ADMIN',_utf8mb4'DOCTOR',_utf8mb4'RECEPTIONIST',_utf8mb4'NURSE',_utf8mb4'THERAPIST',_utf8mb4'CASHIER'))),
   CONSTRAINT `users_super_admin_role` CHECK (((`is_super_admin` = false) or (`role` = _utf8mb4'ADMIN')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

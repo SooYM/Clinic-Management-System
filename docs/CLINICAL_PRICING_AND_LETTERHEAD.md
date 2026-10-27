@@ -35,4 +35,6 @@ The Render Blueprint continues to deploy the browser demo with `npm run build:de
 
 ## Verification
 
+The logo picker accepts PNG/JPEG source images up to 10 MB and 40 million pixels. It decodes and resizes locally, preserving aspect ratio and PNG transparency, to at most 1200 pixels on the longest side and 160 KB. Larger encoded images are reduced further before preview. Saving is disabled while processing or after a failed selection; choose another image or remove the logo to recover. Server validation remains 160 KB, 2000 × 2000 pixels, and embedded PNG/JPEG only. Invalid images still fail server validation; direct API uploads retain these limits. No third-party image service receives the image.
+
 Regression coverage includes duplicate rejection, fractional non-pill servings, finite vitals, stock-price conflicts and snapshots, exact checkout enforcement, consumable deduction/rollback, administrator authorization, letterhead conflicts and immutable printed/PDF snapshots. Actual MySQL tests use guarded generated disposable databases. Browser checks must additionally verify staff actions and desktop/narrow layouts. Record completed checks separately from planned checks in TESTING.md.

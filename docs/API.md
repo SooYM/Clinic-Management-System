@@ -233,3 +233,14 @@ POST `/api/inventory/batches` accepts `batchNumber: null` or an omitted batch nu
 ## Clinical pricing and letterhead update — 23 October 2026
 
 See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
+
+## Custom module roles
+
+Administrator-only endpoints: `GET /admin/custom-roles` returns `{data:[{id,name,modules,version}]}`. `POST /admin/custom-roles` accepts `{name,modules}` and returns the created role. `PUT /admin/custom-roles/:id` accepts `{name,modules,version}` and returns the next version. Names are trimmed, 1–100 characters, unique within the tenant. Modules must be known module IDs; an empty list denies all modules. Stale updates and duplicate names return 409.
+
+`POST /admin/users` and `PUT /admin/users/:id` accept optional nullable `customRoleId`. Assignments require a role in the same tenant. Administrators cannot receive custom role assignments. A null assignment restores professional role defaults. Every request reevaluates module permissions without changing professional action restrictions.
+
+
+### Patient group catalog and assignment
+
+The existing administrator catalog endpoints accept kind `PATIENT_GROUP`. `GET /api/references/catalogs?kind=PATIENT_GROUP` requires patient module access and returns active branch choices. Admin catalog edits preserve optimistic versions, auditing and administrator-only writes. Patient POST/PUT accepts optional nullable numeric `patientGroupId`; null clears assignment, omission preserves it during updates. Responses include `patientGroupId` and `patientGroupLabel`. Newly selected groups must be active PATIENT_GROUP entries from the current tenant/branch. Unchanged archived assignments are permitted. Invalid, foreign and newly archived assignments return `INVALID_PATIENT_GROUP`. Public registration rejects group assignment fields.

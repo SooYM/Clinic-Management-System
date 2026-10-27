@@ -333,3 +333,17 @@ Full payment: disabled for zero invoice; exact cent total filled; chosen method/
 Real Chromium actions against a generated disposable MySQL 8.4.11 database applied migrations 001–028. GP signed quantity per serving2.5, form SYRUP, two stock units at300 cents each, consultation2500 cents and procedure1000 cents. Blood pressure80/120 and temperature50 persisted. Duplicate medicine selection was absent from the second row. Signing consumed three supplies; dispensing deducted two medication units. Administrator saved a PNG logo, header, address and footer. Browser checkout issued an itemized4100-cent branded receipt. Browser stock intake added five units and changed catalog price to125 cents while the signed prescription retained300 cents. SQL verified medication103, supply17 and the original letterhead snapshot. Desktop1440px and phone390px checks found no horizontal overflow. The generated database and owned QA process were removed after checks. Browser artifacts remain ignored.
 
 Normal and demo builds, strict TypeScript, formatting, production dependency audit (zero vulnerabilities), and changed-interface design detector were checked. Signing fee omissions and approved no-charge checkout have dedicated HTTP/MySQL and demo regressions. Render deployment evidence is recorded separately; local checks alone do not establish hosted operation.
+
+## Custom module role checks
+
+`tests/custom-roles.test.ts` checks role validation, deny-by-default behavior, persistence in demo storage, assignment/revocation, stale version handling, and administrator protection. The real MySQL workflow suite creates a custom role through authenticated HTTP, assigns an existing session, verifies module allow/deny before and after policy edits, rejects administrator/unknown-role assignment and stale/duplicate writes, then restores the user and checks audit rows. Run with the guarded `TEST_DATABASE_URL`; demo checks alone do not prove backend authorization.
+
+
+### Patient group acceptance
+
+- Create and rename a branch patient group; assign it to a patient and verify saved profile/directory after reload.
+- Remove a group; ensure it disappears from new choices while existing membership remains editable and resolves its latest label.
+- Reject foreign-branch, non-group, nonexistent and newly archived group assignments. Preserve omitted assignments on update; clear with null.
+- Enforce patient module access for reference reads, administrator-only catalog edits and reject public self-registration assignment.
+- Verify new branches/reset defaults contain editable Self-pay, Insurance and Company groups.
+- Automated coverage: `tests/patient-groups.test.ts` and patient-group workflow in `tests/mysql.test.ts`; demo checks are simulation only.

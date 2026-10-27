@@ -259,3 +259,12 @@ Successful dispensing → saved dispensing record → readonly sticker request �
 ## Clinical pricing and letterhead update — 23 October 2026
 
 See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
+
+## Custom staff role flow
+
+Administrator opens Settings → Role access → Custom staff roles, enters a role name, selects modules, and saves. Under Staff accounts, select the custom module role while creating or editing staff. Staff keep their professional role for restricted clinical actions. Changes apply to their next backend request. Select Use professional role defaults to remove the assignment. Administrators always retain full access.
+
+
+### Patient group workflow
+
+Administrator opens Clinic catalog choices, selects Patient groups and adds or edits choices. Staff selects an active patient group during registration or demographic edits, then saves. Server validates tenant, branch, catalog kind and availability in the patient transaction; patient auditing records the save. Directory/profile reads resolve the current group label by ID. Removal prevents future assignment, preserves current membership and permits unrelated edits. Staff can explicitly clear the group or choose another active group.

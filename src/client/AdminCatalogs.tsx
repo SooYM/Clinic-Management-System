@@ -16,6 +16,7 @@ import {
   useResource,
 } from './components';
 export const catalogKinds = [
+  ['PATIENT_GROUP', 'Patient groups'],
   ['BILLING_CATEGORY', 'Billing categories'],
   ['LAB_PANEL', 'Lab investigation panels'],
   ['SPECIMEN_TYPE', 'Specimen types'],

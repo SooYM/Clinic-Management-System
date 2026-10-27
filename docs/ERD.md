@@ -39,6 +39,15 @@ Letter previews reuse `clinical_documents.payload`; prescription activity joins 
 erDiagram
   tenants ||--o{ branches : contains
   tenants ||--o{ role_module_permissions : grants
+  tenants ||--o{ custom_roles : defines
+  custom_roles o|--o{ users : module_policy
+  custom_roles {
+    bigint id PK
+    bigint tenant_id FK
+    varchar name "unique per tenant"
+    json modules
+    int version
+  }
   branches ||--o{ users : primary_branch
   users ||--o{ user_branches : membership
   branches ||--o{ user_branches : permits
@@ -490,3 +499,6 @@ Medicine-sticker reprints read the existing `dispenses.encounter_id` relationshi
 ## Clinical pricing and letterhead update — 23 October 2026
 
 See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
+
+
+Patient group relationship: `patients(tenant_id, branch_id, patient_group_id)` optionally references `reference_catalogs(tenant_id, branch_id, id)`. Catalog kind must be `PATIENT_GROUP`, enforced by patient writes. Composite foreign key prevents cross-scope assignment. Group rows are archived instead of deleted; renames resolve through stable numeric IDs. Migration: `030_patient_groups.sql`.

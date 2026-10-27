@@ -1,5 +1,13 @@
 # Verification
 
+## Patient groups, custom roles and logo uploads — 27 October 2026
+
+`npm test -- --reporter=dot --maxWorkers=1 --hookTimeout=60000` passed all 530 tests across 42 files with zero skips. The configured MySQL suites create guarded disposable databases and exercise branch-scoped patient groups, archive preservation, tenant-scoped custom policies, staff assignment, live-session revocation, administrator protection and reset defaults. The first parallel run exposed the expected catalog-count change and resource-related timeout/connection failures; the count was corrected before the passing sequential run.
+
+TypeScript, normal and demo builds, changed-source formatting, `git diff --check`, and the UI detector passed. Real Chromium actions against a separate disposable MySQL database created a group and custom role, saved a patient's insurance assignment, assigned staff access, and uploaded a generated PNG larger than 160 KB. Browser checks verified resizing to the stored byte/dimension limits and exact saved logo retrieval. An interrupted role-list request verified that a real staff-name update omits assignment changes and preserves the existing custom role. Retry recovery and desktop/320px layouts were inspected. The browser QA server stopped and its generated database was removed.
+
+The local database was backed up before applying pending migrations 027–031. The backup restored successfully into a separate disposable database with matching table counts. Existing local table counts were preserved, all 31 migrations are present, and the guarded local launcher returned healthy API operation on reserved ports. No hosted deployment was performed or verified.
+
 Country/list release gate (8 October 2026): `npm test` passed 322 tests across eighteen files with zero skips. Migration016, scoped patient country roundtrip, legacy compatibility, demo parity and shared immutable list projections are included. TypeScript, normal/demo builds, source formatting and local database health passed. Country selection and loaded-list controls were checked in Chromium at desktop and 320px widths.
 
 Run `npm test`. Domain tests exercise money, queue transitions, allergy conflicts, FEFO allocation and commission thresholds. Database safety tests reject ordinary database URLs and prohibit fallback to `DATABASE_URL`.

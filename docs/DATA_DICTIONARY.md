@@ -1,8 +1,6 @@
 # Complete column dictionary
 
-Schema-only reference after migrations001–026. No records or credentials are included.
-
-Migration026 adds CASHIER to `users.role` and `role_module_permissions.role`. Existing grants remain unchanged; default grants apply only without an override. `inventory_batches.batch_number` is nullable for receipts without manufacturer numbering; numeric row IDs still track stock provenance. `encounters.prescriptions` JSON retains total `quantity`, optional `quantityPerDose`, and optional `indication`; signed encounter snapshots remain immutable.
+Schema-only reference after migrations001–031. No records or credentials are included.
 Install with `npm run db:migrate`; executable migrations remain authoritative.
 See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and [ERD](ERD.md).
 
@@ -121,6 +119,18 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | product_bps             | int             | NO       | 500                  |                              |
 | updated_at              | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 
+## custom_roles
+
+| Column     | Type            | Nullable | Default              | Extra / generated expression |
+| ---------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id         | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id  | bigint unsigned | NO       | NULL                 |                              |
+| name       | varchar(100)    | NO       | NULL                 |                              |
+| modules    | json            | NO       | NULL                 |                              |
+| version    | int             | NO       | 1                    |                              |
+| created_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| updated_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+
 ## dispenses
 
 | Column          | Type            | Nullable | Default              | Extra / generated expression |
@@ -136,28 +146,31 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## encounters
 
-| Column          | Type            | Nullable | Default              | Extra / generated expression |
-| --------------- | --------------- | -------- | -------------------- | ---------------------------- |
-| id              | bigint unsigned | NO       | NULL                 | auto_increment               |
-| tenant_id       | bigint unsigned | NO       | NULL                 |                              |
-| branch_id       | bigint unsigned | NO       | NULL                 |                              |
-| patient_id      | bigint unsigned | NO       | NULL                 |                              |
-| practitioner_id | bigint unsigned | NO       | NULL                 |                              |
-| queue_ticket_id | bigint unsigned | YES      | NULL                 |                              |
-| specialty       | varchar(20)     | NO       | GP                   |                              |
-| subjective      | text            | NO       | NULL                 |                              |
-| objective       | text            | NO       | NULL                 |                              |
-| assessment      | text            | NO       | NULL                 |                              |
-| plan            | text            | NO       | NULL                 |                              |
-| vitals          | json            | NO       | _utf8mb4\'{}\'       | DEFAULT_GENERATED            |
-| prescriptions   | json            | NO       | _utf8mb4\'[]\'       | DEFAULT_GENERATED            |
-| procedure_notes | text            | NO       | NULL                 |                              |
-| status          | varchar(30)     | NO       | DRAFT                |                              |
-| version         | int             | NO       | 1                    |                              |
-| signed_at       | datetime(3)     | YES      | NULL                 |                              |
-| created_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
-| updated_at      | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
-| deleted_at      | datetime(3)     | YES      | NULL                 |                              |
+| Column                 | Type            | Nullable | Default              | Extra / generated expression |
+| ---------------------- | --------------- | -------- | -------------------- | ---------------------------- |
+| id                     | bigint unsigned | NO       | NULL                 | auto_increment               |
+| tenant_id              | bigint unsigned | NO       | NULL                 |                              |
+| branch_id              | bigint unsigned | NO       | NULL                 |                              |
+| patient_id             | bigint unsigned | NO       | NULL                 |                              |
+| practitioner_id        | bigint unsigned | NO       | NULL                 |                              |
+| queue_ticket_id        | bigint unsigned | YES      | NULL                 |                              |
+| specialty              | varchar(20)     | NO       | GP                   |                              |
+| subjective             | text            | NO       | NULL                 |                              |
+| objective              | text            | NO       | NULL                 |                              |
+| assessment             | text            | NO       | NULL                 |                              |
+| plan                   | text            | NO       | NULL                 |                              |
+| vitals                 | json            | NO       | _utf8mb4\'{}\'       | DEFAULT_GENERATED            |
+| prescriptions          | json            | NO       | _utf8mb4\'[]\'       | DEFAULT_GENERATED            |
+| procedure_notes        | text            | NO       | NULL                 |                              |
+| status                 | varchar(30)     | NO       | DRAFT                |                              |
+| version                | int             | NO       | 1                    |                              |
+| signed_at              | datetime(3)     | YES      | NULL                 |                              |
+| created_at             | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| updated_at             | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| deleted_at             | datetime(3)     | YES      | NULL                 |                              |
+| consultation_fee_cents | int             | YES      | NULL                 |                              |
+| procedure_fee_cents    | int             | YES      | NULL                 |                              |
+| consumables            | json            | NO       | json_array()         | DEFAULT_GENERATED            |
 
 ## inventory_batches
 
@@ -298,6 +311,7 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | city                 | varchar(100)    | NO       |                      |                              |
 | country_code         | varchar(5)      | YES      | NULL                 |                              |
 | country_name         | varchar(100)    | YES      | NULL                 |                              |
+| patient_group_id     | bigint unsigned | YES      | NULL                 |                              |
 
 ## payments
 
@@ -471,11 +485,13 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 
 ## tenants
 
-| Column     | Type            | Nullable | Default              | Extra / generated expression |
-| ---------- | --------------- | -------- | -------------------- | ---------------------------- |
-| id         | bigint unsigned | NO       | NULL                 | auto_increment               |
-| name       | varchar(200)    | NO       | NULL                 |                              |
-| created_at | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| Column             | Type            | Nullable | Default              | Extra / generated expression |
+| ------------------ | --------------- | -------- | -------------------- | ---------------------------- |
+| id                 | bigint unsigned | NO       | NULL                 | auto_increment               |
+| name               | varchar(200)    | NO       | NULL                 |                              |
+| created_at         | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
+| letterhead         | json            | YES      | NULL                 |                              |
+| letterhead_version | int             | NO       | 1                    |                              |
 
 ## treatment_packages
 
@@ -516,11 +532,4 @@ See [schema SQL snapshot](schema.mysql.sql), [database design](DATABASE.md) and 
 | active         | tinyint(1)      | NO       | 1                    |                              |
 | created_at     | datetime(3)     | NO       | CURRENT_TIMESTAMP(3) | DEFAULT_GENERATED            |
 | is_super_admin | tinyint(1)      | NO       | 0                    |                              |
-
-
-Saved medicine-sticker views derive `dispensedAt` from `dispenses.created_at`, not print time, and directions from signed encounter prescription JSON. This read projection adds no database fields. Linked patient/practitioner names use current identities; missing legacy medicine name/unit snapshots use only the same-tenant, same-branch catalog. Reprint operations do not create stock, reservation, dispensing or invoice rows.
-
-
-## Clinical pricing and letterhead update — 23 October 2026
-
-See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
+| custom_role_id | bigint unsigned | YES      | NULL                 |                              |

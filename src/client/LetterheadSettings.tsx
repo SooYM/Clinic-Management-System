@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from './api';
+import { prepareLogo } from './logo-upload';
 import {
   ErrorNotice,
   Field,
@@ -16,6 +17,7 @@ export default function LetterheadSettings() {
   const [logo, setLogo] = useState<string>();
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const logoDataUrl = logo ?? resource.data?.logoDataUrl ?? '';
   return (
     <Panel title="Document letterhead">
@@ -24,6 +26,8 @@ export default function LetterheadSettings() {
           <MutationForm
             key={resource.data.version}
             label="Save letterhead"
+            disabled={processing || !!error}
+            disabledReason={processing ? 'Preparing logo…' : 'Choose a valid logo before saving.'}
             onSubmit={(form) =>
               api.put('/admin/letterhead', {
                 version: resource.data!.version,
@@ -47,29 +51,32 @@ export default function LetterheadSettings() {
               <input
                 type="file"
                 accept="image/png,image/jpeg"
+                disabled={processing}
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
                   setError('');
                   setSaved(false);
                   if (!file) return;
-                  if (file.size > 160 * 1024 || !['image/png', 'image/jpeg'].includes(file.type)) {
-                    setError('Choose a PNG or JPEG logo up to 160 KB.');
-                    event.target.value = '';
-                    return;
-                  }
+                  const input = event.currentTarget;
+                  setProcessing(true);
                   try {
-                    const value = await new Promise<string>((resolve, reject) => {
-                      const reader = new FileReader();
-                      reader.onload = () => resolve(String(reader.result));
-                      reader.onerror = reject;
-                      reader.readAsDataURL(file);
-                    });
+                    const value = await prepareLogo(file);
                     setLogo(value);
-                  } catch {
-                    setError('Logo could not be read. Choose the file again.');
+                  } catch (cause) {
+                    setError(
+                      cause instanceof Error
+                        ? cause.message
+                        : 'Logo could not be read. Choose the file again.',
+                    );
+                  } finally {
+                    input.value = '';
+                    setProcessing(false);
                   }
                 }}
               />
+              <small>
+                PNG or JPEG, up to 10 MB. Images are resized automatically for document printing.
+              </small>
             </Field>
             {logoDataUrl && (
               <div>
@@ -82,9 +89,11 @@ export default function LetterheadSettings() {
                 <button
                   type="button"
                   className="text-button"
+                  disabled={processing}
                   onClick={() => {
                     setLogo('');
                     setSaved(false);
+                    setError('');
                   }}
                 >
                   Remove logo

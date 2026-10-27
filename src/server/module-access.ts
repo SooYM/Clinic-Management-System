@@ -11,8 +11,20 @@ export async function effectiveModules(
   db: Database,
   tenantId: number,
   role: string,
+  customRoleId?: number | null,
 ): Promise<ModuleId[]> {
   if (role === 'ADMIN') return [...moduleIds];
+  if (customRoleId != null) {
+    const { rows } = await db.query(
+      'SELECT modules FROM custom_roles WHERE tenant_id=$1 AND id=$2',
+      [tenantId, customRoleId],
+    );
+    const configured =
+      typeof rows[0]?.modules === 'string' ? JSON.parse(rows[0].modules) : rows[0]?.modules;
+    return Array.isArray(configured)
+      ? moduleIds.filter((module) => configured.includes(module))
+      : [];
+  }
   if (!(role in defaultRoleModules)) return [];
   const { rows } = await db.query(
     'SELECT modules FROM role_module_permissions WHERE tenant_id=$1 AND role=$2',
@@ -43,6 +55,7 @@ export async function authorizeModules(req: Request, _res: Response, next: NextF
       pool,
       req.context.actor.tenantId,
       req.context.actor.role,
+      req.context.actor.customRoleId,
     );
     req.context.modules = modules;
     if (req.path.startsWith('/admin/') && req.context.actor.role !== 'ADMIN')

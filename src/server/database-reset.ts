@@ -38,6 +38,7 @@ export const RESET_TABLES = [
   'user_branches',
   'rooms',
   'users',
+  'custom_roles',
   'branches',
   'tenants',
   'resource_locks',

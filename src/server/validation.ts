@@ -36,6 +36,7 @@ export const schemas = {
     .strict(),
   patient: z
     .object({
+      patientGroupId: id.nullable().optional(),
       name: text.optional(),
       firstName: z.string().trim().min(1).max(150).optional(),
       lastName: z.string().trim().max(150).optional(),

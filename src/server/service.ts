@@ -54,7 +54,7 @@ export class ClinicService {
     const t = ctx.actor.tenantId,
       b = ctx.branchId;
     const queries: Record<string, string> = {
-      patients: `SELECT p.*,p.id patient_number FROM patients p WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.id LIMIT 200`,
+      patients: `SELECT p.*,p.id patient_number,(SELECT c.label FROM reference_catalogs c WHERE c.id=p.patient_group_id AND c.tenant_id=p.tenant_id AND c.branch_id=p.branch_id) patient_group_label FROM patients p WHERE p.tenant_id=$1 AND p.branch_id=$2 AND (p.name LIKE $3 OR p.national_id LIKE $3 OR p.phone LIKE $3) ORDER BY p.id LIMIT 200`,
       appointments: `SELECT a.*,p.id patient_number,p.name patient_name,u.name practitioner_name,r.name room_name FROM appointments a JOIN patients p ON p.id=a.patient_id JOIN users u ON u.id=a.practitioner_id LEFT JOIN rooms r ON r.id=a.room_id WHERE a.tenant_id=$1 AND a.branch_id=$2 AND a.deleted_at IS NULL ORDER BY a.starts_at DESC LIMIT 200`,
       encounters: `SELECT e.*,p.id patient_number,p.name patient_name,u.name practitioner_name FROM encounters e JOIN patients p ON p.id=e.patient_id JOIN users u ON u.id=e.practitioner_id WHERE e.tenant_id=$1 AND e.branch_id=$2 AND e.deleted_at IS NULL AND (p.name LIKE $3 OR p.national_id LIKE $3 OR CAST(p.id AS CHAR) LIKE $3 OR CAST(e.id AS CHAR) LIKE $3 OR e.assessment LIKE $3 OR u.name LIKE $3) ORDER BY e.created_at DESC LIMIT 200`,
       inventory: `SELECT i.*,
@@ -135,7 +135,14 @@ export class ClinicService {
       rooms: rooms.rows.map((room) => ({ ...room, active: Boolean(room.active) })),
       practitioners: practitioners.rows,
       branchId: ctx.branchId,
-      modules: ctx.modules || (await effectiveModules(this.db, ctx.actor.tenantId, ctx.actor.role)),
+      modules:
+        ctx.modules ||
+        (await effectiveModules(
+          this.db,
+          ctx.actor.tenantId,
+          ctx.actor.role,
+          ctx.actor.customRoleId,
+        )),
     });
   }
   async queueSuggestions(ctx: Context) {
@@ -187,7 +194,7 @@ export class ClinicService {
   }
   private async patient(db: Database, ctx: Context, id: number) {
     const { rows } = await db.query(
-      `SELECT *,id patient_number FROM patients WHERE id=$1 AND tenant_id=$2 AND branch_id=$3`,
+      `SELECT p.*,p.id patient_number,(SELECT c.label FROM reference_catalogs c WHERE c.id=p.patient_group_id AND c.tenant_id=p.tenant_id AND c.branch_id=p.branch_id) patient_group_label FROM patients p WHERE p.id=$1 AND p.tenant_id=$2 AND p.branch_id=$3`,
       [id, ctx.actor.tenantId, ctx.branchId],
     );
     if (!rows[0]) throw missing();
@@ -212,10 +219,12 @@ export class ClinicService {
   }
   async savePatient(ctx: Context, input: any, id?: number) {
     return this.transact(async (db) => {
+      let previousGroup: number | null = null;
       let previousCountry: string | null = null;
       let previousCountryName: string | null = null;
       if (id) {
         const previous = await this.patient(db, ctx, id);
+        previousGroup = previous.patient_group_id ?? null;
         previousCountry = previous.country_code;
         previousCountryName = previous.country_name;
         if (previous.version !== input.version)
@@ -224,6 +233,7 @@ export class ClinicService {
       const {
         id: recordId,
         patientNumber,
+        patientGroupLabel,
         tenantId,
         branchId,
         createdAt,
@@ -232,6 +242,8 @@ export class ClinicService {
       } = input;
       input = schemas.patient.parse({
         ...payload,
+        patientGroupId:
+          payload.patientGroupId === undefined ? previousGroup : payload.patientGroupId,
         nationality: payload.nationality ?? undefined,
         countryCode:
           payload.countryCode === undefined
@@ -253,6 +265,19 @@ export class ClinicService {
           input.nationality === 'NON_MALAYSIAN' && previousCountry === 'MY'
             ? null
             : previousCountry;
+      if (input.patientGroupId !== null && input.patientGroupId !== undefined) {
+        const group = (
+          await db.query(
+            "SELECT id,active FROM reference_catalogs WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND kind='PATIENT_GROUP' FOR SHARE",
+            [input.patientGroupId, ctx.actor.tenantId, ctx.branchId],
+          )
+        ).rows[0];
+        if (!group || (!group.active && input.patientGroupId !== previousGroup))
+          throw new DomainError(
+            'INVALID_PATIENT_GROUP',
+            'Choose an active patient group from this branch.',
+          );
+      }
       const locations = lookupPostcode(input.postcode);
       if (locations.length === 1) {
         const location = locations[0];
@@ -287,23 +312,24 @@ export class ClinicService {
         input.city,
         input.countryCode ?? null,
         input.countryName ?? null,
+        input.patientGroupId ?? null,
       ];
       let rows;
       if (id) {
         await this.patient(db, ctx, id);
         ({ rows } = await db.query(
-          `UPDATE patients SET name=$3,national_id=$4,date_of_birth=$5,sex=$6,phone=$7,email=$8,blood_group=$9,allergies=$10,conditions=$11,notification_consent=$12,first_name=$13,last_name=$14,nationality=$15,address_line1=$16,address_line2=$17,postcode=$18,state=$19,city=$20,country_code=$21,country_name=$22,version=version+1,updated_at=now() WHERE tenant_id=$1 AND branch_id=$2 AND id=$23 AND version=$24 RETURNING *`,
+          `UPDATE patients SET name=$3,national_id=$4,date_of_birth=$5,sex=$6,phone=$7,email=$8,blood_group=$9,allergies=$10,conditions=$11,notification_consent=$12,first_name=$13,last_name=$14,nationality=$15,address_line1=$16,address_line2=$17,postcode=$18,state=$19,city=$20,country_code=$21,country_name=$22,patient_group_id=$23,version=version+1,updated_at=now() WHERE tenant_id=$1 AND branch_id=$2 AND id=$24 AND version=$25 RETURNING *`,
           [...values, id, input.version],
         ));
         if (!rows[0])
           throw new DomainError('VERSION_CONFLICT', 'Patient changed. Refresh before saving.', 409);
       } else
         ({ rows } = await db.query(
-          `INSERT INTO patients(tenant_id,branch_id,name,national_id,date_of_birth,sex,phone,email,blood_group,allergies,conditions,notification_consent,first_name,last_name,nationality,address_line1,address_line2,postcode,state,city,country_code,country_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+          `INSERT INTO patients(tenant_id,branch_id,name,national_id,date_of_birth,sex,phone,email,blood_group,allergies,conditions,notification_consent,first_name,last_name,nationality,address_line1,address_line2,postcode,state,city,country_code,country_name,patient_group_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
           values,
         ));
       await this.audit(db, ctx, id ? 'UPDATE' : 'CREATE', 'patient', rows[0].id);
-      return camel({ ...rows[0], patient_number: rows[0].id });
+      return camel(await this.patient(db, ctx, rows[0].id));
     });
   }
   async schedule(ctx: Context, input: any) {

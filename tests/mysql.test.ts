@@ -268,6 +268,52 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       notificationConsent: false,
       ...extra,
     });
+  it('persists scoped patient groups, protects archived assignments and audits catalog changes', async () => {
+    const catalogs = new (await import('../src/server/catalog-service')).CatalogService();
+    const adminCtx = { ...ctx, actor: { ...ctx.actor, id: administrator, role: 'ADMIN' } };
+    const group = await catalogs.create(adminCtx, { kind: 'PATIENT_GROUP', label: 'QA Insurance' });
+    const p = await patient({ patientGroupId: group.id });
+    expect(p).toMatchObject({ patientGroupId: group.id, patientGroupLabel: 'QA Insurance' });
+    expect(typeof p.patientGroupId).toBe('number');
+    await catalogs.update(adminCtx, group.id, {
+      label: 'QA Company',
+      active: false,
+      sortOrder: 0,
+      version: group.version,
+    });
+    expect(await service.getPatient(ctx, p.id)).toMatchObject({ patientGroupLabel: 'QA Company' });
+    const saved = await service.savePatient(ctx, { ...p, phone: '12345' }, p.id);
+    expect(saved.patientGroupId).toBe(group.id);
+    await expect(patient({ patientGroupId: group.id })).rejects.toMatchObject({
+      code: 'INVALID_PATIENT_GROUP',
+    });
+    const foreign = await catalogs.create(
+      { ...adminCtx, branchId: otherBranch },
+      { kind: 'PATIENT_GROUP', label: 'QA Foreign' },
+    );
+    await expect(patient({ patientGroupId: foreign.id })).rejects.toMatchObject({
+      code: 'INVALID_PATIENT_GROUP',
+    });
+    await expect(patient({ patientGroupId: 999999999 })).rejects.toMatchObject({
+      code: 'INVALID_PATIENT_GROUP',
+    });
+    await expect(
+      catalogs.create(ctx, { kind: 'PATIENT_GROUP', label: 'Forbidden' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      (
+        await sql.query('SELECT action FROM audit_logs WHERE entity_type=? AND entity_id=?', [
+          'reference_catalog',
+          group.id,
+        ])
+      )[0],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: 'CREATE_CATALOG' }),
+        expect.objectContaining({ action: 'ARCHIVE_CATALOG' }),
+      ]),
+    );
+  });
   it('persists doctor prices, consumes surgical supplies atomically, and rejects cashier price overrides', async () => {
     const p = await patient();
     const medicine = await item({ name: 'QA syrup' });
@@ -528,6 +574,67 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   ) => http(path, method, body, extra, legacyBaseUrl);
   const legacyAdminHttp = (path: string, method = 'GET', body?: any) =>
     legacyHttp(path, method, body, { Cookie: `cms_session=${adminToken}` });
+  it('assigns tenant custom roles and immediately enforces module changes on active sessions', async () => {
+    expect(
+      (await settingsHttp('/admin/custom-roles', 'POST', { name: 'Denied', modules: [] })).status,
+    ).toBe(403);
+    const created = await settingsAdminHttp('/admin/custom-roles', 'POST', {
+      name: 'QA Patient desk',
+      modules: ['patients'],
+    });
+    expect(created.status).toBe(201);
+    const role = await created.json();
+    try {
+      expect(
+        (await settingsAdminHttp('/admin/users/' + receptionist, 'PUT', { customRoleId: role.id }))
+          .status,
+      ).toBe(200);
+      expect((await settingsHttp('/patients')).status).toBe(200);
+      expect((await settingsHttp('/inventory')).status).toBe(403);
+      expect(
+        (await settingsAdminHttp('/admin/users/' + administrator, 'PUT', { customRoleId: role.id }))
+          .status,
+      ).toBe(422);
+      expect(
+        (
+          await settingsAdminHttp('/admin/users/' + receptionist, 'PUT', {
+            customRoleId: 999999999,
+          })
+        ).status,
+      ).toBe(422);
+      expect(
+        (await settingsAdminHttp('/admin/custom-roles', 'POST', { name: role.name, modules: [] }))
+          .status,
+      ).toBe(409);
+      expect(
+        (
+          await settingsAdminHttp('/admin/custom-roles/' + role.id, 'PUT', {
+            name: role.name,
+            modules: [],
+            version: role.version,
+          })
+        ).status,
+      ).toBe(200);
+      expect((await settingsHttp('/patients')).status).toBe(403);
+      expect(
+        (
+          await settingsAdminHttp('/admin/custom-roles/' + role.id, 'PUT', {
+            name: role.name,
+            modules: ['patients'],
+            version: role.version,
+          })
+        ).status,
+      ).toBe(409);
+      const logs = await sql.query(
+        'SELECT id FROM audit_logs WHERE entity_type=? AND entity_id=?',
+        ['custom_role', role.id],
+      );
+      expect((logs[0] as any[]).length).toBe(2);
+    } finally {
+      await settingsAdminHttp('/admin/users/' + receptionist, 'PUT', { customRoleId: null });
+      await sql.query('DELETE FROM custom_roles WHERE id=?', [role.id]);
+    }
+  });
   it('blocks prior Malaysian appointment dates and removes only unattended bookings with history and scope preserved', async () => {
     const p = await patient(),
       payload = {

@@ -1,4 +1,5 @@
 export const catalogKinds = [
+  'PATIENT_GROUP',
   'BILLING_CATEGORY',
   'LAB_PANEL',
   'SPECIMEN_TYPE',
@@ -19,3 +20,5 @@ export interface CatalogEntry {
 }
 
 export const defaultBillingCategories = ['SERVICE', 'PRODUCT'] as const;
+
+export const defaultPatientGroups = ['Self-pay', 'Insurance', 'Company'] as const;

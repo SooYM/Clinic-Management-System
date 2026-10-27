@@ -1,3 +1,4 @@
+import { createPatientGroupDefaults } from './db/patient-group-defaults.js';
 import { createBillingCategoryDefaults } from './db/billing-category-defaults.js';
 import { idSchema } from '../shared/identifiers.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
@@ -16,6 +17,7 @@ import { effectiveModules } from './module-access.js';
 import { expireQueue } from './queue-lifecycle.js';
 import { letterheadSchema } from './letterhead.js';
 import { emptyLetterhead } from '../shared/letterhead.js';
+import { customRoleRouter, validateCustomRole } from './custom-role-router.js';
 
 const route =
   (fn: (req: Request, res: Response) => Promise<unknown>) =>
@@ -36,6 +38,7 @@ const userInput = z
     name: z.string().trim().min(1).max(150),
     password,
     role: z.enum(roleIds),
+    customRoleId: idSchema.nullable().optional(),
     branchId: idSchema,
     licenseNumber: z.string().trim().max(100).nullable().optional(),
   })
@@ -62,6 +65,7 @@ async function audit(db: Database, req: Request, action: string, entity: string,
 
 export function administrationRouter() {
   const router = Router();
+  router.use(customRoleRouter());
   router.get(
     '/admin/letterhead',
     roles('ADMIN'),
@@ -241,7 +245,7 @@ export function administrationRouter() {
     roles('ADMIN'),
     route(async (req, res) => {
       const { rows } = await pool.query(
-        'SELECT id,name,email,role,branch_id,license_number,active,created_at FROM users WHERE tenant_id=$1 ORDER BY name LIMIT 200',
+        'SELECT id,name,email,role,custom_role_id,branch_id,license_number,active,created_at FROM users WHERE tenant_id=$1 ORDER BY name LIMIT 200',
         [req.context.actor.tenantId],
       );
       res.json({ data: camel(rows) });
@@ -260,8 +264,9 @@ export function administrationRouter() {
         );
         if (!rows[0])
           throw new DomainError('INVALID_BRANCH', 'Choose a branch in your clinic.', 422);
+        await validateCustomRole(db, req.context.actor.tenantId, input.role, input.customRoleId);
         const inserted = await db.query(
-          'INSERT INTO users(tenant_id,branch_id,email,name,password_hash,role,license_number) VALUES($1,$2,$3,$4,$5,$6,$7)',
+          'INSERT INTO users(tenant_id,branch_id,email,name,password_hash,role,license_number,custom_role_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
           [
             req.context.actor.tenantId,
             input.branchId,
@@ -270,6 +275,7 @@ export function administrationRouter() {
             passwordHash,
             input.role,
             input.licenseNumber || null,
+            input.customRoleId ?? null,
           ],
         );
         const id = inserted.insertId!;
@@ -283,6 +289,7 @@ export function administrationRouter() {
           email: input.email,
           name: input.name,
           role: input.role,
+          customRoleId: input.customRoleId ?? null,
           branchId: input.branchId,
         };
       });
@@ -298,10 +305,14 @@ export function administrationRouter() {
         .object({
           active: z.boolean().optional(),
           name: z.string().trim().min(1).max(150).optional(),
+          customRoleId: idSchema.nullable().optional(),
         })
         .strict()
         .refine(
-          (value) => value.active !== undefined || value.name !== undefined,
+          (value) =>
+            value.active !== undefined ||
+            value.name !== undefined ||
+            value.customRoleId !== undefined,
           'Provide staff name or active status.',
         )
         .parse(req.body);
@@ -337,7 +348,7 @@ export function administrationRouter() {
           [req.context.actor.tenantId],
         );
         const target = await db.query(
-          'SELECT id,role,name,active FROM users WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
+          'SELECT id,role,name,active,custom_role_id FROM users WHERE tenant_id=$1 AND id=$2 FOR UPDATE',
           [req.context.actor.tenantId, id],
         );
         if (!target.rows[0]) throw new DomainError('NOT_FOUND', 'Staff account not found.', 404);
@@ -348,17 +359,28 @@ export function administrationRouter() {
           admins.rows.length <= 1
         )
           throw new DomainError('LAST_ADMIN', 'Keep at least one active administrator.', 409);
-        await db.query('UPDATE users SET active=$3,name=$4 WHERE tenant_id=$1 AND id=$2', [
-          req.context.actor.tenantId,
-          id,
-          input.active ?? Boolean(target.rows[0].active),
-          input.name ?? target.rows[0].name,
-        ]);
+        const customRoleId =
+          input.customRoleId === undefined ? target.rows[0].custom_role_id : input.customRoleId;
+        await validateCustomRole(db, req.context.actor.tenantId, target.rows[0].role, customRoleId);
+        await db.query(
+          'UPDATE users SET active=$3,name=$4,custom_role_id=$5 WHERE tenant_id=$1 AND id=$2',
+          [
+            req.context.actor.tenantId,
+            id,
+            input.active ?? Boolean(target.rows[0].active),
+            input.name ?? target.rows[0].name,
+            customRoleId,
+          ],
+        );
         if (input.active === false) await db.query('DELETE FROM sessions WHERE user_id=$1', [id]);
         await audit(
           db,
           req,
-          input.name !== undefined ? 'USER_UPDATED' : 'USER_STATUS_CHANGED',
+          input.customRoleId !== undefined
+            ? 'USER_CUSTOM_ROLE_CHANGED'
+            : input.name !== undefined
+              ? 'USER_UPDATED'
+              : 'USER_STATUS_CHANGED',
           'user',
           id,
         );
@@ -366,6 +388,7 @@ export function administrationRouter() {
           id,
           name: input.name ?? target.rows[0].name,
           active: input.active ?? Boolean(target.rows[0].active),
+          customRoleId,
         };
       });
       res.json(result);
@@ -423,6 +446,7 @@ export function administrationRouter() {
         );
         const id = inserted.insertId!;
         await createBillingCategoryDefaults(db, req.context.actor.tenantId, id);
+        await createPatientGroupDefaults(db, req.context.actor.tenantId, id);
         await db.query('INSERT INTO user_branches(user_id,branch_id) VALUES($1,$2)', [
           req.context.actor.id,
           id,

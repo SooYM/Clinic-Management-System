@@ -23,8 +23,11 @@ import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy';
 import { useListControls } from '../ListControls';
 import { useConfirm } from '../Confirmation';
 import LetterheadSettings from '../LetterheadSettings';
+import CustomRoles from '../CustomRoles';
+import type { CustomRole } from '../../shared/custom-roles';
 interface Staff extends User {
   active: boolean;
+  customRoleId?: number | null;
 }
 interface AdminBranch extends Reference {
   address: string;
@@ -50,6 +53,16 @@ export default function Admin({
 }) {
   const confirm = useConfirm();
   const users = useResource<Staff[]>('/admin/users');
+  const customRoles = useResource<CustomRole[]>('/admin/custom-roles');
+  const customRolesReady =
+    !customRoles.loading &&
+    !customRoles.refreshing &&
+    !customRoles.error &&
+    Boolean(customRoles.data);
+  const [staffRoleChange, setStaffRoleChange] = useState<{
+    staffId: number;
+    value: number | null;
+  }>();
   const branchRecords = useResource<AdminBranch[]>('/admin/branches');
   const [editingBranch, setEditingBranch] = useState<AdminBranch>();
   const [editingStaff, setEditingStaff] = useState<Staff>();
@@ -192,6 +205,12 @@ export default function Admin({
           <Panel title="Create staff account">
             <MutationForm
               label="Create account"
+              disabled={!customRolesReady}
+              disabledReason={
+                customRoles.error
+                  ? 'Custom roles could not load. Retry before creating an account.'
+                  : 'Loading custom roles before account creation.'
+              }
               onSuccess={() => {
                 users.refresh();
                 onBranchCreated();
@@ -202,6 +221,8 @@ export default function Admin({
                   email: formText(f, 'email'),
                   password: formText(f, 'password'),
                   role: formText(f, 'role'),
+                  customRoleId:
+                    staffRole === 'ADMIN' ? null : Number(formText(f, 'customRoleId')) || null,
                   branchId: Number(formText(f, 'branchId')),
                   licenseNumber:
                     formText(f, 'role') === 'DOCTOR' ? formText(f, 'licenseNumber') || null : null,
@@ -244,6 +265,21 @@ export default function Admin({
                   </select>
                 </Field>
                 <SelectReference items={branches} name="branchId" label="Branch" />
+                {staffRole !== 'ADMIN' && (
+                  <Field
+                    label="Custom module role"
+                    hint="Overrides module access; professional permissions still apply."
+                  >
+                    <select name="customRoleId" disabled={!customRolesReady}>
+                      <option value="">Use professional role defaults</option>
+                      {customRoles.data?.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
                 {staffRole === 'DOCTOR' && (
                   <Field label="Practitioner registration number" hint="Required for GP accounts.">
                     <input name="licenseNumber" required />
@@ -254,6 +290,14 @@ export default function Admin({
           </Panel>
           <Panel title="Staff access">
             {staffError && <ErrorNotice>{staffError}</ErrorNotice>}
+            {customRoles.error && (
+              <ErrorNotice>
+                Custom roles could not load. Existing assignments stay unchanged.{' '}
+                <button type="button" className="text-button" onClick={customRoles.refresh}>
+                  Retry role list
+                </button>
+              </ErrorNotice>
+            )}
             {editingStaff && (
               <MutationForm
                 key={editingStaff.id}
@@ -264,12 +308,53 @@ export default function Admin({
                   onBranchCreated();
                 }}
                 onSubmit={(form) =>
-                  api.put('/admin/users/' + editingStaff.id, { name: formText(form, 'name') })
+                  api.put('/admin/users/' + editingStaff.id, {
+                    name: formText(form, 'name'),
+                    ...(customRolesReady &&
+                    editingStaff.role !== 'ADMIN' &&
+                    staffRoleChange?.staffId === editingStaff.id
+                      ? { customRoleId: staffRoleChange.value }
+                      : {}),
+                  })
                 }
               >
                 <Field label="Staff name">
                   <input name="name" maxLength={150} required defaultValue={editingStaff.name} />
                 </Field>
+                {editingStaff.role !== 'ADMIN' && (
+                  <Field label="Custom module role">
+                    <select
+                      name="customRoleId"
+                      disabled={!customRolesReady}
+                      value={
+                        (staffRoleChange?.staffId === editingStaff.id
+                          ? staffRoleChange.value
+                          : editingStaff.customRoleId) ?? ''
+                      }
+                      onChange={(event) =>
+                        setStaffRoleChange({
+                          staffId: editingStaff.id,
+                          value: Number(event.target.value) || null,
+                        })
+                      }
+                    >
+                      <option value="">Use professional role defaults</option>
+                      {editingStaff.customRoleId &&
+                        !customRoles.data?.some(
+                          (role) => role.id === editingStaff.customRoleId,
+                        ) && (
+                          <option value={editingStaff.customRoleId}>
+                            Current custom role #{editingStaff.customRoleId}
+                          </option>
+                        )}
+                      {customRoles.data?.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
                 <button
                   type="button"
                   className="text-button"
@@ -312,14 +397,28 @@ export default function Admin({
                           <td>#{u.id}</td>
                           <td>{u.name}</td>
                           <td>{u.email}</td>
-                          <td>{u.role === 'DOCTOR' ? 'GP' : u.role}</td>
+                          <td>
+                            {u.role === 'DOCTOR' ? 'GP' : u.role}
+                            {u.customRoleId && (
+                              <div>
+                                {customRoles.data?.find((role) => role.id === u.customRoleId)
+                                  ?.name || 'Custom module role'}
+                              </div>
+                            )}
+                          </td>
                           <td>
                             <Status value={u.active ? 'ACTIVE' : 'INACTIVE'} />
                           </td>
                           <td>
                             <div className="actions">
-                              <button className="secondary" onClick={() => setEditingStaff(u)}>
-                                Edit name
+                              <button
+                                className="secondary"
+                                onClick={() => {
+                                  setStaffRoleChange(undefined);
+                                  setEditingStaff(u);
+                                }}
+                              >
+                                Edit staff
                               </button>
                               <button
                                 className="secondary"
@@ -627,6 +726,12 @@ export default function Admin({
           description="Choose the modules each staff role may use."
         >
           <RoleModules onSaved={onBranchCreated} />
+          <CustomRoles
+            onSaved={() => {
+              customRoles.refresh();
+              onBranchCreated();
+            }}
+          />
         </WorkspaceSection>
         <WorkspaceSection
           id="audit"

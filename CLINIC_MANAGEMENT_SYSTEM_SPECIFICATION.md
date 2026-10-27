@@ -361,3 +361,12 @@ Module links lead only to visible, authorized destinations. The obsolete hidden 
 ## Clinical pricing and letterhead update — 23 October 2026
 
 See [clinical pricing, prescribing, minor surgery and letterhead](docs/CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
+
+## Custom module roles — 27 October 2026
+
+Administrators can create and rename tenant-wide custom roles under Settings → Role access. Each role stores a validated module list and optimistic version. Staff accounts retain their professional role and may receive one custom module role. Its module list replaces the professional role's default module grants. Assigning no custom role restores those defaults. Administrators retain all modules and cannot receive custom restrictions. A custom role never grants administrator privileges, GP signing, or other professional actions. The server reads the assignment and module list on every authenticated request, so changes apply to existing sessions. Role creation, updates and staff assignment changes are audited. Named roles are retained; administrators can empty a role's module list or remove individual assignments.
+
+
+### Patient groups
+
+Each patient may belong to one optional branch-managed patient group. Existing patients remain unassigned. Initial branch choices are Self-pay, Insurance and Company; administrators can add, rename, reorder, remove and restore choices in Clinic catalog choices. Registration and patient edits show the active list. Directory rows, profile details and local directory filters show the assigned group. Renaming a choice updates its displayed patient group name. Removing a choice hides it from new assignments while retaining existing assignments and allowing unrelated demographic edits. Changing assignments requires an active group from the same tenant and branch. Public self-registration cannot choose staff-only groups. Group assignment does not change billing or verify insurance coverage.

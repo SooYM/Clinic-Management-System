@@ -1,5 +1,6 @@
 import { createBillingCategoryDefaults } from './billing-category-defaults.js';
-import { defaultBillingCategories } from '../../shared/catalogs.js';
+import { createPatientGroupDefaults } from './patient-group-defaults.js';
+import { defaultBillingCategories, defaultPatientGroups } from '../../shared/catalogs.js';
 import { z } from 'zod';
 import type { Database } from '../db.js';
 import { PASSWORD_MIN_LENGTH } from '../../shared/password-policy.js';
@@ -26,6 +27,7 @@ export function bootstrapConfiguration(env: NodeJS.ProcessEnv = process.env) {
     administratorName: 'Clinic Administrator',
     rooms: ['Room 01', 'Room 02', 'Treatment Room'],
     catalogs: {
+      PATIENT_GROUP: [...defaultPatientGroups],
       BILLING_CATEGORY: [...defaultBillingCategories],
       LAB_PANEL: [],
       SPECIMEN_TYPE: [],
@@ -50,6 +52,7 @@ export async function createBootstrapDefaults(
     ])
   ).insertId!;
   await createBillingCategoryDefaults(db, tenantId, branchId);
+  await createPatientGroupDefaults(db, tenantId, branchId);
   const id = (
     await db.query(
       "INSERT INTO users(tenant_id,branch_id,email,name,password_hash,role,is_super_admin) VALUES($1,$2,$3,$4,$5,'ADMIN',TRUE)",

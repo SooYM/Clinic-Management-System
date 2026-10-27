@@ -11,6 +11,7 @@ export interface Actor {
   email: string;
   name: string;
   role: string;
+  customRoleId?: number | null;
   licenseNumber: string | null;
   isSuperAdmin?: boolean;
 }
@@ -87,6 +88,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
         email: u.email,
         name: u.name,
         role: u.role,
+        customRoleId: u.custom_role_id ?? null,
         licenseNumber: u.license_number,
         isSuperAdmin: Boolean(u.is_super_admin),
       },

@@ -1,5 +1,13 @@
 # Clinic operations
 
+## Patient groups and custom role rollout
+
+Back up MySQL and verify a restore into a guarded disposable database before deploying migrations 030–031. Run `npm run db:migrate`, then build/restart through the configured hosting process; local startup remains `webapp clinic`. Check `/api/health` and staff/group workflows. These migrations add nullable assignments, group defaults and a custom-role table without modifying applied migrations or assigning existing patients automatically. Preserve the schema during application rollback; use a compatible release. Restoring an older backup requires a maintenance window and a plan to retain records written since that backup.
+
+Administrators manage patient groups under Administration → Catalog choices and custom policies under Role access. Staff accounts assigns policies. Professional roles continue to enforce clinical authority; custom policies replace module grants. Empty module policies revoke ordinary workflow access. Removing an assignment restores professional-role module defaults. Keep administrators unrestricted. Group names classify patients without changing insurer verification, coverage or billing.
+
+On 27 October 2026, local backup `.local/pre-groups-roles-20261027-backup.sql` was restored into a generated disposable database and checked against recorded table counts. Existing live row counts were preserved after migrations through 031. Backups and browser artifacts stay outside Git. Hosted migration, backup retention and deployment checks remain operator responsibilities.
+
 ## QR registration operations
 
 Enable the selected branch's QR registration only after verifying its reachable HTTPS `APP_ORIGIN`. Print/display the generated QR and test it from a phone. Patients receive a reserved ticket immediately and must proceed to the counter. Reception verifies IC/passport, reviews existing identity matches, and confirms the same ticket into the active queue. Reject duplicate/incorrect submissions explicitly. The API clears expired pending demographics at startup, every five minutes and during registration operations. Expiry is the earlier of 12 hours and Malaysia midnight; daily reserved numbers are not reused. Keep number/reference and audit records for reconciliation; do not include receipt capabilities in support logs. Monitor cleanup failures and investigate failed confirmation transactions without manually editing clinical rows.

@@ -1,5 +1,5 @@
 import { publicRegistrationInput } from '../server/public-registration-validation';
-import { catalogKinds, defaultBillingCategories } from '../shared/catalogs';
+import { catalogKinds, defaultBillingCategories, defaultPatientGroups } from '../shared/catalogs';
 import { malaysiaDate } from '../shared/clinic-dates';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { buildReceiptView } from '../shared/receipt-view';
@@ -23,6 +23,7 @@ import {
 } from '../shared/module-permissions';
 import { idSchema } from '../shared/identifiers';
 import { z } from 'zod';
+import { customRoleInput } from '../shared/custom-roles';
 import postcodes from '../server/data/postcodes.json';
 
 /** Browser-only simulation. These checks demonstrate workflows, never provide backend security. */
@@ -494,8 +495,15 @@ export class DemoClinic {
     for (const patient of this.state.rows.patients) {
       patient.countryCode ??= patient.nationality === 'MALAYSIAN' ? 'MY' : null;
       patient.countryName ??= null;
+      patient.patientGroupId ??= null;
     }
-    for (const table of ['reservations', 'usages', 'medicationDoses', 'registrations']) {
+    for (const table of [
+      'reservations',
+      'usages',
+      'medicationDoses',
+      'registrations',
+      'customRoles',
+    ]) {
       this.state.rows[table] ||= [];
       this.state.counters[table] ??= Math.max(0, ...this.state.rows[table].map((r) => r.id));
     }
@@ -505,6 +513,7 @@ export class DemoClinic {
     }
     for (const branch of this.state.rows.branches) {
       this.ensureBillingCategories(branch.id);
+      this.ensurePatientGroups(branch.id);
       branch.publicRegistrationEnabled ??= false;
       branch.publicRegistrationVersion ??= 1;
       branch.active ??= true;
@@ -540,7 +549,10 @@ export class DemoClinic {
   reset() {
     this.storage.removeItem(key);
     this.state = seed();
-    for (const branch of this.state.rows.branches) this.ensureBillingCategories(branch.id);
+    for (const branch of this.state.rows.branches) {
+      this.ensureBillingCategories(branch.id);
+      this.ensurePatientGroups(branch.id);
+    }
   }
   private databaseResetDefaults() {
     return {
@@ -551,6 +563,7 @@ export class DemoClinic {
       administratorName: 'Clinic Administrator',
       rooms: ['Room 01', 'Room 02', 'Treatment Room'],
       catalogs: {
+        PATIENT_GROUP: [...defaultPatientGroups],
         BILLING_CATEGORY: [...defaultBillingCategories],
         LAB_PANEL: [],
         SPECIMEN_TYPE: [],
@@ -577,6 +590,7 @@ export class DemoClinic {
     branch.branchId = branch.id;
     branch.branchNumber = branch.id;
     this.ensureBillingCategories(branch.id);
+    this.ensurePatientGroups(branch.id);
     const admin = this.add(
       'users',
       {
@@ -624,10 +638,22 @@ export class DemoClinic {
     this.state.rows[table].push(row);
     return row;
   }
-  private modules(user: Row) {
+  private modules(user: Row): string[] {
     return user.role === 'ADMIN'
       ? [...moduleIds]
-      : this.state.grants[user.role] || [...defaultRoleModules[user.role as RoleId]];
+      : user.customRoleId != null
+        ? this.state.rows.customRoles.find((role) => role.id === user.customRoleId)?.modules || []
+        : this.state.grants[user.role] || [...defaultRoleModules[user.role as RoleId]];
+  }
+  private validateCustomRole(role: string, id?: number | null) {
+    if (id == null) return;
+    if (
+      role === 'ADMIN' ||
+      !this.state.rows.customRoles.some(
+        (row) => row.id === id && row.tenantId === this.actor().tenantId,
+      )
+    )
+      fail('Choose a custom role in your clinic; administrators retain full access.');
   }
   private actor() {
     const user = this.state.rows.users.find((u) => u.id === this.state.userId && u.active);
@@ -1322,11 +1348,13 @@ export class DemoClinic {
       if (
         route === '/references/catalogs' &&
         !modules.includes(
-          kind === 'BILLING_CATEGORY'
-            ? 'billing'
-            : kind === 'INVENTORY_UNIT'
-              ? 'inventory'
-              : 'clinical',
+          kind === 'PATIENT_GROUP'
+            ? 'patients'
+            : kind === 'BILLING_CATEGORY'
+              ? 'billing'
+              : kind === 'INVENTORY_UNIT'
+                ? 'inventory'
+                : 'clinical',
         )
       )
         fail('Choice list access denied.', 403);
@@ -1509,11 +1537,12 @@ export class DemoClinic {
           .sort((a, b) => a.id - b.id)
           .filter((p) =>
             [p.name, p.nationalId, p.phone].some((v) => v.toLowerCase().includes(search)),
-          ),
+          )
+          .map((patient) => this.patientWithGroup(patient, branch)),
       };
     }
     if (/^\/patients\/\d+$/.test(route) && method === 'GET')
-      return this.record('patients', id!, branch);
+      return this.patientWithGroup(this.record('patients', id!, branch), branch);
     if (
       (route === '/patients' && method === 'POST') ||
       (/^\/patients\/\d+$/.test(route) && method === 'PUT')
@@ -1521,6 +1550,10 @@ export class DemoClinic {
       const previous = id ? this.record('patients', id, branch) : undefined;
       const value = schemas.patient.parse({
         ...body,
+        patientGroupId:
+          body.patientGroupId === undefined
+            ? (previous?.patientGroupId ?? null)
+            : body.patientGroupId,
         countryCode:
           body.countryCode === undefined
             ? body.nationality === 'NON_MALAYSIAN' && previous?.countryCode === 'MY'
@@ -1532,6 +1565,13 @@ export class DemoClinic {
             ? previous?.countryName
             : body.countryName,
       });
+      if (value.patientGroupId != null) {
+        const group = this.scoped('catalogs', branch).find(
+          (entry) => entry.id === value.patientGroupId && entry.kind === 'PATIENT_GROUP',
+        );
+        if (!group || (!group.active && value.patientGroupId !== previous?.patientGroupId))
+          fail('Choose an active patient group from this branch.');
+      }
       const choices = (postcodes as Record<string, string[][]>)[value.postcode] || [];
       if (choices.length === 1) {
         const [city, code] = choices[0],
@@ -1557,7 +1597,7 @@ export class DemoClinic {
           value.countryCode =
             value.nationality === 'NON_MALAYSIAN' && p.countryCode === 'MY' ? null : p.countryCode;
         Object.assign(p, value, { version: p.version + 1, updatedAt: now() });
-        return p;
+        return this.patientWithGroup(p, branch);
       }
       const p = this.add(
         'patients',
@@ -1569,7 +1609,7 @@ export class DemoClinic {
         branch,
       );
       p.patientNumber = p.id;
-      return p;
+      return this.patientWithGroup(p, branch);
     }
     if (/^\/encounters\/\d+$/.test(route) && method === 'GET')
       return this.enrich(this.record('encounters', id!, branch));
@@ -2550,6 +2590,37 @@ export class DemoClinic {
       clinic.name = input.name;
       return { id: clinic.id, name: clinic.name };
     }
+    if (route === '/admin/custom-roles' && method === 'GET')
+      return { data: this.state.rows.customRoles };
+    if (
+      (route === '/admin/custom-roles' && method === 'POST') ||
+      (/^\/admin\/custom-roles\/\d+$/.test(route) && method === 'PUT')
+    ) {
+      const input = (
+        method === 'POST'
+          ? customRoleInput
+          : customRoleInput.extend({ version: z.number().int().positive() })
+      ).parse(body);
+      const id = method === 'PUT' ? Number(route.split('/').at(-1)) : 0;
+      if (
+        this.state.rows.customRoles.some(
+          (row) => row.id !== id && row.name.toLowerCase() === input.name.toLowerCase(),
+        )
+      )
+        fail('A custom role already uses this name.', 409);
+      const values = {
+        name: input.name,
+        modules: moduleIds.filter((module) => input.modules.includes(module)),
+      };
+      const target =
+        method === 'POST'
+          ? this.add('customRoles', values, 0)
+          : this.state.rows.customRoles.find((row) => row.id === id);
+      if (!target || (method === 'PUT' && target.version !== body.version))
+        fail('Custom role changed. Refresh before saving.', 409);
+      if (method === 'PUT') Object.assign(target!, values, { version: target!.version + 1 });
+      return target;
+    }
     if (route === '/admin/role-modules' && method === 'GET')
       return {
         roles: roleIds.map((role) => ({
@@ -2581,6 +2652,10 @@ export class DemoClinic {
       )
         fail('Choose role and password of at least 14 characters.');
       if (body.role === 'DOCTOR' && !body.licenseNumber) fail('GP registration number required.');
+      this.validateCustomRole(
+        body.role,
+        body.customRoleId == null ? null : idSchema.parse(body.customRoleId),
+      );
       if (
         !this.state.rows.branches.some(
           (b) =>
@@ -2606,10 +2681,11 @@ export class DemoClinic {
         .object({
           name: z.string().trim().min(1).max(150).optional(),
           active: z.boolean().optional(),
+          customRoleId: idSchema.nullable().optional(),
         })
         .strict()
         .refine(
-          (v) => v.name !== undefined || v.active !== undefined,
+          (v) => v.name !== undefined || v.active !== undefined || v.customRoleId !== undefined,
           'Provide name or active status.',
         )
         .parse(body);
@@ -2618,6 +2694,10 @@ export class DemoClinic {
         fail('User not found.', 404);
       if (target.id === user.id && input.active === false)
         fail('Cannot deactivate your own demo account.', 409);
+      this.validateCustomRole(
+        target.role,
+        input.customRoleId === undefined ? target.customRoleId : input.customRoleId,
+      );
       if (
         input.active === false &&
         target.role === 'ADMIN' &&
@@ -2641,6 +2721,7 @@ export class DemoClinic {
       b.branchId = b.id;
       b.branchNumber = b.id;
       this.ensureBillingCategories(b.id);
+      this.ensurePatientGroups(b.id);
       user.branchIds.push(b.id);
       return b;
     }
@@ -2850,6 +2931,21 @@ export class DemoClinic {
       'Q-' +
       String(Math.max(0, ...rows.map((r) => Number(r.ticketNumber.slice(2)))) + 1).padStart(3, '0')
     );
+  }
+  private ensurePatientGroups(branch: number) {
+    if (this.scoped('catalogs', branch).some((entry) => entry.kind === 'PATIENT_GROUP')) return;
+    for (const [sortOrder, label] of defaultPatientGroups.entries())
+      this.add('catalogs', { kind: 'PATIENT_GROUP', label, active: true, sortOrder }, branch);
+  }
+  private patientWithGroup(patient: Row, branch: number) {
+    const group = this.scoped('catalogs', branch).find(
+      (entry) => entry.id === patient.patientGroupId && entry.kind === 'PATIENT_GROUP',
+    );
+    return {
+      ...patient,
+      patientGroupId: patient.patientGroupId ?? null,
+      patientGroupLabel: group?.label ?? null,
+    };
   }
   private ensureBillingCategories(branch: number) {
     if (this.scoped('catalogs', branch).some((entry) => entry.kind === 'BILLING_CATEGORY')) return;

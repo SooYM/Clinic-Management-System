@@ -279,3 +279,12 @@ Stickers retain the original dispensing date, quantities and saved directions. R
 ## Clinical pricing and letterhead update — 23 October 2026
 
 See [clinical pricing, prescribing, minor surgery and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) for current behavior, API fields, storage, permissions and operating instructions. This update supersedes earlier clinical range limits and pill-only dose labels.
+
+## Custom staff roles
+
+In Administration → Role access, create named custom roles and choose allowed modules. Under Staff accounts, create or edit a staff account and choose its custom module role. Keep the professional role appropriate to the staff member; clinical signing still requires GP credentials. Select Use professional role defaults to remove the custom assignment. Saving role access affects assigned staff on their next request. Administrators always retain full module access.
+
+
+### Patient groups
+
+Administrators: open Administration → Catalog choices → Choice list: Patient groups. Add, rename or remove choices such as Insurance, Company or Self-pay. Restore removed choices when needed. Staff: select Patient group during patient registration or editing. No group assigned is available. Review assigned groups in Patient directory and patient profiles; filter loaded directory results by Patient group. Removing a choice retains patients already assigned to it. Groups classify patients; they do not verify insurance coverage or change invoice charges.

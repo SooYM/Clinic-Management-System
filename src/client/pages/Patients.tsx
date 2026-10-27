@@ -157,6 +157,11 @@ export default function Patients() {
     defaultSort: 'id',
     search: (row) => `${row.id} ${row.name} ${row.nationalId} ${row.phone}`,
     filters: [
+      {
+        key: 'group',
+        label: 'Patient group',
+        value: (row) => row.patientGroupLabel || 'No group assigned',
+      },
       { key: 'nationality', label: 'Nationality', value: (row) => row.nationality },
       {
         key: 'country',
@@ -326,6 +331,8 @@ export default function Patients() {
                       <dd>{selected.sex || 'Not recorded'}</dd>
                       <dt>Blood group</dt>
                       <dd>{selected.bloodGroup || 'Not recorded'}</dd>
+                      <dt>Patient group</dt>
+                      <dd>{selected.patientGroupLabel || 'No group assigned'}</dd>
                       <dt>Phone</dt>
                       <dd>{selected.phone || 'Not recorded'}</dd>
                       <dt>Email</dt>
@@ -396,6 +403,7 @@ export default function Patients() {
                         <th>Patient</th>
                         <th>NRIC / passport</th>
                         <th>Phone</th>
+                        <th>Patient group</th>
                         <th>Allergies</th>
                         <th />
                       </tr>
@@ -418,6 +426,7 @@ export default function Patients() {
                           </td>
                           <td>{p.nationalId}</td>
                           <td>{p.phone}</td>
+                          <td>{p.patientGroupLabel || 'No group assigned'}</td>
                           <td>
                             {p.allergies?.length ? (
                               <span className="status urgent">{p.allergies.join(', ')}</span>

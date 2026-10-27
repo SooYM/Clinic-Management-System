@@ -6,6 +6,7 @@ import { formatMalaysianIc, parseMalaysianIc } from '../../shared/patient-identi
 import PhoneInput from '../PhoneInput';
 import { countryOptions } from '../../shared/countries';
 import { registrationPatientFields } from '../../shared/public-registration';
+import type { CatalogEntry } from '../../shared/catalogs';
 const states = [
   'Johor',
   'Kedah',
@@ -53,6 +54,29 @@ export default function PatientForm({
   const [dateOfBirth, setDateOfBirth] = useState(initial?.dateOfBirth?.slice(0, 10) || '');
   const [sex, setSex] = useState<Patient['sex']>(initial?.sex || 'FEMALE');
   const [identityError, setIdentityError] = useState('');
+  const [patientGroups, setPatientGroups] = useState<CatalogEntry[]>([]);
+  const [patientGroupId, setPatientGroupId] = useState(initial?.patientGroupId?.toString() || '');
+  const [groupError, setGroupError] = useState('');
+  const [groupsLoading, setGroupsLoading] = useState(!publicRegistration);
+  const [groupRevision, setGroupRevision] = useState(0);
+  useEffect(() => {
+    if (publicRegistration) return;
+    const controller = new AbortController();
+    setGroupsLoading(true);
+    setGroupError('');
+    api
+      .get<CatalogEntry[]>('/references/catalogs?kind=PATIENT_GROUP', controller.signal)
+      .then((groups) => {
+        if (!controller.signal.aborted) setPatientGroups(groups);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setGroupError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setGroupsLoading(false);
+      });
+    return () => controller.abort();
+  }, [publicRegistration, groupRevision]);
   const [postcode, setPostcode] = useState(initial?.postcode || '');
   const [city, setCity] = useState(initial?.city || '');
   const [addressState, setAddressState] = useState(initial?.state || '');
@@ -215,6 +239,9 @@ export default function PatientForm({
             .filter(Boolean),
           notificationConsent: f.get('notificationConsent') === 'on',
           ...(initial ? { version: initial.version } : {}),
+          ...(!publicRegistration
+            ? { patientGroupId: patientGroupId ? Number(patientGroupId) : null }
+            : {}),
         };
         if (publicRegistration) {
           if (f.get('registrationConsent') !== 'on')
@@ -430,6 +457,42 @@ export default function PatientForm({
         </Field>
         {!publicRegistration && (
           <>
+            <Field
+              label="Patient group"
+              hint="Choose how this patient is registered. Administrators manage groups in clinic catalog choices."
+            >
+              <select
+                value={patientGroupId}
+                disabled={groupsLoading || !!groupError}
+                onChange={(event) => setPatientGroupId(event.target.value)}
+              >
+                <option value="">No group assigned</option>
+                {initial?.patientGroupId &&
+                  !patientGroups.some((group) => group.id === initial.patientGroupId) && (
+                    <option value={initial.patientGroupId}>
+                      {initial.patientGroupLabel || 'Assigned group'} (removed)
+                    </option>
+                  )}
+                {patientGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.label}
+                  </option>
+                ))}
+              </select>
+              {groupsLoading && <p className="form-help">Loading patient groups…</p>}
+              {groupError && (
+                <>
+                  <ErrorNotice>{groupError}</ErrorNotice>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setGroupRevision((revision) => revision + 1)}
+                  >
+                    Retry patient groups
+                  </button>
+                </>
+              )}
+            </Field>
             <Field label="Blood group">
               <select name="bloodGroup" defaultValue={initial?.bloodGroup || ''}>
                 <option value="">Unknown</option>

@@ -51,11 +51,13 @@ export function catalogRouter() {
     route(async (req, res) => {
       const kind = z.enum(catalogKinds).parse(req.query.kind),
         module =
-          kind === 'BILLING_CATEGORY'
-            ? 'billing'
-            : kind === 'INVENTORY_UNIT'
-              ? 'inventory'
-              : 'clinical';
+          kind === 'PATIENT_GROUP'
+            ? 'patients'
+            : kind === 'BILLING_CATEGORY'
+              ? 'billing'
+              : kind === 'INVENTORY_UNIT'
+                ? 'inventory'
+                : 'clinical';
       if (!req.context.modules?.includes(module))
         throw new DomainError(
           'MODULE_FORBIDDEN',
