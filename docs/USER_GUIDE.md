@@ -1,5 +1,9 @@
 # Clinic staff user guide
 
+## Portal logo and clinic name
+
+In Administration → Clinic settings, save your clinic name and document letterhead logo. The sidebar updates after each successful save. Uploading another logo replaces the portal logo; removing it restores the generic clinic icon. Refresh retains saved settings. The Render demo starts with CARE FOR U FAMILY CLINIC and its supplied banner; Reset demo restores this branding within the fictional session.
+
 ## Patient QR registration
 
 In Administration, open **Patient registration QR**, enable registration for the selected branch, confirm, and display or share its QR code/link. A phone needs the clinic's reachable HTTPS address; `127.0.0.1` or `localhost` points to the phone itself. Localhost links can be tested on the same computer. The Render browser demo simulates this workflow within one browser session and does not share registrations across devices.

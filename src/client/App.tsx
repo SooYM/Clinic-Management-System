@@ -51,15 +51,41 @@ interface Bootstrap {
   rooms: Reference[];
   practitioners: Reference[];
   modules: string[];
-  tenant: { id: number; tenantNumber?: number; name: string };
+  tenant: { id: number; tenantNumber?: number; name: string; logoDataUrl?: string | null };
+}
+interface ClinicBranding {
+  name: string;
+  logoDataUrl?: string | null;
+}
+function ClinicBrand({ name, logoDataUrl }: ClinicBranding) {
+  return (
+    <>
+      {logoDataUrl ? (
+        <img className="brand-logo" src={logoDataUrl} alt={`${name} logo`} />
+      ) : (
+        <HeartPulse size={27} aria-hidden="true" />
+      )}
+      <strong className="brand-name">{name}</strong>
+      <span>Care, connected.</span>
+    </>
+  );
 }
 function Login({ onLogin }: { onLogin: (user: User) => void }) {
+  const [branding, setBranding] = useState<ClinicBranding>({ name: 'Clinic' });
+  useEffect(() => {
+    if (!isDemo) return;
+    const controller = new AbortController();
+    api
+      .get<ClinicBranding>('/public/branding', controller.signal)
+      .then(setBranding)
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
   return (
     <main className="login">
       <section className="login-context">
-        <div className="brand">
-          <HeartPulse size={27} />
-          Clinic<span>Care, connected.</span>
+        <div className={`brand clinic-brand ${branding.logoDataUrl ? 'logo-brand' : ''}`}>
+          <ClinicBrand {...branding} />
         </div>
         <div>
           <h1>
@@ -221,9 +247,14 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         Skip to main content
       </a>
       <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
-        <a href={`#${homePage}`} className="brand">
-          <HeartPulse size={26} />
-          Clinic<span>Care, connected.</span>
+        <a
+          href={`#${homePage}`}
+          className={`brand clinic-brand ${bootstrap.data?.tenant.logoDataUrl ? 'logo-brand' : ''}`}
+        >
+          <ClinicBrand
+            name={bootstrap.data?.tenant.name || 'Clinic'}
+            logoDataUrl={bootstrap.data?.tenant.logoDataUrl}
+          />
         </a>
         <button
           className="mobile-close icon-button secondary"

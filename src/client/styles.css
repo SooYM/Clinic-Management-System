@@ -361,6 +361,32 @@ legend {
   letter-spacing: 0;
   font-weight: 500;
 }
+.clinic-brand .brand-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.35;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+.clinic-brand.logo-brand {
+  display: grid;
+  gap: 8px;
+}
+.brand-logo {
+  display: block;
+  width: 100%;
+  max-height: 72px;
+  object-fit: contain;
+  object-position: left center;
+}
+.clinic-brand.logo-brand span {
+  margin: 0;
+}
+.login-context .clinic-brand {
+  width: 100%;
+  max-width: 380px;
+}
 .branch-label {
   margin: 38px 13px 22px;
   font-size: 12px;

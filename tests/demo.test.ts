@@ -987,7 +987,7 @@ describe('browser-session demo simulation', () => {
     const rawBefore = [...storage.entries][0][1],
       view = await request(clinic, '/invoices/1/receipt-view');
     expect(view).toMatchObject({ receivedBy: 'Not recorded', simulated: true, totalCents: 12000 });
-    expect(view.clinicName).toBe('Klinik Seri Harmoni');
+    expect(view.clinicName).toBe('CARE FOR U FAMILY CLINIC');
     expect([...storage.entries][0][1]).toBe(rawBefore);
     expect(view.issuedTime).toMatch(/ MYT$/);
   });

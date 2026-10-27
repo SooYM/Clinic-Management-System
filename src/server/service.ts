@@ -124,9 +124,10 @@ export class ClinicService {
       [ctx.actor.tenantId, ctx.branchId],
     );
     const tenant = (
-      await this.db.query('SELECT id,id tenant_number,name FROM tenants WHERE id=$1', [
-        ctx.actor.tenantId,
-      ])
+      await this.db.query(
+        "SELECT id,id tenant_number,name,JSON_UNQUOTE(JSON_EXTRACT(letterhead,'$.logoDataUrl')) logo_data_url FROM tenants WHERE id=$1",
+        [ctx.actor.tenantId],
+      )
     ).rows[0];
     return camel({
       tenant,

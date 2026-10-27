@@ -29,7 +29,7 @@ Successful collection reads return `{ "data": [] }`; single-resource and mutatio
 | `/api/auth/login`                      | POST       | Email/password; session and CSRF token                                                                   |
 | `/api/auth/me`                         | GET        | Current authenticated actor                                                                              |
 | `/api/auth/logout`                     | POST       | Delete current session                                                                                   |
-| `/api/bootstrap`                       | GET        | User, authorized branches, rooms and practitioners                                                       |
+| `/api/bootstrap`                       | GET        | User, tenant name/logo, authorized branches, rooms and practitioners                                      |
 | `/api/dashboard`                       | GET        | Selected branch counts and revenue                                                                       |
 | `/api/patients`                        | GET / POST | Search / registry write                                                                                  |
 | `/api/patients/:id`                    | GET / PUT  | Selected branch patient; edit requires version                                                           |

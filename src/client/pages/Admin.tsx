@@ -165,6 +165,7 @@ export default function Admin({
                   onSuccess={() => {
                     setClinicSaved(true);
                     clinic.refresh();
+                    onBranchCreated();
                   }}
                   onSubmit={(form) =>
                     api.put('/admin/clinic', {
@@ -195,7 +196,7 @@ export default function Admin({
               </p>
             )}
           </Panel>
-          <LetterheadSettings />
+          <LetterheadSettings onSaved={onBranchCreated} />
         </WorkspaceSection>
         <WorkspaceSection
           id="staff"

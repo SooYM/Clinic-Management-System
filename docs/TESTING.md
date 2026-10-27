@@ -1,5 +1,11 @@
 # Verification
 
+## Portal branding and release-test reliability — 27 October 2026
+
+Full sequential regression passed 534 tests across 43 files with zero skips, including guarded real MySQL workflows and new demo branding tests. Additional focused MySQL checks passed saved-logo bootstrap projection and restoration; full letterhead details stay out of staff bootstrap. Both builds, formatting, UI detector and normal/demo bundle-isolation checks passed. Browser actions against a separate disposable MySQL clinic verified immediate uploaded-logo and clinic-name updates, refresh persistence and logo-removal fallback. Desktop and mobile demo captures show the owner-supplied clinic banner and CARE FOR U FAMILY CLINIC on login and sidebar.
+
+GitHub's earlier receipt-PDF assertion exposed a test-only extractor defect: optional CR matching removed a legitimate final byte from certain compressed PDF streams. Extraction now honors PDFKit's direct `/Length`; a deterministic compressed-CR regression passes. Late settings cases use the existing separate settings test server to avoid exhausting the production API request limit within one test minute. Permission assertions and production limits remain unchanged.
+
 ## Patient groups, custom roles and logo uploads — 27 October 2026
 
 `npm test -- --reporter=dot --maxWorkers=1 --hookTimeout=60000` passed all 530 tests across 42 files with zero skips. The configured MySQL suites create guarded disposable databases and exercise branch-scoped patient groups, archive preservation, tenant-scoped custom policies, staff assignment, live-session revocation, administrator protection and reset defaults. The first parallel run exposed the expected catalog-count change and resource-related timeout/connection failures; the count was corrected before the passing sequential run.

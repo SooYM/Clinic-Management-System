@@ -12,7 +12,7 @@ import {
 } from './components';
 import type { Letterhead } from '../shared/letterhead';
 
-export default function LetterheadSettings() {
+export default function LetterheadSettings({ onSaved }: { onSaved?: () => void }) {
   const resource = useResource<Letterhead & { version: number }>('/admin/letterhead');
   const [logo, setLogo] = useState<string>();
   const [error, setError] = useState('');
@@ -41,11 +41,13 @@ export default function LetterheadSettings() {
               setSaved(true);
               setLogo(undefined);
               resource.refresh();
+              onSaved?.();
             }}
           >
             <p className="form-help">
               New medical certificates, referral letters, lab requests and receipts use these
-              clinic-wide details. Issued records keep their saved letterhead.
+              clinic-wide details. The saved logo also appears in the staff portal. Issued records
+              keep their saved letterhead.
             </p>
             <Field label="Clinic logo (PNG or JPEG)">
               <input

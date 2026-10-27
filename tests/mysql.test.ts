@@ -3,7 +3,7 @@ import 'dotenv/config';
 import { randomUUID, createHash } from 'node:crypto';
 import type { Server } from 'node:http';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
-import { inflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 import mysql from 'mysql2/promise';
 import express from 'express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,12 +12,18 @@ import { testDatabaseUrl } from './database-safety';
 /** Decode actual PDFKit standard-font text streams, retaining kerning-split words. */
 function pdfText(bytes: Buffer) {
   const blocks: string[] = [];
-  for (const stream of bytes.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+  // PDFKit writes direct lengths. A binary stream can end in CR, so newline matching loses data.
+  const streams = bytes
+    .toString('latin1')
+    .matchAll(/\/Length\s+(\d+)\b(?:(?!endobj)[\s\S])*?\bstream\r?\n/g);
+  for (const stream of streams) {
+    const start = stream.index! + stream[0].length;
+    const encoded = bytes.subarray(start, start + Number(stream[1]));
     let content: string;
     try {
-      content = inflateSync(Buffer.from(stream[1], 'latin1')).toString('latin1');
+      content = inflateSync(encoded).toString('latin1');
     } catch {
-      content = stream[1];
+      content = encoded.toString('latin1');
     }
     for (const text of content.matchAll(/BT([\s\S]*?)ET/g)) {
       blocks.push(
@@ -29,6 +35,21 @@ function pdfText(bytes: Buffer) {
   }
   return blocks.join('\n');
 }
+
+describe('PDF text extraction', () => {
+  it('retains a compressed stream ending in CR before its LF delimiter', () => {
+    const text = 'Patient deposit: RM 10.00';
+    const plain = `BT <${Buffer.from(text).toString('hex')}> Tj ET\n%\x06`;
+    const encoded = deflateSync(Buffer.from(plain));
+    expect(encoded.at(-1)).toBe(13);
+    const pdf = Buffer.concat([
+      Buffer.from(`<< /Length ${encoded.length} /Filter /FlateDecode >>\nstream\n`),
+      encoded,
+      Buffer.from('\nendstream'),
+    ]);
+    expect(pdfText(pdf)).toBe(text);
+  });
+});
 
 describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', () => {
   const database = `qa_${randomUUID().replaceAll('-', '')}_test`;
@@ -698,7 +719,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   it('persists admin letterhead with conflicts, permissions and immutable document and receipt snapshots', async () => {
     const before = await (await settingsAdminHttp('/admin/letterhead')).json();
     const letterhead = {
-      logoDataUrl: '',
+      logoDataUrl:
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC9sAAAAASUVORK5CYII=',
       header: 'QA clinic contact',
       address: 'QA letterhead address',
       footer: 'QA printed footer',
@@ -707,6 +729,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect((await settingsHttp('/admin/letterhead', 'PUT', letterhead)).status).toBe(403);
     expect((await settingsAdminHttp('/admin/letterhead', 'PUT', letterhead)).status).toBe(200);
     expect((await settingsAdminHttp('/admin/letterhead', 'PUT', letterhead)).status).toBe(409);
+    const bootstrap = await (await settingsHttp('/bootstrap')).json();
+    expect(bootstrap.tenant.logoDataUrl).toBe(letterhead.logoDataUrl);
+    expect(bootstrap.tenant).not.toHaveProperty('letterhead');
     try {
       const p = await patient(),
         e = await encounter(p.id);
@@ -752,6 +777,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
           })
         ).status,
       ).toBe(200);
+      expect((await service.bootstrap(ctx)).tenant.logoDataUrl).toBe(before.logoDataUrl);
     }
   });
   it('allows admin clinic rename with optimistic conflict and keeps scoped encounter details read only', async () => {
@@ -4280,31 +4306,35 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   });
   it('renames branches with version and CSRF guards and archives without deleting history', async () => {
     const b = await (
-      await adminHttp('/admin/branches', 'POST', {
+      await settingsAdminHttp('/admin/branches', 'POST', {
         name: 'QA Settings Branch',
         address: 'QA Address',
       })
     ).json();
     const edit = { name: 'QA Renamed Branch', address: 'QA New Address', active: true, version: 1 };
-    expect((await http(`/admin/branches/${b.id}`, 'PUT', edit)).status).toBe(403);
+    expect((await settingsHttp(`/admin/branches/${b.id}`, 'PUT', edit)).status).toBe(403);
     expect(
       (
-        await http(`/admin/branches/${b.id}`, 'PUT', edit, {
+        await settingsHttp(`/admin/branches/${b.id}`, 'PUT', edit, {
           Cookie: `cms_session=${adminToken}`,
           'X-CSRF-Token': 'wrong',
         })
       ).status,
     ).toBe(403);
-    expect(await (await adminHttp(`/admin/branches/${b.id}`, 'PUT', edit)).json()).toMatchObject({
+    expect(
+      await (await settingsAdminHttp(`/admin/branches/${b.id}`, 'PUT', edit)).json(),
+    ).toMatchObject({
       ...edit,
       version: 2,
       id: b.id,
     });
-    expect((await adminHttp(`/admin/branches/${b.id}`, 'PUT', edit)).status).toBe(409);
-    expect((await adminHttp(`/admin/branches/${fixtureId()}`, 'PUT', edit)).status).toBe(404);
+    expect((await settingsAdminHttp(`/admin/branches/${b.id}`, 'PUT', edit)).status).toBe(409);
+    expect((await settingsAdminHttp(`/admin/branches/${fixtureId()}`, 'PUT', edit)).status).toBe(
+      404,
+    );
     expect(
       (
-        await adminHttp(`/admin/branches/${branch}`, 'PUT', {
+        await settingsAdminHttp(`/admin/branches/${branch}`, 'PUT', {
           name: 'QA Main',
           address: '',
           active: false,
@@ -4313,18 +4343,25 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       ).status,
     ).toBe(409);
     expect(
-      (await adminHttp(`/admin/branches/${b.id}`, 'PUT', { ...edit, active: false, version: 2 }))
-        .status,
+      (
+        await settingsAdminHttp(`/admin/branches/${b.id}`, 'PUT', {
+          ...edit,
+          active: false,
+          version: 2,
+        })
+      ).status,
     ).toBe(200);
     expect((await rows('SELECT active,version FROM branches WHERE id=?', [b.id]))[0]).toMatchObject(
       { active: 0, version: 3 },
     );
     expect(
-      (await (await adminHttp('/bootstrap')).json()).branches.some((v: any) => v.id === b.id),
+      (await (await settingsAdminHttp('/bootstrap')).json()).branches.some(
+        (v: any) => v.id === b.id,
+      ),
     ).toBe(false);
     expect(
       (
-        await http('/bootstrap', 'GET', undefined, {
+        await settingsHttp('/bootstrap', 'GET', undefined, {
           Cookie: `cms_session=${adminToken}`,
           'X-Branch-ID': String(b.id),
         })
@@ -4333,7 +4370,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
   });
   it('protects active home staff during archive and requires branch restoration before staff activation', async () => {
     const b = await (
-        await adminHttp('/admin/branches', 'POST', { name: 'QA Staff Home', address: '' })
+        await settingsAdminHttp('/admin/branches', 'POST', { name: 'QA Staff Home', address: '' })
       ).json(),
       userId = fixtureId();
     await sql.query(
@@ -4341,33 +4378,40 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       [userId, tenant, b.id, randomUUID() + '@example.invalid', 'QA Staff', 'test-only', 'NURSE'],
     );
     const input = { name: b.name, address: '', active: false, version: 1 };
-    const denied = await adminHttp(`/admin/branches/${b.id}`, 'PUT', input);
+    const denied = await settingsAdminHttp(`/admin/branches/${b.id}`, 'PUT', input);
     expect(denied.status).toBe(409);
     expect((await denied.json()).code).toBe('BRANCH_HAS_ACTIVE_STAFF');
     expect(
-      await (await adminHttp(`/admin/users/${userId}`, 'PUT', { name: 'QA Renamed Staff' })).json(),
+      await (
+        await settingsAdminHttp(`/admin/users/${userId}`, 'PUT', { name: 'QA Renamed Staff' })
+      ).json(),
     ).toMatchObject({ id: userId, name: 'QA Renamed Staff', active: true });
-    expect((await adminHttp(`/admin/users/${userId}`, 'PUT', {})).status).toBe(400);
-    expect((await adminHttp(`/admin/users/${userId}`, 'PUT', { active: false })).status).toBe(200);
-    expect((await adminHttp(`/admin/branches/${b.id}`, 'PUT', input)).status).toBe(200);
-    const deniedActivation = await adminHttp(`/admin/users/${userId}`, 'PUT', { active: true });
+    expect((await settingsAdminHttp(`/admin/users/${userId}`, 'PUT', {})).status).toBe(400);
+    expect(
+      (await settingsAdminHttp(`/admin/users/${userId}`, 'PUT', { active: false })).status,
+    ).toBe(200);
+    expect((await settingsAdminHttp(`/admin/branches/${b.id}`, 'PUT', input)).status).toBe(200);
+    const deniedActivation = await settingsAdminHttp(`/admin/users/${userId}`, 'PUT', {
+      active: true,
+    });
     expect(deniedActivation.status).toBe(409);
     expect((await deniedActivation.json()).code).toBe('INACTIVE_BRANCH');
   });
   it('deletes unused rooms, archives referenced rooms, and protects busy or future-booked rooms', async () => {
     const create = async (name: string) =>
-      (await (await adminHttp('/admin/rooms', 'POST', { name, branchId: branch })).json()).id;
+      (await (await settingsAdminHttp('/admin/rooms', 'POST', { name, branchId: branch })).json())
+        .id;
     const unused = await create('QA Unused Removal');
-    expect((await http(`/admin/rooms/${unused}`, 'DELETE')).status).toBe(403);
+    expect((await settingsHttp(`/admin/rooms/${unused}`, 'DELETE')).status).toBe(403);
     expect(
       (
-        await http(`/admin/rooms/${unused}`, 'DELETE', undefined, {
+        await settingsHttp(`/admin/rooms/${unused}`, 'DELETE', undefined, {
           Cookie: `cms_session=${adminToken}`,
           'X-CSRF-Token': 'wrong',
         })
       ).status,
     ).toBe(403);
-    expect(await (await adminHttp(`/admin/rooms/${unused}`, 'DELETE')).json()).toEqual({
+    expect(await (await settingsAdminHttp(`/admin/rooms/${unused}`, 'DELETE')).json()).toEqual({
       id: unused,
       removed: 'deleted',
     });
@@ -4378,7 +4422,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       "INSERT INTO appointments(tenant_id,branch_id,patient_id,practitioner_id,room_id,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,'COMPLETED')",
       [tenant, branch, p.id, doctor, used, '2020-01-01 10:00:00', '2020-01-01 11:00:00'],
     );
-    expect(await (await adminHttp(`/admin/rooms/${used}`, 'DELETE')).json()).toEqual({
+    expect(await (await settingsAdminHttp(`/admin/rooms/${used}`, 'DELETE')).json()).toEqual({
       id: used,
       removed: 'archived',
     });
@@ -4388,18 +4432,18 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       "INSERT INTO appointments(tenant_id,branch_id,patient_id,practitioner_id,room_id,starts_at,ends_at,status) VALUES(?,?,?,?,?,?,?,'BOOKED')",
       [tenant, branch, p.id, doctor, booked, '2090-01-01 10:00:00', '2090-01-01 11:00:00'],
     );
-    expect((await adminHttp(`/admin/rooms/${booked}`, 'DELETE')).status).toBe(409);
+    expect((await settingsAdminHttp(`/admin/rooms/${booked}`, 'DELETE')).status).toBe(409);
     const busy = await create('QA Busy Removal'),
       ticket = await service.checkIn(ctx, { patientId: p.id, priority: 'NORMAL' });
     await sql.query("UPDATE queue_tickets SET room_id=?,status='CALLED_TO_ROOM' WHERE id=?", [
       busy,
       ticket.id,
     ]);
-    expect((await adminHttp(`/admin/rooms/${busy}`, 'DELETE')).status).toBe(409);
+    expect((await settingsAdminHttp(`/admin/rooms/${busy}`, 'DELETE')).status).toBe(409);
     await sql.query("UPDATE queue_tickets SET status='COMPLETED' WHERE id=?", [ticket.id]);
     expect(
       (
-        await http(`/admin/rooms/${busy}`, 'DELETE', undefined, {
+        await settingsHttp(`/admin/rooms/${busy}`, 'DELETE', undefined, {
           Cookie: `cms_session=${adminToken}`,
           'X-Branch-ID': String(otherBranch),
         })
@@ -4417,7 +4461,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       receivedBy: 'QA Doctor',
     });
     await sql.query('UPDATE patients SET name=? WHERE id=?', ['QA Later Name', p.id]);
-    const response = await adminHttp(`/invoices/${bill.id}/receipt-view`);
+    const response = await settingsAdminHttp(`/invoices/${bill.id}/receipt-view`);
     expect(response.status).toBe(200);
     const view = await response.json();
     expect(view).toMatchObject({
@@ -4433,11 +4477,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(view.payments.reduce((sum: number, p: any) => sum + p.amountCents, 0)).toBe(1000);
     expect(JSON.stringify(view)).not.toMatch(/requestHash|idempotencyKey|password|tenantId/);
     expect(
-      (await http(`/invoices/${bill.id}/receipt-view`, 'GET', undefined, { Cookie: '' })).status,
+      (await settingsHttp(`/invoices/${bill.id}/receipt-view`, 'GET', undefined, { Cookie: '' }))
+        .status,
     ).toBe(401);
     expect(
       (
-        await http(`/invoices/${bill.id}/receipt-view`, 'GET', undefined, {
+        await settingsHttp(`/invoices/${bill.id}/receipt-view`, 'GET', undefined, {
           Cookie: `cms_session=${adminToken}`,
           'X-Branch-ID': String(otherBranch),
         })
@@ -4448,7 +4493,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
       [tenant, JSON.stringify(['patients'])],
     );
     try {
-      expect((await http(`/invoices/${bill.id}/receipt-view`)).status).toBe(403);
+      expect((await settingsHttp(`/invoices/${bill.id}/receipt-view`)).status).toBe(403);
     } finally {
       await sql.query(
         "DELETE FROM role_module_permissions WHERE tenant_id=? AND role='RECEPTIONIST'",

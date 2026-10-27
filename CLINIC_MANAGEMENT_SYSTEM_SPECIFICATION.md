@@ -1,5 +1,9 @@
 # Clinic Management System V2 — System Specification
 
+## Clinic portal branding
+
+The authenticated staff portal uses its tenant's saved clinic name and uploaded letterhead logo. Administrator saves and removals refresh portal branding immediately; removal restores the generic clinic icon. Staff bootstrap exposes only the clinic name and logo, while full letterhead settings remain administrator-only. Historical documents retain their snapshots. The separate Render demo defaults to CARE FOR U FAMILY CLINIC with the supplied clinic image on login and sidebar; these assets and defaults do not enter the normal application build.
+
 ## QR registration and reception confirmation
 
 Administrators can enable a branch-specific public registration link and QR code. Patients scan it without signing in, submit demographics with consent, and immediately receive a unique branch/day queue ticket marked **Awaiting reception confirmation**. A pending reservation does not enter the callable queue, GP suggestions or public waiting-room display. Reception verifies identity and confirms the submission, creating a patient profile or explicitly linking an existing branch patient without overwriting that profile. Confirmation activates the same ticket atomically. Public receipt polling shows registration and visit stage, ticket and the current call/consultation room, never patient details. Reservations expire after 12 hours or at Malaysia midnight, whichever occurs first. Expired/rejected numbers are not reused that day. Normal counter check-ins and QR reservations share one serialized numbering sequence. Existing duplicate identities require staff review; public endpoints never disclose matching profiles.

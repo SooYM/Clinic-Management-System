@@ -4,6 +4,7 @@ import { malaysiaDate } from '../shared/clinic-dates';
 import { buildDocumentView, type PrescriptionLogEvent } from '../shared/document-view';
 import { buildReceiptView } from '../shared/receipt-view';
 import { emptyLetterhead } from '../shared/letterhead';
+import { demoBranding } from './demo-branding';
 import { encounterBillingLines } from '../shared/encounter-billing';
 import { schemas, encounterWriteSchema, validateItemIngredient } from '../server/validation';
 import {
@@ -213,7 +214,15 @@ function seed(): State {
     updatedAt: timestamp,
   }));
   const rows: Record<string, Row[]> = {
-    tenants: [{ id: 1, tenantNumber: 1, name: 'Klinik Seri Harmoni' }],
+    tenants: [
+      {
+        id: 1,
+        tenantNumber: 1,
+        name: demoBranding.name,
+        letterhead: { ...emptyLetterhead, logoDataUrl: demoBranding.logoDataUrl },
+        demoBrandingVersion: 1,
+      },
+    ],
     branches: [
       {
         id: 1,
@@ -491,6 +500,13 @@ export class DemoClinic {
     } catch {
       this.state = seed();
     }
+    const clinic = this.state.rows.tenants[0];
+    if (!clinic.demoBrandingVersion) {
+      if (clinic.name === 'Klinik Seri Harmoni') clinic.name = demoBranding.name;
+      // Preserve settings already changed by someone using an existing demo session.
+      clinic.letterhead ??= { ...emptyLetterhead, logoDataUrl: demoBranding.logoDataUrl };
+      clinic.demoBrandingVersion = 1;
+    }
     // Existing browser sessions retain historical prescriptions without adding retroactive holds.
     for (const patient of this.state.rows.patients) {
       patient.countryCode ??= patient.nationality === 'MALAYSIAN' ? 'MY' : null;
@@ -556,7 +572,7 @@ export class DemoClinic {
   }
   private databaseResetDefaults() {
     return {
-      clinicName: 'Klinik Seri Harmoni',
+      clinicName: demoBranding.name,
       branchName: 'Main Branch',
       clinicAddress: 'Kuala Lumpur, Malaysia',
       administratorEmail: 'admin@example.test',
@@ -580,7 +596,15 @@ export class DemoClinic {
     );
     const tenantId = (counters.tenants || 0) + 1;
     counters.tenants = tenantId;
-    rows.tenants = [{ id: tenantId, tenantNumber: tenantId, name: defaults.clinicName }];
+    rows.tenants = [
+      {
+        id: tenantId,
+        tenantNumber: tenantId,
+        name: defaults.clinicName,
+        letterhead: { ...emptyLetterhead, logoDataUrl: demoBranding.logoDataUrl },
+        demoBrandingVersion: 1,
+      },
+    ];
     this.state = { version: 1, counters, rows, userId: null, grants: {} };
     const branch = this.add(
       'branches',
@@ -923,6 +947,10 @@ export class DemoClinic {
   private dispatch(path: string, method: string, body: any, branchId?: number): any {
     const url = new URL(path, 'https://demo.invalid'),
       route = url.pathname;
+    if (route === '/public/branding' && method === 'GET') {
+      const clinic = this.state.rows.tenants[0];
+      return { name: clinic.name, logoDataUrl: this.letterheadSnapshot().logoDataUrl };
+    }
     if (route.startsWith('/public/registration')) {
       const receiptMatch = route.match(/^\/public\/registration\/receipts\/([a-f0-9]{64})$/);
       if (receiptMatch && method === 'GET') {
@@ -1279,7 +1307,12 @@ export class DemoClinic {
     }
     if (route === '/bootstrap')
       return {
-        tenant: this.state.rows.tenants[0],
+        tenant: {
+          id: this.state.rows.tenants[0].id,
+          tenantNumber: this.state.rows.tenants[0].tenantNumber,
+          name: this.state.rows.tenants[0].name,
+          logoDataUrl: this.letterheadSnapshot().logoDataUrl,
+        },
         user: this.publicUser(user),
         branchId: branch,
         branches: this.state.rows.branches.filter((b) => b.active && user.branchIds.includes(b.id)),

@@ -1,5 +1,7 @@
 # Free Render browser demo
 
+The demo defaults to **CARE FOR U FAMILY CLINIC** with the owner-supplied clinic banner, bundled only in the demo transport. Login and the authenticated sidebar show this branding. Saved logo/name changes update the sidebar immediately and survive tab refresh. Reset demo restores these defaults. Existing sessions upgrade the old untouched clinic name while preserving custom names, saved letterhead details and deliberate logo removals. This revision requires a demo rebuild, not a database migration or Blueprint change.
+
 The GitHub main release replaces the previous V1 demo. Render runs **one free native Node web service**, serving compiled demo assets. No MySQL, PostgreSQL, paid worker, persistent disk, secret, migration, or bootstrap job is needed for this demo.
 
 ## Existing Blueprint resource

@@ -2,7 +2,7 @@
 
 ## Administration
 
-Administration → Document letterhead sets a clinic-wide embedded PNG/JPEG logo, header/contact text, address and footer. Logos are limited to 160 KB and 2000 × 2000 pixels. Blank address uses the issuing branch address. Only administrators may read or update these settings; optimistic version conflicts return 409. New medical certificates, referrals, lab requests and receipts retain immutable snapshots. Later branding edits do not rewrite issued documents.
+Administration → Clinic settings → Document letterhead sets a clinic-wide embedded PNG/JPEG logo, header/contact text, address and footer. Logos are limited to 160 KB and 2000 × 2000 pixels. The saved logo and clinic name also brand the authenticated staff portal; successful saves refresh that branding immediately. Removing the saved logo restores the portal's default clinic icon. Blank address uses the issuing branch address. Only administrators may read or update the full settings; authenticated staff receive only the tenant name and logo through bootstrap. Optimistic version conflicts return 409. New medical certificates, referrals, lab requests and receipts retain immutable snapshots. Later branding edits do not rewrite issued documents.
 
 ## GP workflow
 
