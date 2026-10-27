@@ -1,5 +1,11 @@
 # Verification
 
+## Checkout patient-group overrides
+
+`npm test` passed all 552 tests across 46 files with zero skips. Real MySQL and browser-demo regressions cover registered defaults, explicit group selection, explicit no-group checkout, registered archived-group retention, foreign/wrong-kind/inactive-group rejection, no invoice/payment writes after rejection, idempotent replay/conflict and immutable receipt groups. They also verify that checkout leaves patient registration unchanged. A wrong-kind catalog fixture now cleans up its exact row in `finally`, preserving later inventory tests' empty-catalog fallback.
+
+Actual Chromium actions against a generated disposable MySQL database changed an insurance registration to a company group for one receipt, verified cancellation preserved the selection, completed checkout and confirmed the receipt override with registration unchanged. New checkout and patient switching restored the registered default. Desktop and 390px layouts were inspected without document overflow. Both builds, TypeScript, formatting and the changed-interface design detector passed. No migration is needed; the existing receipt snapshot stores the resolved group. The generated QA database was removed and its owned listener closed. Hosted deployment remains a separate release check.
+
 ## Compact workflows, cash reporting and print branding — 27 October 2026
 
 `npm test` passed 550 tests across 46 files with zero skips, including guarded disposable MySQL workflows. Normal and demo builds, TypeScript, formatting, diff checks and the changed-interface design detector passed. The production dependency audit reported zero vulnerabilities. Real tests cover scoped expense creation/correction/voiding, CSRF and administrator permissions, idempotent retries, Malaysia date boundaries, exclusion of historic deposit allocations, immutable checkout groups, actual medication/supply consumption and print-branding snapshots. Retail goods and reservations do not displace medicines or consumables in the usage ranking.

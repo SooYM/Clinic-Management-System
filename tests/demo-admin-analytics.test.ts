@@ -170,4 +170,94 @@ describe('demo admin financial workflows', () => {
       (await clinic.request('/invoices/' + receipt.id + '/receipt-view')).patientGroupLabel,
     ).toBe('Insurance');
   });
+  it('uses registered groups unless checkout explicitly overrides or clears them without changing registration', async () => {
+    const storage = new Storage();
+    let clinic = new DemoClinic(storage);
+    await login(clinic);
+    const groups = (await clinic.request('/references/catalogs?kind=PATIENT_GROUP')).data;
+    const registered = groups.find((row: any) => row.label === 'Insurance');
+    const override = groups.find((row: any) => row.label === 'Company');
+    const foreign = (
+      await clinic.request('/references/catalogs?kind=PATIENT_GROUP', 'GET', undefined, 2)
+    ).data[0];
+    const wrongKind = await clinic.request('/admin/catalogs', 'POST', {
+      kind: 'INVENTORY_UNIT',
+      label: 'Fictional checkout unit',
+    });
+    const patientInput = {
+      name: 'Fictional Checkout Group Patient',
+      nationalId: 'CHECKOUT-GROUP-ONLY',
+      dateOfBirth: '1990-01-01',
+      sex: 'OTHER',
+      patientGroupId: registered.id,
+    };
+    const patient = await clinic.request('/patients', 'POST', patientInput);
+    const invoice = (extra: any = {}) => ({
+      patientId: patient.id,
+      practitionerId: 2,
+      lines: [
+        {
+          description: 'Fictional group checkout',
+          quantity: 1,
+          unitPriceCents: 1000,
+          category: 'SERVICE',
+        },
+      ],
+      payments: [{ method: 'CASH', amountCents: 1000, reference: '' }],
+      idempotencyKey: crypto.randomUUID(),
+      ...extra,
+    });
+    const request = invoice({ patientGroupId: override.id });
+    const selected = await clinic.request('/invoices', 'POST', request);
+    expect(selected.receiptSnapshot).toMatchObject({
+      patientGroupId: override.id,
+      patientGroupLabel: 'Company',
+    });
+    expect((await clinic.request('/patients/' + patient.id)).patientGroupId).toBe(registered.id);
+    expect((await clinic.request('/invoices', 'POST', request)).id).toBe(selected.id);
+    await expect(
+      clinic.request('/invoices', 'POST', { ...request, patientGroupId: null }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(
+      (await clinic.request('/invoices', 'POST', invoice({ patientGroupId: null })))
+        .receiptSnapshot,
+    ).toMatchObject({ patientGroupId: null, patientGroupLabel: 'No group assigned' });
+    expect((await clinic.request('/invoices', 'POST', invoice())).receiptSnapshot).toMatchObject({
+      patientGroupId: registered.id,
+      patientGroupLabel: 'Insurance',
+    });
+    await clinic.request('/admin/catalogs/' + registered.id, 'PUT', {
+      label: registered.label,
+      active: false,
+      sortOrder: registered.sortOrder,
+      version: registered.version,
+    });
+    expect(
+      (await clinic.request('/invoices', 'POST', invoice({ patientGroupId: registered.id })))
+        .receiptSnapshot.patientGroupId,
+    ).toBe(registered.id);
+    await clinic.request('/admin/catalogs/' + override.id, 'PUT', {
+      label: override.label,
+      active: false,
+      sortOrder: override.sortOrder,
+      version: override.version,
+    });
+    const before = (await clinic.request('/invoices')).data;
+    for (const invalid of [override.id, foreign.id, wrongKind.id, 999999999])
+      await expect(
+        clinic.request('/invoices', 'POST', invoice({ patientGroupId: invalid })),
+      ).rejects.toBeDefined();
+    expect((await clinic.request('/invoices')).data).toEqual(before);
+    expect((await clinic.request('/patients/' + patient.id)).patientGroupId).toBe(registered.id);
+    await clinic.request('/patients/' + patient.id, 'PUT', {
+      ...patientInput,
+      version: patient.version,
+      patientGroupId: null,
+    });
+    clinic = new DemoClinic(storage);
+    expect(await clinic.request('/invoices/' + selected.id + '/receipt-view')).toMatchObject({
+      patientGroupId: override.id,
+      patientGroupLabel: 'Company',
+    });
+  });
 });

@@ -8,7 +8,7 @@ Dispense transaction → save `label_snapshot` alongside stock allocation → fe
 
 ## Checkout groups and cash reporting
 
-Select a checkout patient or prepare a signed consultation handoff → show the current patient group → confirm payment → save the group alongside the immutable receipt snapshot. Subsequent patient/group changes affect future checkouts only.
+Select a checkout patient or prepare a signed consultation handoff → default to the registered patient group → optionally select another available group or No group assigned for this checkout → validate group scope and availability → confirm payment → save the chosen group alongside the immutable receipt snapshot. Omitted overrides resolve the current registered group on the server. Checkout never updates registration; future checkouts default to registration again. Subsequent patient/group changes do not rewrite issued receipts. Changing the checkout patient clears the previous override.
 
 Administrator selects branch and report dates → server validates administrator, scope and Malaysia date bounds → read a consistent transaction snapshot of payment collections, recorded paid expenses, patient-group counts and real stock use → display cash-basis net income and item rankings. Stock purchase quantities do not create costs automatically. Record each actual paid supplier bill or operating expense once in Expenses → idempotent create → audited/versioned correction or void → dashboard refreshes. Voids preserve history and stop contributing to totals.
 

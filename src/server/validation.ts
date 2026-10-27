@@ -402,6 +402,7 @@ export const schemas = {
   invoice: z
     .object({
       patientId: id,
+      patientGroupId: id.nullable().optional(),
       practitionerId: id,
       encounterId: id.optional(),
       lines: z

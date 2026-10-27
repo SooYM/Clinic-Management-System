@@ -14,6 +14,8 @@ All routes below require an authenticated ADMIN and the current authorized tenan
 
 Patient references and billing suggestions now include nullable `patientGroupId` and `patientGroupLabel`. New invoice receipt snapshots include both fields, including an explicit No group assigned label. Receipt views retain the stored label; older snapshots return null and display Not recorded.
 
+`POST /api/invoices` accepts optional nullable numeric `patientGroupId`. Omit it to use the patient's registered group at checkout; null explicitly records No group assigned; a numeric ID selects a group for this receipt only. Selected IDs must belong to the current tenant/branch and PATIENT_GROUP catalog, and must be active unless they match the patient's existing registered group. Invalid selections return `INVALID_PATIENT_GROUP` without saving an invoice or payment. The override participates in the existing idempotency hash. Registration is never changed by checkout, and the receipt snapshot retains the chosen ID/label after later changes.
+
 ## Public registration and reception review
 
 - `GET /api/public/registration/branches/:branchId` returns active branch branding and registration availability.

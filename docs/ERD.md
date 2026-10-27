@@ -8,7 +8,7 @@ Migration 033 adds nullable JSON `dispenses.label_snapshot`, constrained to an o
 
 Migration 032 adds `expenses`: numeric ID; tenant/branch and actor foreign keys; paid_on; category; description; amount_cents; reference; branch-unique idempotency_key and request_hash; version; nullable voided_at; created/updated timestamps. Tenant/branch scope references `branches(tenant_id,id)` and actor scope references `users(tenant_id,id)`. Expenses are voided rather than deleted through ordinary workflows. Reset includes expenses before users/branches. Audit metadata retains previous and resulting values. Report-period indexes cover expenses, payments, invoices and stock movements.
 
-Receipt JSON adds patientGroupId/patientGroupLabel snapshots without a new invoice relationship or historical backfill. Current selectors continue to resolve patients' existing branch-scoped group relationship.
+Receipt JSON adds patientGroupId/patientGroupLabel snapshots without a new invoice relationship or historical backfill. Checkout can override the registered group for that receipt only; omitted overrides use the registered group and explicit null records no group. Current selectors continue to resolve patients' existing branch-scoped group relationship. Checkout does not update that relationship or patient-group reporting. No migration is needed for checkout overrides.
 
 These diagrams describe the final MySQL 8.4 schema after migrations 001–026, including numeric conversion, general supplies and prescription reservations.
 

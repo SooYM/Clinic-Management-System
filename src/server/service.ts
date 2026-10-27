@@ -1444,6 +1444,23 @@ export class ClinicService {
       }
       const patient = await this.patient(db, ctx, input.patientId);
       await this.practitioner(db, ctx, input.practitionerId);
+      const patientGroupId =
+        input.patientGroupId === undefined
+          ? (patient.patient_group_id ?? null)
+          : input.patientGroupId;
+      let patientGroupLabel = patient.patient_group_label || 'No group assigned';
+      if (patientGroupId !== null && input.patientGroupId !== undefined) {
+        const group = (
+          await db.query(
+            "SELECT label,active FROM reference_catalogs WHERE id=$1 AND tenant_id=$2 AND branch_id=$3 AND kind='PATIENT_GROUP' FOR SHARE",
+            [patientGroupId, ctx.actor.tenantId, ctx.branchId],
+          )
+        ).rows[0];
+        if (!group || (!group.active && patientGroupId !== patient.patient_group_id))
+          throw new DomainError('INVALID_PATIENT_GROUP', 'Choose an active patient group.');
+        patientGroupLabel = group.label;
+      }
+      if (patientGroupId === null) patientGroupLabel = 'No group assigned';
       const branding = (
         await db.query(
           'SELECT t.name clinic_name,b.name branch_name,b.address FROM tenants t JOIN branches b ON b.tenant_id=t.id WHERE t.id=$1 AND b.id=$2',
@@ -1458,8 +1475,8 @@ export class ClinicService {
         branchName: branding.branch_name,
         clinicAddress: letterhead.address || branding.address,
         patientName: patient.name,
-        patientGroupId: patient.patient_group_id ?? null,
-        patientGroupLabel: patient.patient_group_label || 'No group assigned',
+        patientGroupId,
+        patientGroupLabel,
         nationalId: patient.national_id,
         receivedBy: ctx.actor.name,
       };

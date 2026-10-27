@@ -73,6 +73,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
   const initialCategoriesLoaded = useRef(false);
   const [selectedVisit, setSelectedVisit] = useState<BillingSuggestion>();
   const [manualPatient, setManualPatient] = useState<Patient>();
+  const groups = useResource<CatalogEntry[]>('/references/catalogs?kind=PATIENT_GROUP', 15000);
+  const [groupOverride, setGroupOverride] = useState('');
+  const checkoutPatient = selectedVisit || manualPatient;
   const doctorPriced =
     selectedVisit?.consultationFeeCents != null && selectedVisit?.procedureFeeCents != null;
   const handoffConsumed = useRef(false);
@@ -144,6 +147,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
     checkoutDirty.current = false;
     setSelectedVisit(visit);
     setManualPatient(undefined);
+    setGroupOverride('');
     setHandoffMissing(false);
     setSection('checkout');
     setCheckoutKey(crypto.randomUUID());
@@ -238,6 +242,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
             </ResourceState>
           </Panel>
           <Panel title="Patient checkout">
+            <ResourceState {...groups}>{null}</ResourceState>
             <div
               ref={checkoutForm}
               onChange={() => {
@@ -252,6 +257,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   suggestions.refresh();
                   setSelectedVisit(undefined);
                   setManualPatient(undefined);
+                  setGroupOverride('');
                   checkoutDirty.current = false;
                   setLines([
                     {
@@ -283,6 +289,9 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   await api.post('/invoices', {
                     ...(selectedVisit ? { encounterId: selectedVisit.encounterId } : {}),
                     patientId: Number(formText(f, 'patientId')),
+                    ...(groupOverride
+                      ? { patientGroupId: groupOverride === 'none' ? null : Number(groupOverride) }
+                      : {}),
                     practitionerId: Number(formText(f, 'practitionerId')),
                     lines,
                     payments: total === 0 ? [] : payments,
@@ -300,7 +309,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           {selectedVisit.encounterId} · GP {selectedVisit.practitionerName}
                         </p>
                         <p className="form-help">
-                          Patient group: {selectedVisit.patientGroupLabel || 'No group assigned'}
+                          Registered group: {selectedVisit.patientGroupLabel || 'No group assigned'}
                         </p>
                         <input type="hidden" name="patientId" value={selectedVisit.patientId} />
                         <input
@@ -317,6 +326,7 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                           checkoutDirty.current = false;
                           setSelectedVisit(undefined);
                           setManualPatient(undefined);
+                          setGroupOverride('');
                           setCheckoutKey(crypto.randomUUID());
                           setLines([
                             {
@@ -335,10 +345,17 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                   ) : (
                     <>
                       <div>
-                        <PatientSelect patients={patients.data || []} onSelect={setManualPatient} />
+                        <PatientSelect
+                          patients={patients.data || []}
+                          onSelect={(patient) => {
+                            setManualPatient(patient);
+                            setGroupOverride('');
+                          }}
+                        />
                         {manualPatient && (
                           <p className="form-help">
-                            Patient group: {manualPatient.patientGroupLabel || 'No group assigned'}
+                            Registered group:{' '}
+                            {manualPatient.patientGroupLabel || 'No group assigned'}
                           </p>
                         )}
                       </div>
@@ -350,6 +367,30 @@ export default function Billing({ practitioners }: { practitioners: Reference[] 
                     </>
                   )}
                 </div>
+                <Field label="Patient group for this checkout">
+                  <select
+                    aria-describedby="checkout-group-help"
+                    value={groupOverride}
+                    onChange={(event) => setGroupOverride(event.target.value)}
+                    disabled={!checkoutPatient}
+                  >
+                    <option value="">
+                      Registered group: {checkoutPatient?.patientGroupLabel || 'No group assigned'}
+                    </option>
+                    <option value="none">No group assigned</option>
+                    {(groups.data || [])
+                      .filter((group) => group.active)
+                      .map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.label}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <p className="form-help" id="checkout-group-help">
+                  Applies to this receipt only. Leave the registered group selected to use the
+                  patient's registration.
+                </p>
                 <fieldset>
                   <legend>Invoice items</legend>
                   {doctorPriced && (

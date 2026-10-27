@@ -10,7 +10,7 @@ New receipts, clinical documents and dispensing stickers retain branding saved w
 
 Open Administration → Dashboard. Select dates to review collected revenue, paid stock purchases, operating expenses and net cash income for the current branch. Enter all actual paid costs under Expenses; stock receipt quantities and selling prices do not record purchase costs. Choose paid date, category, amount, description and supplier/receipt reference, then confirm. Edit corrections or void an entry to exclude it from totals while retaining its audit history. Older expenses retrieves earlier ledger pages.
 
-Patients by group counts all currently registered patients in the branch. Top medicines and consumables uses actual dispensed/used units during the report period; compare items using the units shown. Reserved or undispensed medicines do not count. Checkout now shows the patient's group; receipts keep the group recorded at checkout.
+Patients by group counts all currently registered patients in the branch. Top medicines and consumables uses actual dispensed/used units during the report period; compare items using the units shown. Reserved or undispensed medicines do not count. Checkout defaults to the patient's registered group. Change **Patient group for this checkout** to another available group or **No group assigned** when needed. The choice applies only to this receipt and does not change registration or group counts. Future checkouts use the registered group again. Receipts keep the group recorded at checkout.
 
 ## Portal logo and clinic name
 

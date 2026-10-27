@@ -408,6 +408,107 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('real MySQL clinic workflows', (
     expect(legacy.patientGroupId).toBeNull();
     expect(legacy.patientGroupLabel).toBeNull();
   });
+  it('allows receipt-only checkout group overrides with registered defaults and scoped validation', async () => {
+    const catalogs = new (await import('../src/server/catalog-service')).CatalogService();
+    const adminCtx = { ...ctx, actor: { ...ctx.actor, id: administrator, role: 'ADMIN' } };
+    const registered = await catalogs.create(adminCtx, {
+      kind: 'PATIENT_GROUP',
+      label: 'QA Registered Checkout Group',
+    });
+    const override = await catalogs.create(adminCtx, {
+      kind: 'PATIENT_GROUP',
+      label: 'QA Override Checkout Group',
+    });
+    const foreign = await catalogs.create(
+      { ...adminCtx, branchId: otherBranch },
+      {
+        kind: 'PATIENT_GROUP',
+        label: 'QA Foreign Checkout Group',
+      },
+    );
+    const wrongKind = await catalogs.create(adminCtx, {
+      kind: 'INVENTORY_UNIT',
+      label: 'QA Wrong Checkout Kind',
+    });
+    try {
+      const p = await patient({ patientGroupId: registered.id });
+      const request = invoice(p.id, randomUUID(), { patientGroupId: override.id });
+      const response = await settingsHttp('/invoices', 'POST', request);
+      expect(response.status).toBe(201);
+      const selected = await response.json();
+      expect(selected.receiptSnapshot).toMatchObject({
+        patientGroupId: override.id,
+        patientGroupLabel: override.label,
+      });
+      expect((await service.getPatient(ctx, p.id)).patientGroupId).toBe(registered.id);
+      const replay = await settingsHttp('/invoices', 'POST', request);
+      expect(replay.status).toBe(201);
+      expect((await replay.json()).id).toBe(selected.id);
+      expect(
+        (await settingsHttp('/invoices', 'POST', { ...request, patientGroupId: null })).status,
+      ).toBe(409);
+      const empty = await service.createInvoice(
+        ctx,
+        invoice(p.id, randomUUID(), { patientGroupId: null }),
+      );
+      expect(empty.receiptSnapshot).toMatchObject({
+        patientGroupId: null,
+        patientGroupLabel: 'No group assigned',
+      });
+      const defaulted = await service.createInvoice(ctx, invoice(p.id));
+      expect(defaulted.receiptSnapshot).toMatchObject({
+        patientGroupId: registered.id,
+        patientGroupLabel: registered.label,
+      });
+      await catalogs.update(adminCtx, registered.id, {
+        label: registered.label,
+        active: false,
+        sortOrder: 0,
+        version: registered.version,
+      });
+      const retained = await service.createInvoice(
+        ctx,
+        invoice(p.id, randomUUID(), { patientGroupId: registered.id }),
+      );
+      expect(retained.receiptSnapshot.patientGroupId).toBe(registered.id);
+      await catalogs.update(adminCtx, override.id, {
+        label: override.label,
+        active: false,
+        sortOrder: 0,
+        version: override.version,
+      });
+      const counts = async () =>
+        (
+          await rows(
+            'SELECT (SELECT COUNT(*) FROM invoices WHERE patient_id=?) invoices,(SELECT COUNT(*) FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.patient_id=?) payments',
+            [p.id, p.id],
+          )
+        )[0];
+      const before = await counts();
+      for (const invalid of [override.id, foreign.id, wrongKind.id, 999999999]) {
+        const denied = await settingsHttp(
+          '/invoices',
+          'POST',
+          invoice(p.id, randomUUID(), { patientGroupId: invalid }),
+        );
+        expect(denied.status).toBe(422);
+        expect((await denied.json()).code).toBe('INVALID_PATIENT_GROUP');
+      }
+      expect(await counts()).toEqual(before);
+      expect((await service.getPatient(ctx, p.id)).patientGroupId).toBe(registered.id);
+      await service.savePatient(ctx, { ...p, patientGroupId: null }, p.id);
+      const saved = await (await settingsHttp(`/invoices/${selected.id}/receipt-view`)).json();
+      expect(saved).toMatchObject({
+        patientGroupId: override.id,
+        patientGroupLabel: override.label,
+      });
+    } finally {
+      await sql.query(
+        "DELETE FROM reference_catalogs WHERE id=? AND tenant_id=? AND branch_id=? AND kind='INVENTORY_UNIT'",
+        [wrongKind.id, tenant, branch],
+      );
+    }
+  });
   it('persists doctor prices, consumes surgical supplies atomically, and rejects cashier price overrides', async () => {
     const p = await patient();
     const medicine = await item({ name: 'QA syrup' });

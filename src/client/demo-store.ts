@@ -2647,6 +2647,19 @@ export class DemoClinic {
         this.validateCatalogChoice('BILLING_CATEGORY', line.category, branch);
       const patient = this.record('patients', v.patientId, branch),
         clinicBranch = this.state.rows.branches.find((b) => b.id === branch)!;
+      const patientGroupId =
+        v.patientGroupId === undefined ? (patient.patientGroupId ?? null) : v.patientGroupId;
+      let patientGroupLabel =
+        this.patientWithGroup(patient, branch).patientGroupLabel || 'No group assigned';
+      if (patientGroupId !== null && v.patientGroupId !== undefined) {
+        const group = this.scoped('catalogs', branch).find(
+          (entry) => entry.id === patientGroupId && entry.kind === 'PATIENT_GROUP',
+        );
+        if (!group || (!group.active && patientGroupId !== patient.patientGroupId))
+          fail('Choose an active patient group.');
+        patientGroupLabel = group!.label;
+      }
+      if (patientGroupId === null) patientGroupLabel = 'No group assigned';
       this.doctor(v.practitionerId, branch);
       const encounter = v.encounterId
         ? this.record('encounters', v.encounterId, branch)
@@ -2716,9 +2729,8 @@ export class DemoClinic {
             clinicAddress: this.state.rows.tenants[0].letterhead?.address || clinicBranch.address,
             patientName: patient.name,
             nationalId: patient.nationalId,
-            patientGroupId: patient.patientGroupId ?? null,
-            patientGroupLabel:
-              this.patientWithGroup(patient, branch).patientGroupLabel || 'No group assigned',
+            patientGroupId,
+            patientGroupLabel,
             receivedBy: user.name,
           },
         },
