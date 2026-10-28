@@ -5,15 +5,15 @@
 ### Prerequisites
 
 - Node.js supported by the deployed Next.js 16 runtime and npm.
-- A Supabase project (managed PostgreSQL and Auth) or compatible PostgreSQL/Auth design; current auth helper specifically calls Supabase Auth REST.
+- A Supabase project (managed PostgreSQL and Auth) or compatible PostgreSQL/Auth design; native PostgreSQL authentication is available with `CLINIC_AUTH_PROVIDER=postgresql`.
 - Supabase CLI for applying migrations, configured against the intended project.
 
 ### Local app
 
 1. Install repository dependencies with `npm install` in a clean clone.
-2. Copy `.env.example` to `.env.local`. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Patient routes require independent 32-byte `PATIENT_NRIC_ENCRYPTION_KEY` and `PATIENT_NRIC_HASH_KEY` secrets. Clinical document issue and QR verification also require a separate 32-byte `DOCUMENT_QR_SIGNING_KEY` and production `APP_BASE_URL`; generate each key independently with `openssl rand -hex 32`. Keep secrets and any service-role/database connection credentials server-side only. Rotating the QR key invalidates previously printed links unless old verification tokens are retained through an explicit migration design.
+2. Copy `.env.example` to `.env.local`. For native PostgreSQL, set `DATABASE_URL` and `CLINIC_AUTH_PROVIDER=postgresql`. For Supabase Auth, set `CLINIC_AUTH_PROVIDER=supabase`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY`. Patient routes require independent 32-byte `PATIENT_NRIC_ENCRYPTION_KEY` and `PATIENT_NRIC_HASH_KEY` secrets. Clinical document issue and QR verification also require a separate 32-byte `DOCUMENT_QR_SIGNING_KEY` and production `APP_BASE_URL`; generate each key independently with `openssl rand -hex 32`. Keep secrets and any service-role/database connection credentials server-side only. Rotating the QR key invalidates previously printed links unless old verification tokens are retained through an explicit migration design.
 3. Start with `npm run dev`. `npm run build` makes a production build; `npm run lint` invokes ESLint.
-4. Without valid Supabase Auth configuration and a provisioned active `staff_members` row, login is unavailable. `NEXT_PUBLIC_CLINIC_DEMO_MODE` defaults off. Setting it to `true` seeds client demo records, skips PostgreSQL-backed patient/queue/document loads, and keeps those demo workflows in memory. This is client behavior: server API routes are not disabled by this flag, so authenticated direct API calls can still write if the database is configured.
+4. Live login requires configured PostgreSQL credentials or Supabase Auth and an active `staff_members` row. For local development, explicitly set `NEXT_PUBLIC_CLINIC_DEMO_MODE=true` and run `npm run dev`. Demo accounts use random, expiring server sessions and JSON persistence. Production rejects demo authentication even when the flag is true. Live database failures never fall back to local records.
 
 ### PostgreSQL migration and initial provisioning
 
@@ -81,7 +81,11 @@ Required before real PHI:
 
 ## Test strategy and quality gates
 
-No application test suite is present in `package.json`. `npm run lint` and `npm run build` are available scripts; the latest TypeScript check and production build passed. Database-specific validation remains unavailable here and must be added before production:
+Run `npm run check` for strict TypeScript checking, Next.js/TypeScript ESLint with zero warnings, and the automated Node test suite. Run `npm run build` separately to verify production compilation. These replace Python checks: this repository contains no Python application, so mypy, Ruff, and pytest are not applicable.
+
+The suite has automated regressions covering domain invariants, authentication, authorization, CSRF, identifier encryption, duplicate patients, queue progression, restricted database transaction roles, failed disk persistence, and client handling of rejected writes. Route tests use temporary JSON fixtures; database and browser dependencies are mocked. They never use `.env.local` or the workspace clinic database. Existing `scripts/test-http.cjs` and `scripts/test-api-e2e.ts` are manual, mutating integration scripts, not proof that the automated gates pass.
+
+Further database validation required before production:
 
 1. Migration applies cleanly to an empty local PostgreSQL/Supabase database and is repeatably deployable through migration tooling.
 2. Schema tests cover enum/check constraints, composite FK branch isolation, overlapping practitioner/room booking exclusion, and append-only trigger rejection.
@@ -92,6 +96,28 @@ No application test suite is present in `package.json`. `npm run lint` and `npm 
 7. Security testing covers authorization bypass, CSRF, rate abuse, encryption, logging, token verification leakage, secrets, and dependency vulnerabilities.
 
 ## Known gaps and roadmap
+
+### Audit fixes — 7 October 2026
+
+| Finding | Result |
+| --- | --- |
+| Predictable mock cookies authenticated known staff IDs | Random 256-bit tokens require explicit nonproduction demo mode; expiry, logout, and account inactivity are enforced |
+| Unauthenticated clinic state read/write and staff listing | Authenticated role checks; clinic-data field allowlists reject staff credentials and unauthorized fields |
+| Privileged arbitrary SQL from web console | SQL execution disabled; browser limited to sanitized, branch-scoped allowlisted tables |
+| PostgreSQL session claims did not enforce RLS connection role | Transactions now use `SET LOCAL ROLE authenticated` or `anon`, with transaction-local claims |
+| Patient directory decrypted national IDs without access audit | Directory/create responses conceal IDs; detail reveal requires permission and durable access audit |
+| Database errors silently caused demo reads/writes | Explicit demo branch; live database errors propagate without local fallback |
+| Registration SQL referenced missing columns | Forward migration `20261007010000_audit_patient_queue.sql` adds non-identifier metadata; identifiers remain encrypted |
+| Identifier audit insert conflicts with restricted role grants | Forward migration `20261007020000_audit_access.sql` adds a narrowly permissioned audit RPC |
+| Client showed successful writes after HTTP errors | Store commits state only after accepted writes; unavailable live workflows return errors |
+| Expired stock, package extension no-op, concurrent invoice payments, wrong patient ages, room leaks | Focused domain fixes and regression tests |
+| JSON storage accepted changes before writing disk and overwrote corrupt data | Disk write precedes memory commit; unreadable existing files fail without reseeding |
+
+Apply the audit migrations and native authentication migration after migrations 01–07 before running live patient routes. The standalone completion runner preserves existing records and tracks each successfully applied migration. Native credentials use salted scrypt hashes; session tokens are stored as hashes. Concurrent booking/queue behavior, cross-tenant RLS coverage, and browser interaction still require broader integration testing.
+
+Live staff management writes, inventory loading, and generic demo-state workflows lack production endpoints. They fail closed rather than displaying fixtures or claiming local changes are saved. Payment and notification providers remain unconfigured; several unused domain strategies simulate successful delivery/payment. This audit does not establish clinical production readiness.
+
+`npm audit --omit=dev` reports zero vulnerabilities at audit time. Full dependency audit reports five high-severity entries in the development ESLint glob dependency chain, rooted in `braces` ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)). They remain unresolved; the suggested forced downgrade is not a compatible Next.js fix.
 
 ### P0 — required before operational clinic use
 

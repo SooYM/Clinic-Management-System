@@ -1,6 +1,6 @@
 # Supabase database setup
 
-The schema is defined by 7 ordered migrations:
+The schema is defined by 10 ordered migrations:
 1. `supabase/migrations/20261005010000_clinic_foundation.sql` (Foundation schema, staff, clinics, branches, patients, and audit)
 2. `supabase/migrations/20261005020000_queue_transitions.sql` (Queue tickets, atomic transitions, and audit events)
 3. `supabase/migrations/20261005030000_clinical_document_lifecycle.sql` (Clinical document versions, SHA-256 verification, and print logs)
@@ -8,6 +8,9 @@ The schema is defined by 7 ordered migrations:
 5. `supabase/migrations/20261005050000_outpatient_encounters_and_prescriptions.sql` (SOAP clinical encounters, mutable drafts, immutable signed snapshots)
 6. `supabase/migrations/20261005060000_inventory_packages_lifecycle.sql` (FEFO drug batch tracking, movements, treatment package punch-cards)
 7. `supabase/migrations/20261005070000_billing_lifecycle.sql` (Invoices, receipts, payment settlements, and receipt print logs)
+8. `supabase/migrations/20261007010000_audit_patient_queue.sql` (Structured patient address/identity fields, queue consultation room constraint)
+9. `supabase/migrations/20261007020000_audit_access.sql` (Security-definer RPC `record_patient_identifier_access` for NRIC privacy audit)
+10. `supabase/migrations/20261007030000_postgresql_auth.sql` (Standalone `clinic_auth` credentials and session token hashing)
 
 They define Malaysia defaults (MYR and `Asia/Kuala_Lumpur`), clinic/branch-scoped staff membership, operational records, safe-default-deny RLS policies, immutable history tables, status-only document verification, atomic queue transitions, and versioned clinical document issue/revision/print RPCs.
 
@@ -34,4 +37,4 @@ Set `APP_BASE_URL` to the clinic application's canonical public HTTPS origin. Pr
 - Public callers can invoke `verify_clinical_document(token)` through `/api/document-verification`, which returns only `valid` or `revoked` (unknown, expired, and revoked tokens all produce `revoked`). The server derives a version-scoped opaque token from the QR signing key and stores only its SHA-256 digest. The endpoint does not return names, diagnoses, dates, or other document data. There is no shared rate limiter yet.
 - Clinical document versions, print logs, queue events, stock movements, package redemptions, delivery logs, and audit events reject update/delete. Ledger/history inserts are restricted to trusted server code; the authenticated browser role cannot insert synthetic history rows. Represent corrections with a new version/event or an explicit document revocation.
 - Patient national identifiers should be encrypted by the application before writing `national_id_ciphertext`; the optional `national_id_hash` should be a keyed HMAC suitable for duplicate matching. Do not put secrets or plaintext NRIC values in logs or metadata.
-- The system remains incomplete. Patient list/create, queue operations, and clinical document issue, immutable revisions, status-only QR verification, and print logs are database-backed. Appointments, rooms, encounters/prescriptions, inventory, packages, invoices/payments/receipts, notifications, commissions, and much of administration are not operational. Configure permission rows, server secrets, provider integrations, backups, retention, and access controls before storing real patient data. `NEXT_PUBLIC_CLINIC_DEMO_MODE=true` keeps the UI's supported demo workflows local; it does not disable server routes for direct authenticated API requests.
+- The system operational scope: Authentication (PostgreSQL or Supabase), patient directory/registration with AES-256-GCM encrypted NRICs, consultation rooms, staff roster, queue tickets with atomic transitions, appointments, outpatient SOAP encounters, clinical document issue/versioning/print logs, and manager database explorer are database-backed. Inventory dispense, package punch-card write actions, live billing/POS payments/receipts, notifications, and commissions remain demo/local. Configure permission rows, server secrets, provider integrations, backups, retention, and access controls before storing real patient data. `NEXT_PUBLIC_CLINIC_DEMO_MODE=true` keeps the UI's supported demo workflows local; it does not disable server routes for direct authenticated API requests.

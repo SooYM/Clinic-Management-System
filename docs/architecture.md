@@ -27,15 +27,19 @@ The working data boundary is partial: authentication, patient, queue, and clinic
 
 | Component | Responsibilities today | Principal files |
 | --- | --- | --- |
-| Next.js client | UI navigation, patient/queue/document load and write requests, sample rooms/encounters/packages/inventory, demo payment flows | [`app/page.tsx`](../app/page.tsx), [`lib/data/clinic-store.ts`](../lib/data/clinic-store.ts) |
+| Next.js client | UI navigation, patient/queue/document load and write requests, live rooms and staff viewing, sample packages/inventory, demo payment flows | [`app/page.tsx`](../app/page.tsx), [`lib/data/clinic-store.ts`](../lib/data/clinic-store.ts) |
 | Session provider | Fetch current session, call login/logout endpoints, adapt the staff profile for UI | [`lib/state/session.tsx`](../lib/state/session.tsx) |
-| Auth route handlers | Sign in, resolve/refresh, revoke sessions with mock accounts fallback; set HttpOnly cookies | [`app/api/auth`](../app/api/auth), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts) |
+| Auth route handlers | Sign in, resolve/refresh, revoke sessions via native PostgreSQL (`clinic_auth`) or Supabase Auth; set HttpOnly cookies | [`app/api/auth`](../app/api/auth), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts), [`lib/server/postgres-auth.ts`](../lib/server/postgres-auth.ts) |
 | Patient/queue route handlers | Read/create patients; read/create/update queue tickets with active session and RLS | [`app/api/patients`](../app/api/patients), [`app/api/queue`](../app/api/queue) |
+| Room route handlers | Read live consultation rooms joined with assigned practitioners and active queue occupancy | [`app/api/rooms`](../app/api/rooms) |
+| Staff route handlers | List staff members, register staff (demo), update details and reset passwords | [`app/api/staff`](../app/api/staff) |
 | Appointment route handlers | Read, book, and update appointment statuses with doctor scheduling | [`app/api/appointments`](../app/api/appointments), [`lib/server/scheduling-api.ts`](../lib/server/scheduling-api.ts) |
 | Encounter route handlers | Read and create clinical SOAP encounter records with doctor linkage | [`app/api/encounters`](../app/api/encounters), [`lib/server/clinical-care.ts`](../lib/server/clinical-care.ts) |
 | Document route handlers | Issue, list, regenerate, revoke, and log prints for clinical documents; expose status-only QR verification | [`app/api/clinical-documents`](../app/api/clinical-documents), [`app/api/document-verification`](../app/api/document-verification) |
-| Database connection pool | Manages direct PostgreSQL connections with transaction/RLS helpers | [`lib/server/db.ts`](../lib/server/db.ts) |
-| PostgreSQL migrations | Define 7 migration stages (foundation, queue, documents, scheduling, encounters, inventory, billing) | [`supabase/migrations`](../supabase/migrations), [`supabase/seed.sql`](../supabase/seed.sql) |
+| Admin database route | phpMyAdmin-style manager table browser with allowlisted tables and masked credentials | [`app/api/admin/database`](../app/api/admin/database) |
+| Clinic data store route | Server-side field-allowlisted store endpoint for clinic state and demo persistence | [`app/api/clinic-data`](../app/api/clinic-data) |
+| Database connection pool | Manages direct PostgreSQL connections with transaction/RLS helpers and transaction-local claims | [`lib/server/db.ts`](../lib/server/db.ts) |
+| PostgreSQL migrations | Define 10 ordered migration stages (foundation, queue, documents, scheduling, encounters, inventory, billing, patient/queue audit columns, access audit RPC, native PostgreSQL auth) | [`supabase/migrations`](../supabase/migrations), [`scripts/complete-postgresql-schema.cjs`](../scripts/complete-postgresql-schema.cjs) |
 | Print view | Renders print-friendly document artifact and invokes browser print dialog | [`components/documents`](../components/documents) |
 
 ### Implemented persistence/API surface
@@ -43,8 +47,13 @@ The working data boundary is partial: authentication, patient, queue, and clinic
 | Route | Database operation |
 | --- | --- |
 | `GET /api/patients` | Read branch-visible patient directory |
-| `POST /api/patients` | Validate/register patient, encrypt identifier, store HMAC duplicate key |
-| `GET /api/patients/{id}` | Read/decrypt one patient's national identifier with audit event |
+| `POST /api/patients` | Validate/register patient, encrypt identifier (AES-256-GCM), store HMAC duplicate key |
+| `GET /api/patients/{id}` | Read/decrypt one patient's national identifier with durable audit event |
+| `GET /api/rooms` | Read branch consultation rooms joined with attending practitioner and queue ticket occupancy |
+| `GET /api/staff` | Read branch staff members with role and credentials sanitized |
+| `POST /api/staff` | Register new staff member (demo mode; live requires dedicated provisioning) |
+| `PATCH /api/staff/{id}` | Update staff profile details (role-gated to manager) |
+| `POST /api/staff/{id}/reset-password` | Update staff password (role-gated to manager) |
 | `GET /api/appointments` | Read branch appointments filtered by date or practitioner |
 | `POST /api/appointments` | Book appointment with patient validation and practitioner slot checking |
 | `PATCH /api/appointments/{id}` | Transition appointment status (`arrived`, `completed`, `cancelled`) |
@@ -58,30 +67,32 @@ The working data boundary is partial: authentication, patient, queue, and clinic
 | `GET /api/queue` | Read branch-visible tickets |
 | `POST /api/queue` | Call `create_queue_ticket`; atomically create a ticket and its initial event |
 | `PATCH /api/queue` | Call `transition_queue_ticket`; atomically change a ticket and append its event |
+| `GET /api/admin/database` | Browse allowlisted branch database tables with masked credentials |
+| `GET, POST /api/clinic-data` | Synchronize allowlisted clinic demo state |
 
-`NEXT_PUBLIC_CLINIC_DEMO_MODE` is opt-in and defaults off. When set to `true`, the client initializes sample arrays and runs fully in local standalone mode without requiring a PostgreSQL connection. In non-demo mode, failed patient/queue/document hydration shows an error instead of silently displaying seeded records.
+`NEXT_PUBLIC_CLINIC_DEMO_MODE` is opt-in and defaults off. When explicitly enabled outside production, authenticated demo sessions load JSON fixtures through permissioned server APIs. The client starts with empty records. Production cannot authenticate demo accounts. Live patient/queue/document failures show errors instead of displaying local fixtures. Unsupported live staff writes, inventory, and generic state workflows fail closed.
 
 ### Still demo-only or not implemented
 
-Room records, medication dispensing, package redemptions, inventory FEFO movements, invoices, payments, external notifications, commissions, and broad audit workflows have no application data routes yet. Receipts are not issued in live mode without confirmed persisted payments.
+Medication dispensing orders, package redemptions, inventory FEFO movements, invoices, payments, external notifications, commissions, and broad audit log export have no production data routes yet. Receipts are not issued in live mode without confirmed persisted payments.
 
 ## Intended production topology
 
 ```mermaid
 flowchart TB
-  Staff[Reception / clinician / manager browsers]
-  Next[Next.js web app and authenticated API]
-  Auth[Supabase Auth]
-  DB[(PostgreSQL primary\nRLS + transactions)]
-  Worker[Trusted background workers]
-  Payment[Acquirer / DuitNow provider]
-  WA[WhatsApp Business provider]
-  Mail[Email delivery provider]
-  Verify[Public document verification endpoint]
-  Storage[Private object storage\n(if attachments are introduced)]
+  Staff["Reception / clinician / manager browsers"]
+  Next["Next.js web app and authenticated API"]
+  Auth["Auth Layer\n(PostgreSQL clinic_auth OR Supabase Auth)"]
+  DB[("PostgreSQL primary\nRLS + SET LOCAL claims + transactions")]
+  Worker["Trusted background workers"]
+  Payment["Acquirer / DuitNow provider"]
+  WA["WhatsApp Business provider"]
+  Mail["Email delivery provider"]
+  Verify["Public document verification endpoint"]
+  Storage["Private object storage\n(if attachments are introduced)"]
   Staff --> Next
   Next --> Auth
-  Next -->|user JWT / RLS| DB
+  Next -->|pg pool / user session claims / RLS| DB
   Next -->|transactional outbox| DB
   Worker --> DB
   Worker --> Payment

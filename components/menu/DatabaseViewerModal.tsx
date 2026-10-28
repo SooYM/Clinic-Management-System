@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Modal } from "../Modal";
 import { Database, Table, Search, Terminal, Columns, RefreshCw, ChevronLeft, ChevronRight, Play, CheckCircle2, AlertCircle } from "lucide-react";
 import { notify } from "../toast";
@@ -45,44 +45,25 @@ export function DatabaseViewerModal({ onClose }: { onClose: () => void }) {
   } | null>(null);
   const [sqlError, setSqlError] = useState<string | null>(null);
 
-  // Load all tables on open
-  useEffect(() => {
-    loadTables();
-  }, []);
-
-  async function loadTables() {
-    setLoadingTables(true);
-    try {
-      const res = await fetch("/api/admin/database");
+  const loadTables = useCallback(() => {
+    return fetch("/api/admin/database").then(async (res) => {
       const data = await res.json();
       if (res.ok && data.tables) {
         setTables(data.tables);
         setDbName(data.database || "clinic_db");
         setDbMode(data.mode || "postgresql");
-        if (data.tables.length > 0 && !selectedTable) {
-          setSelectedTable(data.tables[0].name);
+        if (data.tables.length > 0) {
+          setSelectedTable((current) => current || data.tables[0].name);
         }
       }
-    } catch {
+    }).catch(() => {
       notify("Failed to connect to database tables.", "error");
-    } finally {
-      setLoadingTables(false);
-    }
-  }
+    });
+  }, []);
 
-  // Load table data when selected table or page changes
-  useEffect(() => {
-    if (selectedTable) {
-      loadTableData(selectedTable, page);
-      setSqlQuery(`SELECT * FROM public."${selectedTable}" LIMIT 25;`);
-    }
-  }, [selectedTable, page]);
-
-  async function loadTableData(tableName: string, pageNum: number) {
-    setLoadingData(true);
-    try {
-      const offset = (pageNum - 1) * pageSize;
-      const res = await fetch(`/api/admin/database?table=${encodeURIComponent(tableName)}&limit=${pageSize}&offset=${offset}`);
+  const loadTableData = useCallback((tableName: string, pageNum: number) => {
+    const offset = (pageNum - 1) * pageSize;
+    return fetch(`/api/admin/database?table=${encodeURIComponent(tableName)}&limit=${pageSize}&offset=${offset}`).then(async (res) => {
       const data = await res.json();
       if (res.ok) {
         setColumns(data.columns || []);
@@ -91,12 +72,21 @@ export function DatabaseViewerModal({ onClose }: { onClose: () => void }) {
       } else {
         notify(data.error?.message || "Failed to load table rows.", "error");
       }
-    } catch {
+    }).catch(() => {
       notify("Network error while reading table.", "error");
-    } finally {
-      setLoadingData(false);
-    }
-  }
+    });
+  }, []);
+
+  useEffect(() => {
+    let current = true;
+    void loadTables().finally(() => { if (current) setLoadingTables(false); });
+    return () => { current = false; };
+  }, [loadTables]);
+  useEffect(() => {
+    let current = true;
+    if (selectedTable) void loadTableData(selectedTable, page).finally(() => { if (current) setLoadingData(false); });
+    return () => { current = false; };
+  }, [selectedTable, page, loadTableData]);
 
   async function handleRunSql() {
     if (!sqlQuery.trim()) return;
@@ -256,6 +246,7 @@ export function DatabaseViewerModal({ onClose }: { onClose: () => void }) {
                   key={t.name}
                   onClick={() => {
                     setSelectedTable(t.name);
+                    setSqlQuery(`SELECT * FROM public."${t.name}" LIMIT 25;`);
                     setPage(1);
                   }}
                   className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-mono flex items-center justify-between transition ${
@@ -540,7 +531,7 @@ export function DatabaseViewerModal({ onClose }: { onClose: () => void }) {
                   </div>
                 ) : (
                   <div className="h-full flex items-center justify-center text-xs text-[var(--muted)]">
-                    Press "Run Query" to execute the SQL statement above.
+                    SQL execution is disabled. Browse sanitized demo tables instead.
                   </div>
                 )}
               </div>

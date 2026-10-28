@@ -5,6 +5,7 @@ out/
 build/
 dist/
 coverage/
+.backups/
 *.tsbuildinfo
 
 # Local configuration and secrets

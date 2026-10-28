@@ -15,6 +15,13 @@ All current API routes execute in the Next.js Node.js runtime and disable respon
 | `GET /api/queue` | Session cookies | `{ "ok": true, "queue": QueueTicket[] }` | Reads up to 500 visible tickets, priority descending then registration ascending. |
 | `POST /api/queue` | Session cookies; JSON `{ "patientId": string }` | `{ "ok": true, "ticket": QueueTicket }` (`201`) | Receptionist, manager, or nurse only. Calls `create_queue_ticket`; creates a `registered` ticket and initial event atomically under the authenticated user's clinic/branch. Requires `queue.manage`. |
 | `PATCH /api/queue` | Session cookies; JSON `{ "ticketId": string, "expectedStatus": ClientStatus, "status": ClientStatus, "roomId"?: string, "note"?: string }` | `{ "ok": true, "ticket": QueueTicket }` | Calls `transition_queue_ticket`, which updates ticket and event atomically. Requires `queue.manage`; compares `expectedStatus` to reject stale updates. `409 QUEUE_STALE`; `400 QUEUE_TRANSITION_NOT_ALLOWED`; `403 QUEUE_PERMISSION_DENIED`; `404 QUEUE_TICKET_NOT_FOUND`; `502` database/RPC failure. |
+| `GET /api/rooms` | Session cookies | `{ "ok": true, "rooms": ConsultationRoom[] }` | Reads active branch consultation rooms joined with attending practitioner name/specialty and active queue ticket occupancy. |
+| `GET /api/staff` | Session cookies | `{ "ok": true, "staff": StaffUser[] }` | Reads active branch staff roster with sanitized credentials (passwords excluded). In demo mode requires manager role. |
+| `POST /api/staff` | Session cookies; JSON body | `{ "ok": true, "staff": StaffUser }` (`201`) | Manager only; registers staff user in demo mode. In live database mode fails closed (`503 STAFF_MANAGEMENT_UNAVAILABLE`) pending dedicated provisioning pipeline. |
+| `PATCH /api/staff/{id}` | Session cookies; JSON body | `{ "ok": true, "staff": StaffUser }` | Manager only; updates staff profile metadata (name, specialty, license number). |
+| `POST /api/staff/{id}/reset-password` | Session cookies; JSON `{ "password": string }` | `{ "ok": true }` | Manager only; updates staff password in demo mode. |
+| `GET /api/admin/database` | Session cookies; query `?table=...` | `{ "ok": true, "table": string, "columns": string[], "rows": object[] }` | Manager only; phpMyAdmin-style read-only table viewer. Strictly limited to allowlisted public tables (`clinics`, `branches`, `staff_members`, `patients`, `appointments`, `queue_tickets`, etc.). Credential fields and secret tables (`clinic_auth.*`, `auth.users`) are blocked/masked. Arbitrary SQL execution is completely disabled. |
+| `GET, POST /api/clinic-data` | Session cookies; JSON body for POST | `{ "ok": true, ... }` | Synchronizes allowlisted clinic settings, rooms, and inventory in demo mode. Body is strictly filtered by an allowlist to prevent unauthorized privilege escalation or credential overwrite. |
 | `GET /api/appointments` | Session cookies; optional query `date`, `practitionerId` | `{ "ok": true, "appointments": Appointment[] }` | Reads branch appointments; ordered by start time. |
 | `POST /api/appointments` | Session cookies; JSON `{ patientId, practitionerId, startTime, endTime, appointmentType, notes? }` | `{ "ok": true, "appointment": Appointment }` (`201`) | Checks practitioner schedule conflicts, verifies patient branch tenancy, inserts booking. |
 | `PATCH /api/appointments/{id}` | Session cookies; JSON `{ status, cancellationReason? }` | `{ "ok": true, "appointment": Appointment }` | Updates appointment status (`booked`, `confirmed`, `arrived`, `cancelled`, `no_show`, `completed`). |
@@ -27,11 +34,31 @@ All current API routes execute in the Next.js Node.js runtime and disable respon
 | `POST /api/clinical-documents/{id}/revoke` | Session cookies; `{ reason }` | `{ "ok": true, "document": { id, status: "revoked" } }` | Revokes through a permission-checked RPC; old version QR tokens then report revoked. Requires `documents.write`. |
 | `GET /api/document-verification?token=…` | Opaque QR token | `{ "status": "valid" | "revoked" }` | Public, privacy-minimal response. Unknown, expired, or revoked tokens return `revoked`. No shared rate limiter is configured yet. |
 
-Session user shape returned by server: `id` (`staff_members.id`), `auth_user_id`, `clinic_id`, `branch_id`, `full_name`, `role`, and `license_number`. Auth roles are `doctor`, `receptionist`, `nurse`, `manager`. In local standalone mode without Supabase Auth, built-in staff accounts (`admin`, `doctor`, `marcus`, `reception`, `nurse`) authenticate with local mock tokens. Accounts with multiple active branch memberships receive `409 BRANCH_SELECTION_REQUIRED`.
+Session user shape returned by server: `id` (`staff_members.id`), `auth_user_id`, `clinic_id`, `branch_id`, `full_name`, `role`, and `license_number`. Auth roles are `doctor`, `receptionist`, `nurse`, `manager`. Accounts with multiple active branch memberships receive `409 BRANCH_SELECTION_REQUIRED`.
+
+### Authentication Providers
+
+1. **Native PostgreSQL (`CLINIC_AUTH_PROVIDER=postgresql`)**:
+   - Queries `clinic_auth.credentials` and validates password against salted `scrypt` hash using timing-safe comparison.
+   - Verifies active profile in `public.staff_members`.
+   - Generates 256-bit cryptographic tokens; stores SHA-256 hashes in `clinic_auth.sessions`.
+   - Access token expires in 15 minutes; refresh token expires in 7 days with atomic token rotation.
+   - Completely independent from Supabase Auth REST services.
+
+2. **Hosted Supabase Auth (`CLINIC_AUTH_PROVIDER=supabase`)**:
+   - Uses Supabase Auth password grant REST endpoints (`/auth/v1/token?grant_type=password`).
+   - Links returned Supabase Auth user ID to `public.staff_members`.
+
+3. **Development Demo Authentication**:
+   - Enabled only when `NEXT_PUBLIC_CLINIC_DEMO_MODE=true` and `NODE_ENV !== "production"`.
+   - Pre-seeded built-in accounts (`admin`, `doctor`, `marcus`, `reception`, `nurse`).
+   - Issues randomized 256-bit tokens stored in server memory/JSON fixtures; strictly rejects forged cookies.
+   - Enforces CSRF origin checks (protocol + host + port).
+   - Inactive staff and production environments are strictly rejected from demo login.
 
 ### Server configuration
 
-Database routes connect via PostgreSQL pool (`SUPABASE_DB_URL`, `DATABASE_URL`, or `POSTGRES_*` variables) or Supabase Auth. Patient registration/identifier retrieval requires independent 32-byte `PATIENT_NRIC_ENCRYPTION_KEY` and `PATIENT_NRIC_HASH_KEY` secrets. NRIC reveal requires `patients.identifiers.read` and logs an audit event. Clinical document issue and verification QR generation require a 32-byte `DOCUMENT_QR_SIGNING_KEY` and canonical `APP_BASE_URL`. `NEXT_PUBLIC_CLINIC_DEMO_MODE=true` enables fully standalone browser demo operation.
+Database routes connect via PostgreSQL pool (`SUPABASE_DB_URL`, `DATABASE_URL`, or `POSTGRES_*` variables) or Supabase Auth. Patient registration/identifier retrieval requires independent 32-byte `PATIENT_NRIC_ENCRYPTION_KEY` and `PATIENT_NRIC_HASH_KEY` secrets. NRIC reveal requires `patients.identifiers.read` and executes `record_patient_identifier_access` to log a privacy audit event. Clinical document issue and verification QR generation require a 32-byte `DOCUMENT_QR_SIGNING_KEY` and canonical `APP_BASE_URL`. `NEXT_PUBLIC_CLINIC_DEMO_MODE=true` enables local standalone operation. Live database failures fail closed and never fall back to local demo fixtures.
 
 ### Patient response and input
 

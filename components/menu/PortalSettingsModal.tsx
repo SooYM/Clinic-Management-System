@@ -216,7 +216,7 @@ export function PortalSettingsModal({
                     Clinic DuitNow QR Code (POS Payment)
                   </span>
                   <span className="text-[0.68rem] text-[var(--muted)]">
-                    Upload your clinic's official DuitNow QR image to display at checkout.
+                    Upload your clinic&apos;s official DuitNow QR image to display at checkout.
                   </span>
                 </div>
                 {formData.customDuitNowQrImage && (
@@ -273,7 +273,7 @@ export function PortalSettingsModal({
                     className="w-full text-xs text-[var(--muted)] file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[var(--blue-soft)] file:text-[var(--blue)] hover:file:bg-[var(--blue)] hover:file:text-white file:cursor-pointer"
                   />
                   <span className="text-[0.65rem] text-[var(--muted)] mt-1 block">
-                    Upload PNG, JPG, or SVG image of your clinic's DuitNow QR code.
+                    Upload PNG, JPG, or SVG image of your clinic&apos;s DuitNow QR code.
                   </span>
                 </div>
               )}

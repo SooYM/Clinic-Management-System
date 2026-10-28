@@ -19,7 +19,7 @@ export class TreatmentPackage {
   private readonly _packageName: string;
   private readonly _totalSessions: number;
   private readonly _purchaseDate: Date;
-  private readonly _expiryDate: Date;
+  private _expiryDate: Date;
   private readonly _pricePaid: number;
   private _redemptions: SessionRedemptionRecord[] = [];
   private _isTerminated: boolean = false;
@@ -35,16 +35,16 @@ export class TreatmentPackage {
   ) {
     if (!id) throw new Error("Package ID is required.");
     if (!patientId) throw new Error("Patient ID is required.");
-    if (totalSessions <= 0) throw new Error("Total sessions must be positive integer.");
-    if (expiryDate <= purchaseDate) throw new Error("Expiry date must be after purchase date.");
-    if (pricePaid < 0) throw new Error("Price paid cannot be negative.");
+    if (!Number.isInteger(totalSessions) || totalSessions <= 0) throw new Error("Total sessions must be positive integer.");
+    if (!Number.isFinite(purchaseDate.getTime()) || !Number.isFinite(expiryDate.getTime()) || expiryDate <= purchaseDate) throw new Error("Expiry date must be after purchase date.");
+    if (!Number.isFinite(pricePaid) || pricePaid < 0) throw new Error("Price paid cannot be negative.");
 
     this._id = id;
     this._patientId = patientId;
     this._packageName = packageName;
     this._totalSessions = totalSessions;
-    this._purchaseDate = purchaseDate;
-    this._expiryDate = expiryDate;
+    this._purchaseDate = new Date(purchaseDate);
+    this._expiryDate = new Date(expiryDate);
     this._pricePaid = pricePaid;
   }
 
@@ -93,7 +93,8 @@ export class TreatmentPackage {
 
   public extendExpiry(newExpiryDate: Date, authorizedManagerId: string): void {
     if (!authorizedManagerId) throw new Error("Manager authorization required to extend package expiry.");
-    if (newExpiryDate <= this._expiryDate) throw new Error("New expiry date must extend beyond current expiry.");
+    if (!Number.isFinite(newExpiryDate.getTime()) || newExpiryDate <= this._expiryDate) throw new Error("New expiry date must extend beyond current expiry.");
+    this._expiryDate = new Date(newExpiryDate);
     // In real system, emits PackageExpiryExtendedEvent for audit
   }
 }

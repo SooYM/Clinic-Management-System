@@ -21,6 +21,8 @@ export function validUuid(value: unknown): value is string {
 
 export function parseInstant(value: unknown): string | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const calendarDay = new Date(value.slice(0, 10) + "T00:00:00Z");
+  if (Number.isNaN(calendarDay.getTime()) || calendarDay.toISOString().slice(0, 10) !== value.slice(0, 10)) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }

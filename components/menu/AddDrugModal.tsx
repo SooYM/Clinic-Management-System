@@ -4,16 +4,15 @@ import { useState } from "react";
 import { Modal } from "../Modal";
 import { type InventoryItemData } from "../../lib/data/clinic-store";
 import { notify } from "../toast";
-import { Pill, Plus } from "lucide-react";
 
 interface AddDrugModalProps {
   onClose: () => void;
-  onAdd: (item: InventoryItemData) => void;
+  onAdd: (item: InventoryItemData) => Promise<InventoryItemData | undefined>;
 }
 
 export function AddDrugModal({ onClose, onAdd }: AddDrugModalProps) {
   const [name, setName] = useState("");
-  const [sku, setSku] = useState(`MED-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [sku, setSku] = useState(() => `MED-${Math.floor(1000 + Math.random() * 9000)}`);
   const [category, setCategory] = useState<"MEDICATION" | "AESTHETIC_CONSUMABLE" | "SKINCARE_RETAIL">("MEDICATION");
   const [strength, setStrength] = useState("500mg");
   const [dosageForm, setDosageForm] = useState("Tablet");
@@ -21,12 +20,12 @@ export function AddDrugModal({ onClose, onAdd }: AddDrugModalProps) {
   const [sellingPrice, setSellingPrice] = useState(15.0);
   const [minimumParLevel, setMinimumParLevel] = useState(50);
   const [initialQuantity, setInitialQuantity] = useState(100);
-  const [batchNumber, setBatchNumber] = useState(`LOT-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}`);
-  const [expiryDate, setExpiryDate] = useState(
+  const [batchNumber, setBatchNumber] = useState(() => `LOT-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}`);
+  const [expiryDate, setExpiryDate] = useState(() =>
     new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       notify("Please provide a medication name.", "error");
@@ -56,8 +55,7 @@ export function AddDrugModal({ onClose, onAdd }: AddDrugModalProps) {
       ],
     };
 
-    onAdd(newItem);
-    notify(`Added ${newItem.name} to clinic formulary!`, "success");
+    if (!await onAdd(newItem)) return;
     onClose();
   };
 
@@ -141,7 +139,7 @@ export function AddDrugModal({ onClose, onAdd }: AddDrugModalProps) {
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value as any)}
+              onChange={(e) => setCategory(e.target.value as InventoryItemData["category"])}
               className="w-full text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-medium"
             >
               <option value="MEDICATION">Medication (Rx)</option>

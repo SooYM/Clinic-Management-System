@@ -20,12 +20,12 @@ export class Patient {
     if (!id || id.trim().length === 0) throw new Error("Patient ID cannot be empty.");
     if (!nationalId || nationalId.trim().length === 0) throw new Error("National ID cannot be empty.");
     if (!fullName || fullName.trim().length === 0) throw new Error("Full name cannot be empty.");
-    if (dateOfBirth > new Date()) throw new Error("Date of birth cannot be in future.");
+    if (!Number.isFinite(dateOfBirth.getTime()) || dateOfBirth > new Date()) throw new Error("Date of birth must be valid and cannot be in future.");
 
     this._id = id;
     this._nationalId = nationalId;
     this._fullName = fullName;
-    this._dateOfBirth = dateOfBirth;
+    this._dateOfBirth = new Date(dateOfBirth);
     this._allergies = new Set<Allergy>();
   }
 
@@ -35,9 +35,10 @@ export class Patient {
   public get dateOfBirth(): Date { return new Date(this._dateOfBirth); }
 
   public get age(): number {
-    const ageDiffMs = Date.now() - this._dateOfBirth.getTime();
-    const ageDate = new Date(ageDiffMs);
-    return Math.abs(ageDate.getUTCFullYear() - 1970);
+    const today = new Date();
+    const birthdayPending = today.getMonth() < this._dateOfBirth.getMonth()
+      || (today.getMonth() === this._dateOfBirth.getMonth() && today.getDate() < this._dateOfBirth.getDate());
+    return today.getFullYear() - this._dateOfBirth.getFullYear() - Number(birthdayPending);
   }
 
   public get allergies(): ReadonlyArray<Allergy> {

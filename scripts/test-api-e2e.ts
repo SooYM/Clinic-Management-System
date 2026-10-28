@@ -3,9 +3,8 @@ import { GET as getPatients, POST as postPatients } from "../app/api/patients/ro
 import { GET as getPatientId } from "../app/api/patients/[id]/route.js";
 import { GET as getQueue, POST as postQueue, PATCH as patchQueue } from "../app/api/queue/route.js";
 import { POST as loginPost } from "../app/api/auth/login/route.js";
-import { GET as sessionGet } from "../app/api/auth/session/route.js";
-import { GET as getEncounters, POST as postEncounters } from "../app/api/encounters/route.js";
-import { GET as getDocs, POST as postDocs } from "../app/api/clinical-documents/route.js";
+import { POST as postEncounters } from "../app/api/encounters/route.js";
+import { POST as postDocs } from "../app/api/clinical-documents/route.js";
 import { GET as verifyDoc } from "../app/api/document-verification/route.js";
 
 async function runTests() {

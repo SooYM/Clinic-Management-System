@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { genderFromMalaysianIc, normalizeMalaysianIc, normalizeMalaysianPhone } from "../../../src/domain/MalaysianIc";
-import { AuthRouteError, getAuthenticatedClinicStaff, jsonResponse, errorResponse, setSessionCookies } from "../../../lib/server/supabase-auth";
-import { encryptPatientNationalId, decryptPatientNationalId, hashPatientNationalId } from "../../../lib/server/patient-identifiers";
+import { genderFromMalaysianIc, normalizeMalaysianIc } from "../../../src/domain/MalaysianIc";
+import { AuthRouteError, getAuthenticatedClinicStaff, jsonResponse, errorResponse, setSessionCookies, isLocalDemoEnabled } from "../../../lib/server/supabase-auth";
+import { encryptPatientNationalId, hashPatientNationalId } from "../../../lib/server/patient-identifiers";
 import { withSessionClient } from "../../../lib/server/db";
 
 import { getDatabase, saveDatabase, type StoredPatient } from "../../../lib/server/storage";
@@ -13,8 +13,6 @@ type DbPatient = {
   id: string;
   medical_record_number: string;
   id_type?: string | null;
-  ic_number?: string | null;
-  national_id_ciphertext?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   full_name: string;
@@ -42,15 +40,6 @@ function toPatient(row: DbPatient) {
     ? today.getFullYear() - birthday.getFullYear() - (today.getMonth() < birthday.getMonth() || (today.getMonth() === birthday.getMonth() && today.getDate() < birthday.getDate()) ? 1 : 0)
     : 0;
 
-  let nric = row.ic_number ?? "";
-  if (!nric && row.national_id_ciphertext) {
-    try {
-      nric = decryptPatientNationalId(row.national_id_ciphertext);
-    } catch {
-      nric = "";
-    }
-  }
-
   const addressParts = [
     row.address_line_1,
     row.address_line_2,
@@ -63,7 +52,7 @@ function toPatient(row: DbPatient) {
     id: row.id,
     medicalRecordNumber: row.medical_record_number,
     idType: (row.id_type === "passport" ? "passport" : "nric") as "nric" | "passport",
-    nric,
+    nric: "",
     firstName: row.first_name || "",
     lastName: row.last_name || "",
     name: row.full_name || [row.first_name, row.last_name].filter(Boolean).join(" "),
@@ -89,38 +78,19 @@ function toPatient(row: DbPatient) {
 export async function GET(request: NextRequest) {
   try {
     const session = await getAuthenticatedClinicStaff(request);
-    let patientItems: unknown[] = [];
-    try {
-      const rows = await withSessionClient(session.user.auth_user_id, async (client) => {
-        try {
+    const patientItems = isLocalDemoEnabled()
+      ? getDatabase().patients.map((patient) => ({ ...patient, nric: "" }))
+      : await withSessionClient(session.user.auth_user_id, async (client) => {
           const res = await client.query<DbPatient>(
-            `SELECT id, medical_record_number, id_type, ic_number, national_id_ciphertext,
-                    first_name, last_name, full_name, date_of_birth, gender, phone, email,
-                    blood_group, allergies, chronic_conditions,
-                    address_line_1, address_line_2, postcode, city, state, country, nationality
+            `SELECT id, medical_record_number, id_type, first_name, last_name, address_line_1, address_line_2, postcode, city, state, country, nationality, full_name, date_of_birth::text AS date_of_birth, gender, phone, email,
+                    blood_group, allergies, chronic_conditions
              FROM public.patients
              WHERE clinic_id = $1 AND branch_id = $2 AND archived_at IS NULL
              ORDER BY created_at DESC LIMIT 500;`,
             [session.user.clinic_id, session.user.branch_id],
           );
-          return res.rows;
-        } catch {
-          // Graceful fallback for unmigrated legacy schema
-          const res = await client.query<DbPatient>(
-            `SELECT id, medical_record_number, national_id_ciphertext, full_name, date_of_birth, gender, phone, email, blood_group, allergies, chronic_conditions
-             FROM public.patients
-             WHERE clinic_id = $1 AND branch_id = $2 AND archived_at IS NULL
-             ORDER BY created_at DESC LIMIT 500;`,
-            [session.user.clinic_id, session.user.branch_id],
-          );
-          return res.rows;
-        }
-      });
-      patientItems = rows.map((row) => toPatient(row));
-    } catch {
-      // Fallback to zero-config persistent local storage
-      patientItems = getDatabase().patients;
-    }
+          return res.rows.map(toPatient);
+        });
 
     const result = jsonResponse({ ok: true, patients: patientItems });
     return session.rotatedTokens ? setSessionCookies(result, session.rotatedTokens) : result;
@@ -136,6 +106,12 @@ export async function POST(request: NextRequest) {
       throw new AuthRouteError(403, "ROLE_FORBIDDEN", "Your role cannot register patients.");
     }
     const body = (await request.json()) as Record<string, unknown>;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new AuthRouteError(400, "INVALID_PATIENT", "Provide a patient object.");
+    }
+    if (body.idType !== undefined && body.idType !== "nric" && body.idType !== "passport") {
+      throw new AuthRouteError(400, "INVALID_ID_TYPE", "Select NRIC or passport.");
+    }
     const idType = (typeof body.idType === "string" ? body.idType.toLowerCase() : "nric") === "passport" ? "passport" : "nric";
     
     // Parse First Name, Last Name, and Full Name
@@ -161,7 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     const rawId = typeof body.nric === "string" ? body.nric.trim() : (typeof body.nationalId === "string" ? body.nationalId.trim() : "");
-    const nric = idType === "nric" ? normalizeMalaysianIc(rawId).replace(/[^\d]/g, "") : rawId.toUpperCase();
+    const nric = idType === "nric" ? rawId.replace(/[\s-]/g, "") : rawId.toUpperCase();
 
     // Phone is optional now, can include country code
     let phone: string | null = null;
@@ -205,12 +181,10 @@ export async function POST(request: NextRequest) {
       ? body.nationality.trim()
       : (idType === "nric" ? "Malaysian" : "Foreign");
 
-    const ciphertext = encryptPatientNationalId(nric);
-    const hash = hashPatientNationalId(nric);
     const rawGender = idType === "nric"
       ? (genderFromMalaysianIc(nric) || (typeof body.gender === "string" ? body.gender : "unknown"))
       : (typeof body.gender === "string" ? body.gender : "unknown");
-    const gender = (rawGender.toLowerCase() === "female" ? "female" : rawGender.toLowerCase() === "male" ? "male" : "other") as "female" | "male" | "other" | "unknown";
+    const gender = (rawGender.toLowerCase() === "female" ? "female" : rawGender.toLowerCase() === "male" ? "male" : rawGender.toLowerCase() === "other" ? "other" : "unknown") as "female" | "male" | "other" | "unknown";
     const bloodGroup = typeof body.bloodGroup === "string" && body.bloodGroup ? body.bloodGroup : null;
     const validBloodGroups = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"]);
     if (bloodGroup && !validBloodGroups.has(bloodGroup)) {
@@ -241,99 +215,51 @@ export async function POST(request: NextRequest) {
       : `MY-${dateStamp}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
     let createdPatient: ReturnType<typeof toPatient> | StoredPatient;
-    try {
+    if (!isLocalDemoEnabled()) {
+      const ciphertext = encryptPatientNationalId(nric);
+      const hash = hashPatientNationalId(nric);
       const insertedRow = await withSessionClient(session.user.auth_user_id, async (client) => {
-        try {
-          const res = await client.query<DbPatient>(
-            `INSERT INTO public.patients (
-               clinic_id, branch_id, medical_record_number,
-               id_type, ic_number, national_id_ciphertext, national_id_hash,
-               first_name, last_name, full_name, date_of_birth,
-               gender, phone, email, blood_group, allergies, chronic_conditions,
-               address_line_1, address_line_2, postcode, city, state, country, nationality,
-               created_by, pdpa_consent_at, pdpa_consent_version
-             ) VALUES (
-               $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, now(), '1'
-             )
-             RETURNING id, medical_record_number, id_type, ic_number, national_id_ciphertext,
-                       first_name, last_name, full_name, date_of_birth, gender, phone, email,
-                       blood_group, allergies, chronic_conditions,
-                       address_line_1, address_line_2, postcode, city, state, country, nationality;`,
-            [
-              session.user.clinic_id,
-              session.user.branch_id,
-              effectiveMrn,
-              idType,
-              rawId,
-              ciphertext,
-              Buffer.from(hash, "hex"),
-              firstName,
-              lastName,
-              fullName,
-              dob,
-              gender,
-              phone,
-              email || null,
-              bloodGroup,
-              JSON.stringify(allergies),
-              JSON.stringify(conditions),
-              addressLine1,
-              addressLine2,
-              postcode,
-              city,
-              state,
-              country,
-              nationality,
-              session.user.id,
-            ],
-          );
-          return res.rows[0];
-        } catch {
-          // Graceful fallback for unmigrated table
-          const res = await client.query<DbPatient>(
-            `INSERT INTO public.patients (
-               clinic_id, branch_id, medical_record_number,
-               national_id_ciphertext, national_id_hash, full_name, date_of_birth,
-               gender, phone, email, blood_group, allergies, chronic_conditions,
-               created_by, pdpa_consent_at, pdpa_consent_version
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now(), '1')
-             RETURNING id, medical_record_number, full_name, date_of_birth, gender, phone, email, blood_group, allergies, chronic_conditions;`,
-            [
-              session.user.clinic_id,
-              session.user.branch_id,
-              effectiveMrn,
-              ciphertext,
-              Buffer.from(hash, "hex"),
-              fullName,
-              dob,
-              gender,
-              phone,
-              email || null,
-              bloodGroup,
-              JSON.stringify(allergies),
-              JSON.stringify(conditions),
-              session.user.id,
-            ],
-          );
-          return res.rows[0];
-        }
+        const res = await client.query<DbPatient>(
+          `INSERT INTO public.patients (
+             clinic_id, branch_id, medical_record_number,
+             national_id_ciphertext, national_id_hash, full_name, date_of_birth,
+             gender, phone, email, blood_group, allergies, chronic_conditions,
+             id_type, first_name, last_name, address_line_1, address_line_2, postcode, city, state, country, nationality,
+             created_by, pdpa_consent_at, pdpa_consent_version
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, now(), '1')
+           RETURNING id, medical_record_number, id_type, first_name, last_name, address_line_1, address_line_2, postcode, city, state, country, nationality, full_name, date_of_birth, gender, phone, email, blood_group, allergies, chronic_conditions;`,
+          [session.user.clinic_id, session.user.branch_id, effectiveMrn, ciphertext,
+           Buffer.from(hash, "hex"), fullName, dob, gender, phone, email || null,
+           bloodGroup, JSON.stringify(allergies), JSON.stringify(conditions), idType, firstName, lastName,
+           addressLine1, addressLine2, postcode, city, state, country, nationality, session.user.id],
+        );
+        return res.rows[0];
       });
       createdPatient = toPatient(insertedRow);
-    } catch {
-      // Fallback to local zero-config persistent storage
+    } else {
+      const db = getDatabase();
+      if (db.patients.some((patient) =>
+        (patient.idType ?? "nric") === idType &&
+        (idType === "nric" ? normalizeMalaysianIc(patient.nric).replace(/[^\d]/g, "") : patient.nric.trim().toUpperCase()) === nric
+      )) {
+        throw new AuthRouteError(409, "DUPLICATE_PATIENT", "A patient with this identifier already exists.");
+      }
+      if (db.patients.some((patient) => patient.medicalRecordNumber === effectiveMrn)) {
+        throw new AuthRouteError(409, "DUPLICATE_MRN", "Medical record number already exists.");
+      }
       const localPatient: StoredPatient = {
         id: crypto.randomUUID(),
         medicalRecordNumber: effectiveMrn,
         idType,
-        nric: rawId,
+        nric,
         firstName,
         lastName,
         name: fullName,
         phone: phone || "",
         email: email || "",
         dob,
-        age: Math.max(0, new Date().getFullYear() - parsedDob.getFullYear()),
-        gender: gender === "female" ? "Female" : gender === "male" ? "Male" : "Other",
+        age: Math.max(0, new Date().getUTCFullYear() - parsedDob.getUTCFullYear() - (new Date().toISOString().slice(5, 10) < dob.slice(5, 10) ? 1 : 0)),
+        gender: gender === "female" ? "Female" : gender === "male" ? "Male" : gender === "other" ? "Other" : "Unknown",
         nationality,
         addressLine1,
         addressLine2,
@@ -347,9 +273,8 @@ export async function POST(request: NextRequest) {
         chronicConditions: conditions,
         createdAt: new Date().toISOString(),
       };
-      const db = getDatabase();
       saveDatabase({ patients: [localPatient, ...db.patients] });
-      createdPatient = localPatient;
+      createdPatient = { ...localPatient, nric: "" };
     }
 
     const result = NextResponse.json(

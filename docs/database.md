@@ -1,6 +1,6 @@
 # PostgreSQL database design
 
-The authoritative current schema is defined by the 7 ordered migrations in [`supabase/migrations/`](../supabase/migrations):
+The authoritative current schema is defined by the 10 ordered migrations in [`supabase/migrations/`](../supabase/migrations):
 1. `20261005010000_clinic_foundation.sql` (Clinics, branches, staff, patients, audit)
 2. `20261005020000_queue_transitions.sql` (Queue tickets, atomic transitions, queue events)
 3. `20261005030000_clinical_document_lifecycle.sql` (Clinical documents, immutable versions, QR verification tokens, print logs)
@@ -8,10 +8,13 @@ The authoritative current schema is defined by the 7 ordered migrations in [`sup
 5. `20261005050000_outpatient_encounters_and_prescriptions.sql` (SOAP encounters, medication orders, drafts & signed snapshots)
 6. `20261005060000_inventory_packages_lifecycle.sql` (Inventory items, batches, FEFO movements, treatment packages & redemptions)
 7. `20261005070000_billing_lifecycle.sql` (Invoices, invoice line items, payments, receipt print logs)
+8. `20261007010000_audit_patient_queue.sql` (Patient structured address, emergency contact, queue room occupancy index)
+9. `20261007020000_audit_access.sql` (Security-definer RPC `record_patient_identifier_access` for NRIC reveal audit)
+10. `20261007030000_postgresql_auth.sql` (Standalone `clinic_auth` schema for native PostgreSQL credentials and hashed sessions)
 
 Initial seed data is located in [`supabase/seed.sql`](../supabase/seed.sql). Together they are PostgreSQL migrations using `pgcrypto`, `btree_gist`, UUID identifiers, `jsonb`, PostgreSQL enums, exclusion constraints, security-definer functions, and row-level security (RLS).
 
-This is a **foundation migration**, not an application-ready data layer: operational UI does not yet read/write these relations. A production database must be provisioned, migration applied, and RLS reviewed before use. The older SQL sketch in the product specification is aspirational and has different details; where they differ, this document describes the actual migration.
+The schema supports both hosted Supabase Auth and native standalone PostgreSQL instances. The migrations are executed via the Supabase CLI (`supabase db push`) or the automated idempotency runner [`scripts/complete-postgresql-schema.cjs`](../scripts/complete-postgresql-schema.cjs).
 
 ## Relational overview
 
@@ -214,17 +217,35 @@ The permission keys in this migration are:
 
 Both queue RPCs require `queue.manage`; queue reads require `queue.read`. Direct authenticated INSERT/UPDATE/DELETE on `queue_tickets` is revoked so ticket transitions cannot bypass their atomic `queue_events` writes. There are no default permission rows, so branch/role entries for `queue.read` and `queue.manage` must be provisioned before route calls succeed.
 
-The authenticated patient-detail endpoint also requires `patients.identifiers.read`, separately from `patients.read`. Each successful NRIC reveal must first append `patients.identifier.read` to `audit_events` through the server-only service-role path; if that write fails or the service-role key is absent, the endpoint does not disclose the identifier. The event records patient/staff IDs and a data-class marker, never the NRIC.
+The authenticated patient-detail endpoint also requires `patients.identifiers.read`, separately from `patients.read`. Each successful NRIC reveal calls `record_patient_identifier_access(p_patient_id)` (created in migration `20261007020000_audit_access.sql`), a security-definer function that checks active staff membership and explicit branch permissions before appending `patients.identifier.read` to `audit_events`. If that write fails or access is unauthorized, the endpoint fails closed and does not disclose the identifier. The event records patient/staff IDs and a data-class marker, never the NRIC.
 
 Clinical document writes use security-definer functions with constrained search paths; direct authenticated INSERT/UPDATE/DELETE on `clinical_documents` is revoked. Issue/revision writes create content snapshots, SHA-256 content digests, and QR token digests in one transaction. The UI records a print attempt before opening the browser print dialog. Public token verification reveals status only. The signing key is configured outside PostgreSQL; a missing signing key blocks issue/revision.
 
 Append-only tables have SELECT policies; authenticated INSERT privileges are revoked for queue events, document versions, print logs, inventory movements, package redemptions, delivery logs, and audit events. The migration grants `service_role` table access; Supabase's service role bypasses RLS. `bind_audit_actor()` binds actor to active membership when `auth.uid()` is present; a service-role call with no user context must validate actor in trusted code. All public tables are initially granted to `authenticated` at SQL privilege level, then listed revocations apply; RLS filters remaining table operations. Anonymous table access is revoked; verification-token table privileges are revoked from both anon and authenticated.
 
-**Important review items:** RLS is security-critical and should have automated cross-tenant tests, including the safe-default-deny state before permissions are seeded. Helper function execution is revoked from `PUBLIC` and `anon`, then granted to `authenticated`; the public verification function is separately executable by `anon` and `authenticated`. Auth selects the real `staff_members.id` and `auth_user_id` independently; patient/queue handlers still need tests for membership isolation, permission boundaries and malformed payloads. Security-definer functions and public verification need independent SQL review and abuse controls.
+## Native PostgreSQL Authentication Schema (`clinic_auth`)
+
+Migration `20261007030000_postgresql_auth.sql` introduces an isolated schema `clinic_auth` for standalone PostgreSQL deployments without Supabase Auth REST dependencies:
+
+- `clinic_auth.credentials`:
+  - `auth_user_id` (UUID, primary key referencing `auth.users(id)`)
+  - `identifier` (normalized lowercase username or email, 1–254 chars)
+  - `password_hash` (scrypt hash format: `scrypt$<salt>$<hash>`, 16-byte salt, 64-byte key)
+  - `created_at`, `updated_at` (timestamps)
+- `clinic_auth.sessions`:
+  - `id` (UUID, primary key)
+  - `auth_user_id` (UUID, references `clinic_auth.credentials(auth_user_id)`)
+  - `access_token_hash` (SHA-256 hash of 256-bit access token)
+  - `refresh_token_hash` (SHA-256 hash of 256-bit refresh token)
+  - `access_expires_at` (15 minutes from issue)
+  - `refresh_expires_at` (7 days from issue)
+  - `created_at` (timestamp)
+
+All privileges on schema `clinic_auth` and its tables are explicitly revoked from `public`, `anon`, and `authenticated`. Only the trusted application connection (via database connection pool) accesses these credentials and sessions.
 
 ## Queue RPC functions
 
-The follow-on migration creates two `SECURITY DEFINER` functions, with a fixed `search_path`, execution revoked from `PUBLIC`/`anon`, and execution granted to `authenticated` only:
+The queue migration creates two `SECURITY DEFINER` functions, with a fixed `search_path`, execution revoked from `PUBLIC`/`anon`, and execution granted to `authenticated` only:
 
 | Function | Behavior and authorization |
 | --- | --- |
@@ -233,6 +254,20 @@ The follow-on migration creates two `SECURITY DEFINER` functions, with a fixed `
 
 The database graph is `registered → triage_waiting | called_to_room | no_show`; `triage_waiting → called_to_room | no_show`; `called_to_room → in_consultation | no_show`; `in_consultation → dispensary_waiting | no_show`; `dispensary_waiting → payment_waiting | completed | no_show`; `payment_waiting → completed | no_show`. Terminal states cannot be advanced by this function. The current HTTP handler exposes only its mapped client statuses (`WAITING`, `CALLED_TO_ROOM`, `IN_CONSULTATION`, `DISPENSARY`, `PAYMENT`, `COMPLETED`); it does not expose all database edges (for example `triage_waiting` or `no_show`).
 
-## Migration lifecycle
+## Migration lifecycle and Schema Tooling
 
-All three migrations wrap changes in transactions and are applied in timestamp order by Supabase CLI (`20261005010000` foundation, `20261005020000` queue RPCs, then `20261005030000` clinical document lifecycle). Use migration history; do not re-run/ad hoc-edit an applied migration. For each schema change, add a new forward migration, test from an empty database and representative prior schema, test RLS/functions, then promote. Maintain a schema diagram/data dictionary update with every material change. No seed fixtures, commissions, attachments table, or broad application CRUD RPCs are included.
+All 10 migrations wrap changes in transactions and are applied in chronological order:
+1. `20261005010000_clinic_foundation.sql`
+2. `20261005020000_queue_transitions.sql`
+3. `20261005030000_clinical_document_lifecycle.sql`
+4. `20261005040000_scheduling_and_rooms.sql`
+5. `20261005050000_outpatient_encounters_and_prescriptions.sql`
+6. `20261005060000_inventory_packages_lifecycle.sql`
+7. `20261005070000_billing_lifecycle.sql`
+8. `20261007010000_audit_patient_queue.sql`
+9. `20261007020000_audit_access.sql`
+10. `20261007030000_postgresql_auth.sql`
+
+For local or standalone PostgreSQL databases, run `node scripts/complete-postgresql-schema.cjs`. It creates the database if missing, establishes `auth.users`, tracks executed migrations in `public._schema_migrations`, and applies missing migrations sequentially without resetting existing clinic data.
+
+For provisioning staff logins into native PostgreSQL, run `npx tsx --conditions=react-server scripts/provision-postgresql-login.ts --import-local-staff`. It provisions salted scrypt hashes for matching `public.staff_members` without overwriting existing credentials.

@@ -17,7 +17,7 @@ interface UserManagementModalProps {
     role: Role;
     specialty?: string;
     licenseNumber?: string;
-  }) => Promise<any> | void;
+  }) => Promise<StaffUserRecord | undefined>;
   onResetPassword?: (staffId: string, newPassword: string) => Promise<boolean>;
   onToggleStatus?: (staffId: string, active: boolean) => Promise<boolean>;
 }
@@ -88,7 +88,7 @@ export function UserManagementModal({
     setBusy(true);
     try {
       const finalUsername = (username.trim() || email.split("@")[0]).toLowerCase();
-      await onRegisterStaff({
+      const created = await onRegisterStaff({
         username: finalUsername,
         fullName: fullName.trim(),
         email: email.trim(),
@@ -98,9 +98,10 @@ export function UserManagementModal({
         licenseNumber: role === "doctor" ? licenseNumber.trim() : undefined,
       });
 
+      if (!created) return;
       setCreatedAccount({
-        username: finalUsername,
-        fullName: fullName.trim(),
+        username: created.username || finalUsername,
+        fullName: created.fullName,
         password: password.trim(),
       });
 

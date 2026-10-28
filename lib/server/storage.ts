@@ -153,6 +153,7 @@ export interface ClinicDatabaseState {
   digitalMcs: StoredDigitalMC[];
   referrals: StoredReferralLetter[];
   labOrders: StoredLabOrder[];
+  identifierAccessLog: Array<{ patientId: string; staffId: string; accessedAt: string }>;
   portalConfig: StoredPortalConfig;
   rolePermissions: Record<string, string[]>;
   updatedAt: string;
@@ -311,14 +312,16 @@ function initDatabase(): ClinicDatabaseState {
           digitalMcs: parsed.digitalMcs ?? [],
           referrals: parsed.referrals ?? [],
           labOrders: parsed.labOrders ?? [],
+          identifierAccessLog: parsed.identifierAccessLog ?? [],
           portalConfig: parsed.portalConfig ?? DEFAULT_PORTAL,
           rolePermissions: parsed.rolePermissions ?? DEFAULT_ROLE_PERMS,
           updatedAt: parsed.updatedAt ?? new Date().toISOString(),
         };
       }
-    } catch (err) {
-      console.error("Error reading clinic database, re-initializing:", err);
+    } catch {
+      throw new Error("Clinic demo database could not be read. Restore the file before retrying.");
     }
+    throw new Error("Clinic demo database has an invalid structure.");
   }
 
   const initial: ClinicDatabaseState = {
@@ -331,16 +334,13 @@ function initDatabase(): ClinicDatabaseState {
     digitalMcs: [],
     referrals: [],
     labOrders: [],
+    identifierAccessLog: [],
     portalConfig: DEFAULT_PORTAL,
     rolePermissions: DEFAULT_ROLE_PERMS,
     updatedAt: new Date().toISOString(),
   };
 
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Failed to write initial clinic database:", err);
-  }
+  fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), "utf-8");
 
   return initial;
 }
@@ -362,19 +362,17 @@ export function saveDatabase(nextState: Partial<ClinicDatabaseState>): ClinicDat
     updatedAt: new Date().toISOString(),
   };
 
-  memoryDb = merged;
-
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    const tempFile = `${DB_FILE}.${Date.now()}.tmp`;
+    const tempFile = `${DB_FILE}.${crypto.randomUUID()}.tmp`;
     fs.writeFileSync(tempFile, JSON.stringify(merged, null, 2), "utf-8");
     fs.renameSync(tempFile, DB_FILE);
-  } catch (err) {
-    console.error("Failed to persist clinic database to disk:", err);
+  } catch {
+    throw new Error("Clinic demo data could not be saved. No changes were accepted.");
   }
-
+  memoryDb = merged;
   return merged;
 }
 

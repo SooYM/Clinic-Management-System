@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import {
   GROUPS,
   MENU,
@@ -63,12 +63,12 @@ export function MainMenu({
   onOpenItem,
   onOpenGuide,
 }: MainMenuProps) {
-  const isUsable = (item: MenuItem) => {
+  const isUsable = useCallback((item: MenuItem) => {
     if (item.adminOnly && userRole !== "manager") return false;
     if (hasAccess) return hasAccess(item.key);
     if (!item.allowedRoles) return true;
     return item.allowedRoles.includes(userRole);
-  };
+  }, [hasAccess, userRole]);
 
   // Keyboard shortcut listener (matching Car Loan)
   useEffect(() => {
@@ -101,7 +101,7 @@ export function MainMenu({
 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [userRole, onOpenItem, onOpenGuide]);
+  }, [isUsable, onOpenItem, onOpenGuide]);
 
   const hour = new Date().getHours();
   const greeting =

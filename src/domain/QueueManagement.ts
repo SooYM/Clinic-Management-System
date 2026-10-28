@@ -62,7 +62,13 @@ export class QueueTicket {
     if (this._status === QueueStatus.COMPLETED || this._status === QueueStatus.NO_SHOW) {
       throw new Error(`Cannot call ticket ${this._ticketNumber}: Ticket already closed.`);
     }
+    if (this._status !== QueueStatus.REGISTERED && this._status !== QueueStatus.TRIAGE_WAITING && this._status !== QueueStatus.CALLED_TO_ROOM) {
+      throw new Error("Only waiting or called patients can be called to a room.");
+    }
+    if (room.isOccupied && room !== this._allocatedRoom) throw new Error("Consultation room is already occupied.");
+    if (this._allocatedRoom && this._allocatedRoom !== room) this._allocatedRoom.isOccupied = false;
     this._allocatedRoom = room;
+    this._assignedPractitionerId = room.attendingPractitionerId;
     this._status = QueueStatus.CALLED_TO_ROOM;
     this._calledAt = new Date();
     room.isOccupied = true;
@@ -76,13 +82,22 @@ export class QueueTicket {
   }
 
   public routeToDispensaryAndPayment(): void {
+    if (this._status !== QueueStatus.IN_CONSULTATION) throw new Error("Consultation must start before routing to dispensary.");
     if (this._allocatedRoom) {
       this._allocatedRoom.isOccupied = false;
+      this._allocatedRoom = undefined;
     }
     this._status = QueueStatus.DISPENSARY_WAITING;
   }
 
   public markCompleted(): void {
+    if (this._status !== QueueStatus.IN_CONSULTATION && this._status !== QueueStatus.DISPENSARY_WAITING && this._status !== QueueStatus.PAYMENT_WAITING && this._status !== QueueStatus.COMPLETED) {
+      throw new Error("Cannot complete ticket before consultation.");
+    }
+    if (this._allocatedRoom) {
+      this._allocatedRoom.isOccupied = false;
+      this._allocatedRoom = undefined;
+    }
     this._status = QueueStatus.COMPLETED;
   }
 }

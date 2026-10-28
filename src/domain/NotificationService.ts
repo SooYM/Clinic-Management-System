@@ -29,6 +29,7 @@ export class WhatsAppNotificationStrategy implements INotificationChannelStrateg
   public readonly channelType = "WHATSAPP";
 
   async sendMessage(payload: NotificationMessagePayload): Promise<NotificationDeliveryResult> {
+    void payload;
     // In production: Connect to WhatsApp Cloud API / Twilio
     return {
       messageId: `WA-${Date.now()}`,
@@ -43,6 +44,7 @@ export class EmailNotificationStrategy implements INotificationChannelStrategy {
   public readonly channelType = "EMAIL";
 
   async sendMessage(payload: NotificationMessagePayload): Promise<NotificationDeliveryResult> {
+    void payload;
     // In production: Connect to AWS SES / SendGrid / Postmark
     return {
       messageId: `EM-${Date.now()}`,

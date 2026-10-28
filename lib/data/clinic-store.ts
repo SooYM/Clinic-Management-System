@@ -239,140 +239,100 @@ const INITIAL_NOTIFICATIONS: NotificationLogData[] = [];
 
 const INITIAL_PATIENTS: PatientRecord[] = [];
 
-const INITIAL_ROOMS: ConsultationRoomData[] = [
-  { id: "rm-1", name: "Room 01", practitionerName: "Unassigned", specialty: "General Practice", isOccupied: false },
-  { id: "rm-2", name: "Room 02", practitionerName: "Unassigned", specialty: "General Practice", isOccupied: false },
-];
-
 const INITIAL_QUEUE: QueueTicketData[] = [];
-
-const INITIAL_INVENTORY: InventoryItemData[] = [
-  {
-    id: "inv-1",
-    sku: "MED-AMLO-05",
-    name: "Amlodipine Besylate 5mg",
-    category: "MEDICATION",
-    dosageForm: "Tablet",
-    strength: "5mg",
-    instructions: "1 tablet once daily in the morning",
-    minimumParLevel: 50,
-    sellingPrice: 18.0,
-    batches: [
-      { batchNumber: "B-2025-08A", expiryDate: "2026-12-31", quantity: 120 },
-      { batchNumber: "B-2026-02B", expiryDate: "2027-08-31", quantity: 200 },
-    ],
-  },
-  {
-    id: "inv-2",
-    sku: "MED-AUGM-625",
-    name: "Augmentin (Amoxicillin/Clavulanate) 625mg",
-    category: "MEDICATION",
-    dosageForm: "Tablet",
-    strength: "625mg",
-    instructions: "1 tablet twice daily after meals",
-    minimumParLevel: 30,
-    sellingPrice: 35.0,
-    batches: [{ batchNumber: "B-2026-01A", expiryDate: "2027-03-31", quantity: 45 }],
-  },
-  {
-    id: "inv-3",
-    sku: "MED-PCM-500",
-    name: "Paracetamol 500mg",
-    category: "MEDICATION",
-    dosageForm: "Tablet",
-    strength: "500mg",
-    instructions: "2 tablets every 6 hours as needed for fever/pain",
-    minimumParLevel: 100,
-    sellingPrice: 8.0,
-    batches: [{ batchNumber: "PCM-2026-03", expiryDate: "2028-05-31", quantity: 250 }],
-  },
-  {
-    id: "inv-4",
-    sku: "MED-CET-10",
-    name: "Cetirizine Hydrochloride 10mg",
-    category: "MEDICATION",
-    dosageForm: "Tablet",
-    strength: "10mg",
-    instructions: "1 tablet once daily at bedtime",
-    minimumParLevel: 40,
-    sellingPrice: 12.0,
-    batches: [{ batchNumber: "CET-2026-09", expiryDate: "2028-02-28", quantity: 80 }],
-  },
-  {
-    id: "inv-5",
-    sku: "MED-MET-500",
-    name: "Metformin HCl 500mg",
-    category: "MEDICATION",
-    dosageForm: "Tablet",
-    strength: "500mg",
-    instructions: "1 tablet twice daily with or after meals",
-    minimumParLevel: 60,
-    sellingPrice: 15.0,
-    batches: [{ batchNumber: "MET-2026-02", expiryDate: "2027-11-30", quantity: 150 }],
-  },
-  {
-    id: "inv-6",
-    sku: "MED-OME-20",
-    name: "Omeprazole 20mg",
-    category: "MEDICATION",
-    dosageForm: "Capsule",
-    strength: "20mg",
-    instructions: "1 capsule once daily before breakfast",
-    minimumParLevel: 30,
-    sellingPrice: 22.0,
-    batches: [{ batchNumber: "OME-2026-04", expiryDate: "2027-10-31", quantity: 60 }],
-  },
-  {
-    id: "inv-7",
-    sku: "MED-IBU-400",
-    name: "Ibuprofen 400mg",
-    category: "MEDICATION",
-    dosageForm: "Tablet",
-    strength: "400mg",
-    instructions: "1 tablet 3 times daily after meals as needed",
-    minimumParLevel: 40,
-    sellingPrice: 14.0,
-    batches: [{ batchNumber: "IBU-2026-01", expiryDate: "2027-12-31", quantity: 90 }],
-  },
-];
-
-
 
 const EMPTY_PATIENT: PatientRecord = { id: "", nric: "", name: "No patient selected", phone: "", email: "", dob: "", age: 0, gender: "Unknown", bloodGroup: "", allergies: [], chronicConditions: [] };
 
-function syncToBackend(payload: Record<string, unknown>) {
-  fetch("/api/clinic-data", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
+interface QueueApiRow {
+  id: string;
+  patient_id: string;
+  ticket_number: string;
+  status: string;
+  registered_at: string;
+  called_at?: string | null;
+  room_id?: string | null;
 }
 
-export function useClinicStore(isAuthenticated = false) {
-  const [role, setRole] = useState<Role>("doctor");
-  const [staffList, setStaffList] = useState<StaffUserRecord[]>(INITIAL_STAFF);
+function toQueueTicket(row: QueueApiRow, patients: PatientRecord[]): QueueTicketData {
+  const patient = patients.find(p => p.id === row.patient_id);
+  const statuses: Record<string, QueueTicketData["status"]> = {
+    registered: "WAITING", triage_waiting: "WAITING", called_to_room: "CALLED_TO_ROOM",
+    in_consultation: "IN_CONSULTATION", dispensary_waiting: "DISPENSARY",
+    payment_waiting: "PAYMENT", completed: "COMPLETED", no_show: "COMPLETED",
+  };
+  return {
+    id: row.id, patientId: row.patient_id, ticketNumber: row.ticket_number,
+    databaseStatus: row.status, status: statuses[row.status] ?? "WAITING",
+    patientName: patient?.name ?? "Unknown patient", phone: patient?.phone ?? "", email: patient?.email ?? "",
+    roomId: row.room_id ?? undefined, practitionerName: "Unassigned", registeredAt: row.registered_at,
+    calledAt: row.called_at ?? undefined, waitTimeMinutes: 0,
+  };
+}
+
+export function useClinicStore(isAuthenticated = false, role: Role = "doctor") {
+  const demoMode = process.env.NEXT_PUBLIC_CLINIC_DEMO_MODE === "true";
+  const [staffList, setStaffList] = useState<StaffUserRecord[]>([]);
   const [patients, setPatients] = useState<PatientRecord[]>(INITIAL_PATIENTS);
-  const [rooms, setRooms] = useState<ConsultationRoomData[]>(INITIAL_ROOMS);
+  const [rooms, setRooms] = useState<ConsultationRoomData[]>([]);
   const [queue, setQueue] = useState<QueueTicketData[]>(INITIAL_QUEUE);
   const [operationalLoadError, setOperationalLoadError] = useState<string | null>(null);
-  const [inventory, setInventory] = useState<InventoryItemData[]>(INITIAL_INVENTORY);
+  const [inventory, setInventory] = useState<InventoryItemData[]>([]);
   const [notifications, setNotifications] = useState<NotificationLogData[]>(INITIAL_NOTIFICATIONS);
   const [digitalMcs, setDigitalMcs] = useState<DigitalMCData[]>([]);
   const [referrals, setReferrals] = useState<ReferralLetterData[]>([]);
   const [labOrders, setLabOrders] = useState<LabOrderData[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermissions>(DEFAULT_ROLE_PERMISSIONS);
   const [portalConfig, setPortalConfig] = useState<ClinicPortalConfig>(DEFAULT_PORTAL_CONFIG);
-  const [activePatientId, setActivePatientId] = useState<string>("pat-1");
+  const [activePatientId, setActivePatientId] = useState<string>("");
+
+  async function syncToBackend(payload: Record<string, unknown>): Promise<boolean> {
+    if (!isAuthenticated || !demoMode) {
+      notify("This workflow requires authenticated local demo mode; live persistence is not available.", "error");
+      return false;
+    }
+    try {
+      const response = await fetch("/api/clinic-data", {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error?.message ?? "Could not save clinic data.");
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not save clinic data.", "error");
+      return false;
+    }
+  }
 
   // Load persistent state from backend API on mount
   useEffect(() => {
     let cancelled = false;
     async function loadData() {
+      if (!isAuthenticated) {
+        setPatients([]); setQueue([]); setRooms([]); setStaffList([]); setInventory([]);
+        setDigitalMcs([]); setReferrals([]); setLabOrders([]); setNotifications([]);
+        setOperationalLoadError(null);
+        return;
+      }
       try {
+        if (!demoMode) {
+          const responses = await Promise.all([fetch("/api/patients"), fetch("/api/queue"), fetch("/api/rooms"), fetch("/api/staff")]);
+          const [patientResult, queueResult, roomResult, staffResult] = await Promise.all(responses.map(response => response.json()));
+          if (!responses[0].ok || !patientResult.ok) throw new Error(patientResult.error?.message ?? "Could not load patients.");
+          if (!responses[1].ok || !queueResult.ok) throw new Error(queueResult.error?.message ?? "Could not load queue.");
+          if (!responses[2].ok || !roomResult.ok) throw new Error(roomResult.error?.message ?? "Could not load rooms.");
+          if (!responses[3].ok || !staffResult.ok) throw new Error(staffResult.error?.message ?? "Could not load staff.");
+          if (cancelled) return;
+          setPatients(patientResult.patients);
+          setQueue(queueResult.queue.map((row: QueueApiRow) => toQueueTicket(row, patientResult.patients)));
+          setRooms(roomResult.rooms);
+          setStaffList(staffResult.staff);
+          setOperationalLoadError(null);
+          return;
+        }
         const response = await fetch("/api/clinic-data");
-        if (!response.ok) return;
         const res = await response.json();
-        if (cancelled || !res.ok || !res.data) return;
+        if (!response.ok || !res.ok || !res.data) throw new Error(res.error?.message ?? "Could not load clinic data.");
+        if (cancelled) return;
 
         const d = res.data;
         if (d.patients && Array.isArray(d.patients)) setPatients(d.patients);
@@ -383,7 +343,7 @@ export function useClinicStore(isAuthenticated = false) {
           })));
         }
         if (d.rooms && Array.isArray(d.rooms)) setRooms(d.rooms);
-        if (d.staff && Array.isArray(d.staff) && d.staff.length > 0) setStaffList(d.staff);
+        if (d.staff && Array.isArray(d.staff)) setStaffList(d.staff);
         if (d.inventory && Array.isArray(d.inventory)) setInventory(d.inventory);
         if (d.digitalMcs && Array.isArray(d.digitalMcs)) setDigitalMcs(d.digitalMcs);
         if (d.referrals && Array.isArray(d.referrals)) setReferrals(d.referrals);
@@ -393,47 +353,45 @@ export function useClinicStore(isAuthenticated = false) {
         setOperationalLoadError(null);
       } catch (err) {
         if (!cancelled) {
-          setOperationalLoadError(err instanceof Error ? err.message : null);
+          setOperationalLoadError(err instanceof Error ? err.message : "Could not load clinic data.");
         }
       }
     }
     void loadData();
     return () => { cancelled = true; };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, demoMode]);
 
   const activePatient = patients.find((p) => p.id === activePatientId) || patients[0] || EMPTY_PATIENT;
 
-  function toggleRolePermission(targetRole: Role, moduleKey: ModuleKey) {
+  async function toggleRolePermission(targetRole: Role, moduleKey: ModuleKey) {
     if (targetRole === "manager" && moduleKey === "permissions") {
       notify("Admin permissions access cannot be revoked.", "warning");
       return;
     }
 
-    setRolePermissions((prev) => {
-      const currentList = prev[targetRole] || [];
-      const has = currentList.includes(moduleKey);
-      const updatedList = has
-        ? currentList.filter((m) => m !== moduleKey)
-        : [...currentList, moduleKey];
+    const currentList = rolePermissions[targetRole] || [];
+    const has = currentList.includes(moduleKey);
+    const updatedList = has
+      ? currentList.filter((m) => m !== moduleKey)
+      : [...currentList, moduleKey];
 
-      const next = { ...prev, [targetRole]: updatedList };
-      syncToBackend({ rolePermissions: next });
+    const next = { ...rolePermissions, [targetRole]: updatedList };
+    if (!await syncToBackend({ rolePermissions: next })) return;
+    setRolePermissions(next);
 
-      const roleDisplayName =
-        targetRole === "receptionist"
-          ? "Front Desk"
-          : targetRole.charAt(0).toUpperCase() + targetRole.slice(1);
+    const roleDisplayName =
+      targetRole === "receptionist"
+        ? "Front Desk"
+        : targetRole.charAt(0).toUpperCase() + targetRole.slice(1);
 
-      notify(
-        `${has ? "Revoked" : "Granted"} access to [${moduleKey}] for ${roleDisplayName}!`,
-        has ? "info" : "success"
-      );
+    notify(
+      `${has ? "Revoked" : "Granted"} access to [${moduleKey}] for ${roleDisplayName}!`,
+      has ? "info" : "success"
+    );
 
-      return next;
-    });
   }
 
-  function grantAllRolePermissions(targetRole: Role) {
+  async function grantAllRolePermissions(targetRole: Role) {
     const allModules: ModuleKey[] = [
       "register",
       "ticket",
@@ -450,17 +408,15 @@ export function useClinicStore(isAuthenticated = false) {
       "ledger",
       "alerts",
     ];
-    setRolePermissions((prev) => {
-      const next = { ...prev, [targetRole]: allModules };
-      syncToBackend({ rolePermissions: next });
-      return next;
-    });
+    const next = { ...rolePermissions, [targetRole]: allModules };
+    if (!await syncToBackend({ rolePermissions: next })) return;
+    setRolePermissions(next);
     notify(`Granted full module access to ${targetRole}!`, "success");
   }
 
-  function resetDefaultPermissions() {
+  async function resetDefaultPermissions() {
+    if (!await syncToBackend({ rolePermissions: DEFAULT_ROLE_PERMISSIONS })) return;
     setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
-    syncToBackend({ rolePermissions: DEFAULT_ROLE_PERMISSIONS });
     notify("Reset all role access permissions to clinical defaults.", "info");
   }
 
@@ -468,21 +424,19 @@ export function useClinicStore(isAuthenticated = false) {
     return rolePermissions[targetRole]?.includes(moduleKey) ?? false;
   }
 
-  function updatePortalConfig(updates: Partial<ClinicPortalConfig>) {
-    setPortalConfig((prev) => {
-      const next = { ...prev, ...updates };
-      syncToBackend({ portalConfig: next });
-      try {
-        localStorage.setItem("clinic_portal_config", JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+  async function updatePortalConfig(updates: Partial<ClinicPortalConfig>) {
+    const next = { ...portalConfig, ...updates };
+    if (!await syncToBackend({ portalConfig: next })) return;
+    setPortalConfig(next);
+    try {
+      localStorage.setItem("clinic_portal_config", JSON.stringify(next));
+    } catch {}
     notify(`Portal updated: "${updates.portalName || "Settings"}"`, "success");
   }
 
-  function resetPortalConfig() {
+  async function resetPortalConfig() {
+    if (!await syncToBackend({ portalConfig: DEFAULT_PORTAL_CONFIG })) return;
     setPortalConfig(DEFAULT_PORTAL_CONFIG);
-    syncToBackend({ portalConfig: DEFAULT_PORTAL_CONFIG });
     try {
       localStorage.removeItem("clinic_portal_config");
     } catch {}
@@ -496,13 +450,13 @@ export function useClinicStore(isAuthenticated = false) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticketId: ticket.id, expectedStatus: ticket.databaseStatus ?? ticket.status, status, roomId }),
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok || !payload.ticket) {
         throw new Error(payload.error?.message ?? "Could not update queue status.");
       }
     } catch (err) {
-      // Sync locally even if network has issue
-      console.warn("Queue API call fallback to local sync", err);
+      notify(err instanceof Error ? err.message : "Could not update queue status.", "error");
+      return false;
     }
     return true;
   }
@@ -512,7 +466,7 @@ export function useClinicStore(isAuthenticated = false) {
     const room = roomId ? rooms.find((r) => r.id === roomId) : undefined;
     if (!ticket) return;
 
-    await persistQueueTransition(ticket, "CALLED_TO_ROOM", room?.id);
+    if (!await persistQueueTransition(ticket, "CALLED_TO_ROOM", room?.id)) return;
 
     setQueue((prev) => {
       const next = prev.map((t) =>
@@ -520,14 +474,12 @@ export function useClinicStore(isAuthenticated = false) {
           ? { ...t, status: "CALLED_TO_ROOM" as const, databaseStatus: "called_to_room", roomId: room?.id, roomName: room?.name, calledAt: new Date().toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" }) }
           : t
       );
-      syncToBackend({ queue: next });
       return next;
     });
 
     if (room) {
       setRooms((prev) => {
         const next = prev.map((r) => r.id === room.id ? { ...r, isOccupied: true, currentTicketNumber: ticket.ticketNumber } : r);
-        syncToBackend({ rooms: next });
         return next;
       });
     }
@@ -539,12 +491,11 @@ export function useClinicStore(isAuthenticated = false) {
     const ticket = queue.find((t) => t.id === ticketId);
     if (!ticket) return false;
 
-    await persistQueueTransition(ticket, "IN_CONSULTATION");
+    if (!await persistQueueTransition(ticket, "IN_CONSULTATION")) return false;
     setActivePatientId(ticket.patientId);
 
     setQueue((prev) => {
       const next = prev.map((t) => (t.id === ticketId ? { ...t, status: "IN_CONSULTATION" as const, databaseStatus: "in_consultation" } : t));
-      syncToBackend({ queue: next });
       return next;
     });
 
@@ -556,11 +507,10 @@ export function useClinicStore(isAuthenticated = false) {
     const ticket = queue.find((t) => t.id === ticketId);
     if (!ticket) return;
 
-    await persistQueueTransition(ticket, "DISPENSARY");
+    if (!await persistQueueTransition(ticket, "DISPENSARY")) return;
 
     setQueue((prev) => {
       const next = prev.map((t) => (t.id === ticketId ? { ...t, status: "DISPENSARY" as const, databaseStatus: "dispensary_waiting" } : t));
-      syncToBackend({ queue: next });
       return next;
     });
 
@@ -571,14 +521,13 @@ export function useClinicStore(isAuthenticated = false) {
             ? { ...r, isOccupied: false, currentTicketNumber: undefined }
             : r
         );
-        syncToBackend({ rooms: next });
         return next;
       });
     }
     notify(`Consultation status updated to dispensary for ${ticket.patientName}.`, "success");
   }
 
-  function issueDigitalMC(params: {
+  async function issueDigitalMC(params: {
     patientId?: string;
     doctorName?: string;
     days: number;
@@ -613,11 +562,9 @@ export function useClinicStore(isAuthenticated = false) {
       issuedAt: new Date().toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }),
     };
 
-    setDigitalMcs((prev) => {
-      const next = [newMc, ...prev];
-      syncToBackend({ digitalMcs: next });
-      return next;
-    });
+    const next = [newMc, ...digitalMcs];
+    if (!await syncToBackend({ digitalMcs: next })) return;
+    setDigitalMcs(next);
 
     const alert: NotificationLogData = {
       id: `notif-${Date.now()}`,
@@ -634,7 +581,7 @@ export function useClinicStore(isAuthenticated = false) {
     return newMc;
   }
 
-  function issueReferralLetter(params: {
+  async function issueReferralLetter(params: {
     patientId?: string;
     doctorName?: string;
     hospitalOrSpecialty: string;
@@ -663,17 +610,15 @@ export function useClinicStore(isAuthenticated = false) {
       issuedAt: new Date().toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }),
     };
 
-    setReferrals((prev) => {
-      const next = [newRef, ...prev];
-      syncToBackend({ referrals: next });
-      return next;
-    });
+    const next = [newRef, ...referrals];
+    if (!await syncToBackend({ referrals: next })) return;
+    setReferrals(next);
 
     notify(`Referral Letter #${refNum} for ${targetPatient.name} issued!`, "success");
     return newRef;
   }
 
-  function issueLabOrder(params: {
+  async function issueLabOrder(params: {
     panels: string[];
     specimenType: "BLOOD" | "URINE" | "SWAB" | "BIOPSY";
     isFastingRequired: boolean;
@@ -694,35 +639,30 @@ export function useClinicStore(isAuthenticated = false) {
       issuedAt: new Date().toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }),
     };
 
-    setLabOrders((prev) => {
-      const next = [newOrder, ...prev];
-      syncToBackend({ labOrders: next });
-      return next;
-    });
+    const next = [newOrder, ...labOrders];
+    if (!await syncToBackend({ labOrders: next })) return;
+    setLabOrders(next);
 
     notify(`Lab Requisition #${orderNum} created (${params.panels.length} panels).`, "success");
     return newOrder;
   }
 
-  function updateInventoryItem(updated: InventoryItemData) {
-    setInventory((prev) => {
-      const next = prev.map((item) => (item.id === updated.id ? updated : item));
-      syncToBackend({ inventory: next });
-      return next;
-    });
+  async function updateInventoryItem(updated: InventoryItemData) {
+    const next = inventory.map((item) => (item.id === updated.id ? updated : item));
+    if (!await syncToBackend({ inventory: next })) return;
+    setInventory(next);
     notify(`Medicine "${updated.name}" updated in formulary!`, "success");
+    return true;
   }
 
-  function addInventoryItem(newItem: Omit<InventoryItemData, "id">) {
+  async function addInventoryItem(newItem: Omit<InventoryItemData, "id">) {
     const created: InventoryItemData = {
       ...newItem,
       id: `inv-${Date.now()}`,
     };
-    setInventory((prev) => {
-      const next = [created, ...prev];
-      syncToBackend({ inventory: next });
-      return next;
-    });
+    const next = [created, ...inventory];
+    if (!await syncToBackend({ inventory: next })) return;
+    setInventory(next);
     notify(`New drug "${created.name}" added to formulary!`, "success");
     return created;
   }
@@ -743,44 +683,16 @@ export function useClinicStore(isAuthenticated = false) {
         body: JSON.stringify(params),
       });
       const data = await response.json();
-      if (!response.ok) {
+      if (!response.ok || !data.ok || !data.staff) {
         throw new Error(data.error?.message ?? "Failed to register staff user.");
       }
-      const newStaff = data.staff;
+      const newStaff = data.staff as StaffUserRecord;
       setStaffList((prev) => [...prev, newStaff]);
-      if (params.role === "doctor") {
-        const nextRoom = rooms.length + 1;
-        const newRoom: ConsultationRoomData = {
-          id: `rm-${Date.now()}`,
-          name: `Room 0${nextRoom}`,
-          practitionerName: params.fullName.trim(),
-          specialty: params.specialty?.trim() || "General Practice",
-          isOccupied: false,
-        };
-        setRooms((prev) => [...prev, newRoom]);
-      }
       notify(`Registered ${newStaff.fullName} as ${params.role.toUpperCase()}!`, "success");
       return newStaff;
     } catch (err) {
-      // Fallback local registration
-      const newStaff: StaffUserRecord = {
-        id: `staff-${Date.now()}`,
-        username: params.username || params.email.split("@")[0],
-        fullName: params.fullName.trim(),
-        email: params.email.trim(),
-        role: params.role,
-        specialty: params.specialty?.trim(),
-        licenseNumber: params.licenseNumber?.trim(),
-        isActive: true,
-        createdAt: new Date().toISOString().slice(0, 10),
-      };
-      setStaffList((prev) => {
-        const next = [...prev, newStaff];
-        syncToBackend({ staff: next });
-        return next;
-      });
-      notify(`Registered ${newStaff.fullName} as ${params.role.toUpperCase()}!`, "success");
-      return newStaff;
+      notify(err instanceof Error ? err.message : "Failed to register staff user.", "error");
+      return;
     }
   }
 
@@ -792,7 +704,7 @@ export function useClinicStore(isAuthenticated = false) {
         body: JSON.stringify({ newPassword }),
       });
       const data = await response.json();
-      if (!response.ok) {
+      if (!response.ok || !data.ok) {
         throw new Error(data.error?.message ?? "Could not reset password.");
       }
       notify(`Password reset successfully.`, "success");
@@ -811,7 +723,7 @@ export function useClinicStore(isAuthenticated = false) {
         body: JSON.stringify({ active }),
       });
       const data = await response.json();
-      if (!response.ok) {
+      if (!response.ok || !data.ok) {
         throw new Error(data.error?.message ?? "Could not change status.");
       }
       setStaffList((prev) =>
@@ -835,11 +747,16 @@ export function useClinicStore(isAuthenticated = false) {
     });
   }
 
-  function dispenseStockItem(itemId: string, qty: number) {
+  async function dispenseStockItem(itemId: string, qty: number) {
     const item = inventory.find((i) => i.id === itemId);
     if (!item) return;
 
-    const totalAvailable = item.batches.reduce((sum, b) => sum + b.quantity, 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      notify("Dispense quantity must be positive and finite.", "error");
+      return;
+    }
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+    const totalAvailable = item.batches.filter(b => b.expiryDate >= today).reduce((sum, b) => sum + b.quantity, 0);
     if (totalAvailable < qty) {
       notify(`Insufficient stock for ${item.name}. Available: ${totalAvailable}`, "error");
       return;
@@ -852,23 +769,21 @@ export function useClinicStore(isAuthenticated = false) {
     let remainingToDeduct = qty;
     const updatedBatches = sortedBatches
       .map((batch) => {
-        if (remainingToDeduct === 0 || batch.quantity === 0) return batch;
+        if (remainingToDeduct === 0 || batch.quantity === 0 || batch.expiryDate < today) return batch;
         const deduct = Math.min(batch.quantity, remainingToDeduct);
         remainingToDeduct -= deduct;
         return { ...batch, quantity: batch.quantity - deduct };
       })
       .filter((b) => b.quantity > 0);
 
-    setInventory((prev) => {
-      const next = prev.map((i) => (i.id === itemId ? { ...i, batches: updatedBatches } : i));
-      syncToBackend({ inventory: next });
-      return next;
-    });
+    const next = inventory.map((i) => (i.id === itemId ? { ...i, batches: updatedBatches } : i));
+    if (!await syncToBackend({ inventory: next })) return;
+    setInventory(next);
 
     notify(`Dispensed ${qty} unit(s) of ${item.name} via FEFO order!`, "success");
   }
 
-  function receiveStockBatch(params: {
+  async function receiveStockBatch(params: {
     itemId: string;
     batchNumber: string;
     expiryDate: string;
@@ -880,37 +795,41 @@ export function useClinicStore(isAuthenticated = false) {
       notify("Inventory item not found.", "error");
       return;
     }
-    if (params.quantity <= 0) {
+    if (!Number.isFinite(params.quantity) || params.quantity <= 0) {
       notify("Quantity must be greater than zero.", "error");
       return;
     }
 
-    setInventory((prev) => {
-      const next = prev.map((i) => {
-        if (i.id !== params.itemId) return i;
-        const existingBatchIndex = i.batches.findIndex(
-          (b) => b.batchNumber.toLowerCase() === params.batchNumber.trim().toLowerCase()
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+    const expiry = new Date(`${params.expiryDate}T00:00:00Z`);
+    if (!params.batchNumber.trim() || !Number.isFinite(expiry.getTime()) || expiry.toISOString().slice(0, 10) !== params.expiryDate || params.expiryDate < today) {
+      notify("Enter a batch number and valid unexpired expiry date.", "error");
+      return;
+    }
+    const next = inventory.map((i) => {
+      if (i.id !== params.itemId) return i;
+      const existingBatchIndex = i.batches.findIndex(
+        (b) => b.batchNumber.toLowerCase() === params.batchNumber.trim().toLowerCase()
+      );
+      let nextBatches: InventoryBatchData[];
+      if (existingBatchIndex >= 0) {
+        nextBatches = i.batches.map((b, idx) =>
+          idx === existingBatchIndex
+            ? { ...b, quantity: b.quantity + params.quantity, expiryDate: params.expiryDate || b.expiryDate }
+            : b
         );
-        let nextBatches: InventoryBatchData[];
-        if (existingBatchIndex >= 0) {
-          nextBatches = i.batches.map((b, idx) =>
-            idx === existingBatchIndex
-              ? { ...b, quantity: b.quantity + params.quantity, expiryDate: params.expiryDate || b.expiryDate }
-              : b
-          );
-        } else {
-          const newBatch: InventoryBatchData = {
-            batchNumber: params.batchNumber.trim().toUpperCase(),
-            expiryDate: params.expiryDate,
-            quantity: params.quantity,
-          };
-          nextBatches = [...i.batches, newBatch];
-        }
-        return { ...i, batches: nextBatches };
-      });
-      syncToBackend({ inventory: next });
-      return next;
+      } else {
+        const newBatch: InventoryBatchData = {
+          batchNumber: params.batchNumber.trim().toUpperCase(),
+          expiryDate: params.expiryDate,
+          quantity: params.quantity,
+        };
+        nextBatches = [...i.batches, newBatch];
+      }
+      return { ...i, batches: nextBatches };
     });
+    if (!await syncToBackend({ inventory: next })) return;
+    setInventory(next);
 
     notify(
       `Stock In: Received ${params.quantity} units of ${item.name} (Batch #${params.batchNumber.trim().toUpperCase()}).`,
@@ -961,69 +880,21 @@ export function useClinicStore(isAuthenticated = false) {
       const response = await fetch("/api/patients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...params, phone, gender: effectiveGender, medicalRecordNumber: assignedMrn }),
+        body: JSON.stringify({ ...params, phone, gender: effectiveGender, medicalRecordNumber: demoMode ? assignedMrn : undefined }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (response.ok && payload.patient) {
-        savedPatient = {
-          ...payload.patient,
-          medicalRecordNumber: payload.patient.medicalRecordNumber || assignedMrn,
-          nationality: params.nationality || payload.patient.nationality,
-          addressLine1: params.addressLine1 || payload.patient.addressLine1,
-          addressLine2: params.addressLine2 || payload.patient.addressLine2,
-          postcode: params.postcode || payload.patient.postcode,
-          city: params.city || payload.patient.city,
-          state: params.state || payload.patient.state,
-          address: params.address || payload.patient.address,
-        };
+      if (response.ok && payload.ok && payload.patient) {
+        savedPatient = payload.patient;
       } else {
         throw new Error(payload.error?.message ?? "Registration error");
       }
-    } catch {
-      // Local persistent fallback
-      const dob = params.dob ? new Date(params.dob) : null;
-      const today = new Date();
-      const calculatedAge = dob && !isNaN(dob.getTime())
-        ? Math.max(0, today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0))
-        : 0;
-
-      const fullAddr = params.address?.trim() || [
-        params.addressLine1,
-        params.addressLine2,
-        [params.postcode, params.city].filter(Boolean).join(" "),
-        params.state,
-      ].filter(Boolean).join(", ") || "—";
-
-      savedPatient = {
-        id: crypto.randomUUID(),
-        medicalRecordNumber: assignedMrn,
-        idType: params.idType || "nric",
-        nric: params.nric,
-        firstName: params.firstName || "",
-        lastName: params.lastName || "",
-        name: params.name.trim(),
-        phone: phone || "—",
-        email: params.email.trim(),
-        dob: params.dob,
-        age: calculatedAge,
-        gender: effectiveGender,
-        nationality: params.nationality || (isNric ? "Malaysian" : "Foreign"),
-        addressLine1: params.addressLine1 || "",
-        addressLine2: params.addressLine2 || "",
-        postcode: params.postcode || "",
-        city: params.city || "",
-        state: params.state || "",
-        country: params.country || "Malaysia",
-        address: fullAddr,
-        bloodGroup: params.bloodGroup,
-        allergies: params.allergies,
-        chronicConditions: params.chronicConditions,
-      };
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Patient registration failed.", "error");
+      return;
     }
 
     setPatients((prev) => {
       const next = [savedPatient, ...prev.filter((p) => p.id !== savedPatient.id)];
-      syncToBackend({ patients: next });
       return next;
     });
 
@@ -1036,46 +907,23 @@ export function useClinicStore(isAuthenticated = false) {
           body: JSON.stringify({ patientId: savedPatient.id }),
         });
         const qPayload = await queueRes.json().catch(() => ({}));
-        if (queueRes.ok && qPayload.ticket) {
-          newTicket = {
-            id: qPayload.ticket.id,
-            databaseStatus: qPayload.ticket.status,
-            ticketNumber: qPayload.ticket.ticket_number,
-            patientId: savedPatient.id,
-            patientName: savedPatient.name,
-            phone: savedPatient.phone,
-            email: savedPatient.email,
-            status: "WAITING",
-            practitionerName: "Unassigned",
-            registeredAt: new Date(qPayload.ticket.registered_at).toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" }),
-            waitTimeMinutes: (queue.filter((q) => q.status === "WAITING").length + 1) * 10,
-          };
+        if (queueRes.ok && qPayload.ok && qPayload.ticket) {
+          newTicket = toQueueTicket(qPayload.ticket, [savedPatient]);
         } else {
-          throw new Error("Queue creation failed");
+          throw new Error(qPayload.error?.message ?? "Patient registered, but queue ticket creation failed.");
         }
-      } catch {
-        newTicket = {
-          id: crypto.randomUUID(),
-          ticketNumber: `Q-${queue.length + 101}`,
-          patientId: savedPatient.id,
-          patientName: savedPatient.name,
-          phone: savedPatient.phone,
-          email: savedPatient.email,
-          status: "WAITING",
-          practitionerName: "Unassigned",
-          registeredAt: new Date().toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" }),
-          waitTimeMinutes: (queue.filter((q) => q.status === "WAITING").length + 1) * 10,
-        };
+      } catch (error) {
+        notify(error instanceof Error ? error.message : "Patient registered, but queue ticket creation failed.", "error");
+        return { patient: savedPatient, ticket: undefined };
       }
 
       setQueue((prev) => {
         const next = [...prev, newTicket!];
-        syncToBackend({ queue: next });
         return next;
       });
     }
 
-    notify(`Registered ${savedPatient.name} (MRN #${assignedMrn})${params.enqueueNow ? ` · Ticket ${newTicket?.ticketNumber} issued.` : ""}`, "success");
+    notify(`Registered ${savedPatient.name} (MRN #${savedPatient.medicalRecordNumber})${params.enqueueNow ? ` · Ticket ${newTicket?.ticketNumber} issued.` : ""}`, "success");
     return { patient: savedPatient, ticket: newTicket };
   }
 
@@ -1101,53 +949,30 @@ export function useClinicStore(isAuthenticated = false) {
         body: JSON.stringify({ patientId }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (response.ok && payload.ticket) {
-        newTicket = {
-          id: payload.ticket.id,
-          databaseStatus: payload.ticket.status,
-          ticketNumber: payload.ticket.ticket_number,
-          patientId: pat.id,
-          patientName: pat.name,
-          phone: pat.phone,
-          email: pat.email,
-          status: "WAITING",
-          practitionerName: "Unassigned",
-          registeredAt: new Date(payload.ticket.registered_at).toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" }),
-          waitTimeMinutes: (queue.filter((q) => q.status === "WAITING").length + 1) * 10,
-        };
+      if (response.ok && payload.ok && payload.ticket) {
+        newTicket = toQueueTicket(payload.ticket, [pat]);
       } else {
-        throw new Error("Could not issue ticket");
+        throw new Error(payload.error?.message ?? "Could not issue ticket");
       }
-    } catch {
-      newTicket = {
-        id: crypto.randomUUID(),
-        ticketNumber: `Q-${queue.length + 101}`,
-        patientId: pat.id,
-        patientName: pat.name,
-        phone: pat.phone,
-        email: pat.email,
-        status: "WAITING",
-        practitionerName: "Unassigned",
-        registeredAt: new Date().toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" }),
-        waitTimeMinutes: (queue.filter((q) => q.status === "WAITING").length + 1) * 10,
-      };
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not issue queue ticket.", "error");
+      return;
     }
 
     setQueue((prev) => {
       const next = [...prev, newTicket];
-      syncToBackend({ queue: next });
       return next;
     });
 
     notify(`Queue ticket ${newTicket.ticketNumber} issued for ${pat.name}.`, "success");
+    return newTicket;
   }
 
   return {
     role,
-    setRole,
     patients,
     operationalLoadError,
-    demoMode: false,
+    demoMode,
     activePatient,
     setActivePatientId,
     rooms,

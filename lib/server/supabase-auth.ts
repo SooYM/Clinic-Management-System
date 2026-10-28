@@ -1,7 +1,9 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
 import { findStaffByIdentifier, getDatabase } from "./storage";
+import { getPostgresAuthenticatedProfile, isPostgresAuthEnabled, resolvePostgresSession, revokePostgresSession, signInPostgres } from "./postgres-auth";
 
 export const ACCESS_COOKIE = "cms_access_token";
 export const REFRESH_COOKIE = "cms_refresh_token";
@@ -10,6 +12,22 @@ export const LEGACY_REFRESH_COOKIE = "kumo_refresh_token";
 
 const ACCESS_MAX_AGE_SECONDS = 15 * 60;
 const REFRESH_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
+// Next.js reloads route modules during development; keep sessions shared across reloads.
+const demoSessionStore = globalThis as typeof globalThis & {
+  clinicDemoSessions?: Map<string, { userId: string; expiresAt: number }>;
+};
+const demoSessions = demoSessionStore.clinicDemoSessions ??= new Map();
+
+export function isLocalDemoEnabled(): boolean {
+  return !isPostgresAuthEnabled() && process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_CLINIC_DEMO_MODE === "true";
+}
+
+function createDemoSession(userId: string): SupabaseSessionTokens {
+  const token = `cms_mock_${randomBytes(32).toString("hex")}`;
+  demoSessions.set(token, { userId, expiresAt: Date.now() + ACCESS_MAX_AGE_SECONDS * 1000 });
+  return { access_token: token, refresh_token: "", expires_in: ACCESS_MAX_AGE_SECONDS, user: { id: userId } };
+}
 
 export interface StaffSessionUser {
   id: string;
@@ -163,38 +181,15 @@ export function assertSameOrigin(request: Request): void {
   const origin = request.headers.get("origin") || request.headers.get("referer");
   if (!origin) return;
 
-  let originHost: string;
+  let requestOrigin: string;
   try {
-    originHost = new URL(origin).host.toLowerCase();
+    requestOrigin = new URL(origin).origin;
   } catch {
     throw new AuthRouteError(403, "ORIGIN_FORBIDDEN", "Request origin could not be verified.");
   }
 
-  const hostHeader = request.headers.get("host")?.toLowerCase();
-  const fwdHost = request.headers.get("x-forwarded-host")?.toLowerCase();
-  let requestHost = "";
-  try {
-    requestHost = new URL(request.url).host.toLowerCase();
-  } catch {}
-
-  const appBaseUrl = process.env.APP_BASE_URL;
-  let appHost = "";
-  if (appBaseUrl) {
-    try {
-      appHost = new URL(appBaseUrl).host.toLowerCase();
-    } catch {}
-  }
-
-  if (
-    (hostHeader && (originHost === hostHeader || hostHeader.split(":")[0] === originHost.split(":")[0])) ||
-    (fwdHost && (originHost === fwdHost || fwdHost.split(":")[0] === originHost.split(":")[0])) ||
-    (requestHost && (originHost === requestHost || requestHost.split(":")[0] === originHost.split(":")[0])) ||
-    (appHost && originHost === appHost) ||
-    originHost.includes("localhost") ||
-    originHost.includes("127.0.0.1") ||
-    originHost.endsWith(".onrender.com") ||
-    process.env.NEXT_PUBLIC_CLINIC_DEMO_MODE === "true"
-  ) {
+  const appOrigin = new URL(process.env.APP_BASE_URL || request.url).origin;
+  if (requestOrigin === appOrigin) {
     return;
   }
 
@@ -202,6 +197,9 @@ export function assertSameOrigin(request: Request): void {
 }
 
 export function errorResponse(error: unknown): NextResponse {
+  if (error instanceof SyntaxError) {
+    return jsonResponse({ ok: false, error: { code: "INVALID_JSON", message: "Provide a valid JSON request body." } }, 400);
+  }
   if (error instanceof AuthRouteError) {
     return jsonResponse({ ok: false, error: { code: error.code, message: error.message } }, error.status);
   }
@@ -253,10 +251,11 @@ function parseTokens(value: unknown): SupabaseSessionTokens {
 }
 
 export async function signInWithPassword(identifier: string, password: string): Promise<SupabaseSessionTokens> {
+  if (isPostgresAuthEnabled()) return signInPostgres(identifier, password);
   const normalized = identifier.trim().toLowerCase();
 
   // 1. Check persistent database staff accounts
-  const storedStaff = findStaffByIdentifier(normalized);
+  const storedStaff = isLocalDemoEnabled() ? findStaffByIdentifier(normalized) : undefined;
   if (storedStaff) {
     if (!storedStaff.active) {
       throw new AuthRouteError(403, "STAFF_PROFILE_INACTIVE", "This staff account has been revoked by administration.");
@@ -264,12 +263,7 @@ export async function signInWithPassword(identifier: string, password: string): 
     if (storedStaff.password !== password) {
       throw new AuthRouteError(401, "INVALID_CREDENTIALS", "Username/email or password is incorrect.");
     }
-    return {
-      access_token: `cms_mock_${storedStaff.id}`,
-      refresh_token: `cms_mock_refresh_${storedStaff.id}`,
-      expires_in: 86400,
-      user: { id: storedStaff.id },
-    };
+    return createDemoSession(storedStaff.id);
   }
 
   // 2. Check built-in staff fallback
@@ -280,16 +274,11 @@ export async function signInWithPassword(identifier: string, password: string): 
     return normalized === username || normalized === email || normalized === legacyEmail;
   });
 
-  if (matched) {
+  if (isLocalDemoEnabled() && matched) {
     if (matched.passwordHash !== password) {
       throw new AuthRouteError(401, "INVALID_CREDENTIALS", "Username/email or password is incorrect.");
     }
-    return {
-      access_token: `cms_mock_${matched.profile.id}`,
-      refresh_token: `cms_mock_refresh_${matched.profile.id}`,
-      expires_in: 86400,
-      user: { id: matched.profile.id },
-    };
+    return createDemoSession(matched.profile.id);
   }
 
   if (!isSupabaseConfigured()) {
@@ -334,10 +323,18 @@ async function getSupabaseUser(accessToken: string): Promise<SupabaseUser | null
 }
 
 export async function getActiveStaffProfile(accessToken: string, authUserId: string): Promise<StaffSessionUser> {
-  if (accessToken.startsWith("cms_mock_") || accessToken.startsWith("kumo_mock_") || authUserId.startsWith("usr_") || authUserId.startsWith("staff-")) {
+  if (isPostgresAuthEnabled()) return getPostgresAuthenticatedProfile(accessToken, authUserId);
+  if (accessToken.startsWith("cms_mock_") || accessToken.startsWith("kumo_mock_")) {
+    const demoSession = demoSessions.get(accessToken);
+    if (!isLocalDemoEnabled() || !demoSession || demoSession.userId !== authUserId || demoSession.expiresAt <= Date.now()) {
+      throw new AuthRouteError(401, "UNAUTHENTICATED", "Sign in to continue.");
+    }
     const dbStaff = getDatabase().staff.find(
       (s) => s.id === authUserId || s.auth_user_id === authUserId || `cms_mock_${s.id}` === accessToken || `cms_mock_${s.auth_user_id}` === accessToken
     );
+    if (dbStaff && !dbStaff.active) {
+      throw new AuthRouteError(403, "STAFF_PROFILE_INACTIVE", "This staff account has been revoked by administration.");
+    }
     if (dbStaff) {
       return {
         id: dbStaff.id,
@@ -359,6 +356,7 @@ export async function getActiveStaffProfile(accessToken: string, authUserId: str
   const query = new URLSearchParams({
     select: "id,auth_user_id,clinic_id,branch_id,full_name,role,active,license_number",
     auth_user_id: `eq.${authUserId}`,
+    active: "eq.true",
     limit: "2",
   });
   const response = await supabaseFetch(`/rest/v1/staff_members?${query}`, {
@@ -428,29 +426,17 @@ export async function getAuthenticatedClinicStaff(request: NextRequest): Promise
   assertSameOrigin(request);
   let accessToken = request.cookies.get(ACCESS_COOKIE)?.value || request.cookies.get(LEGACY_ACCESS_COOKIE)?.value;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value || request.cookies.get(LEGACY_REFRESH_COOKIE)?.value;
+  if (isPostgresAuthEnabled()) return resolvePostgresSession(accessToken, refreshToken);
 
   if (accessToken?.startsWith("cms_mock_") || accessToken?.startsWith("kumo_mock_")) {
-    const userId = accessToken.replace(/^(cms|kumo)_mock_/, "");
-    const dbStaff = getDatabase().staff.find((s) => s.id === userId || s.auth_user_id === userId);
-    if (dbStaff && dbStaff.active) {
-      return {
-        user: {
-          id: dbStaff.id,
-          auth_user_id: dbStaff.auth_user_id,
-          clinic_id: "c0000000-0000-4000-8000-000000000001",
-          branch_id: "d0000000-0000-4000-8000-000000000001",
-          full_name: dbStaff.full_name,
-          role: dbStaff.role,
-          license_number: dbStaff.license_number ?? null,
-        },
-        accessToken,
-      };
+    const demoSession = demoSessions.get(accessToken);
+    if (!isLocalDemoEnabled() || !demoSession || demoSession.expiresAt <= Date.now()) {
+      throw new AuthRouteError(401, "UNAUTHENTICATED", "Sign in to continue.");
     }
-    const matched = BUILT_IN_STAFF_ACCOUNTS.find((acc) => acc.profile.id === userId);
-    if (matched) {
-      return { user: matched.profile, accessToken };
-    }
+    return { user: await getActiveStaffProfile(accessToken, demoSession.userId), accessToken };
   }
+
+  if (!accessToken && !refreshToken) throw new AuthRouteError(401, "UNAUTHENTICATED", "Sign in to continue.");
 
   let rotatedTokens: SupabaseSessionTokens | undefined;
   let authUser = accessToken ? await getSupabaseUser(accessToken) : null;
@@ -475,7 +461,11 @@ export const resolveSession = getAuthenticatedClinicStaff;
 
 export async function revokeSession(accessToken?: string, refreshToken?: string): Promise<void> {
   if (!accessToken && !refreshToken) return;
-  if (accessToken?.startsWith("kumo_mock_")) return;
+  if (isPostgresAuthEnabled()) return revokePostgresSession(accessToken, refreshToken);
+  if (accessToken?.startsWith("cms_mock_") || accessToken?.startsWith("kumo_mock_")) {
+    demoSessions.delete(accessToken);
+    return;
+  }
   const revokeAccessToken = (token: string) => supabaseFetch("/auth/v1/logout", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },

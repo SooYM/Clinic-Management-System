@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { toggleStaffActive } from "../../../../lib/server/storage";
-import { assertSameOrigin, errorResponse, getAuthenticatedClinicStaff, jsonResponse } from "../../../../lib/server/supabase-auth";
+import { AuthRouteError, assertSameOrigin, errorResponse, getAuthenticatedClinicStaff, isLocalDemoEnabled, jsonResponse } from "../../../../lib/server/supabase-auth";
 
 export const runtime = "nodejs";
 
@@ -16,10 +16,12 @@ export async function PATCH(
     }
 
     const { id } = await context.params;
+    if (!isLocalDemoEnabled()) throw new AuthRouteError(503, "STAFF_MANAGEMENT_UNAVAILABLE", "Live staff management is not configured.");
     const body = (await request.json()) as { active?: boolean };
-    if (typeof body.active !== "boolean") {
+    if (!body || typeof body.active !== "boolean") {
       return jsonResponse({ ok: false, error: { message: "Property 'active' (boolean) is required." } }, 400);
     }
+    if ((id === session.user.id || id === session.user.auth_user_id) && !body.active) throw new AuthRouteError(409, "SELF_DEACTIVATION", "You cannot deactivate your own account.");
 
     const updated = toggleStaffActive(id, body.active);
     return jsonResponse({

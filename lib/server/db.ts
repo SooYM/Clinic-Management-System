@@ -7,8 +7,8 @@ let pool: Pool | null = null;
 export function getDbPool(): Pool {
   if (!pool) {
     const connectionString =
-      process.env.SUPABASE_DB_URL ||
       process.env.DATABASE_URL ||
+      process.env.SUPABASE_DB_URL ||
       `postgresql://${process.env.POSTGRES_USER || "sooyauming"}@${process.env.POSTGRES_HOST || "localhost"}:${process.env.POSTGRES_PORT || "5432"}/${process.env.POSTGRES_DB || "clinic_db"}`;
 
     pool = new Pool({
@@ -32,31 +32,29 @@ export function mapDbError(error: unknown): AuthRouteError | Error {
     return new AuthRouteError(500, "DB_UNKNOWN", "An unknown database error occurred.");
   }
 
-  const err = error as { code?: string; message?: string; detail?: string };
+  const err = error as { code?: string };
   const code = err.code ?? "";
-  const rawMsg = err.message ?? "Database operation failed.";
-  const cleanMsg = rawMsg.replace(/^error:\s*/i, "").trim();
 
   if (code === "42501") {
-    return new AuthRouteError(403, "PERMISSION_DENIED", cleanMsg || "Your clinic role does not have permission for this action.");
+    return new AuthRouteError(403, "PERMISSION_DENIED", "Your clinic role does not have permission for this action.");
   }
   if (code === "P0002") {
-    return new AuthRouteError(404, "RECORD_NOT_FOUND", cleanMsg || "The requested clinic record was not found.");
+    return new AuthRouteError(404, "RECORD_NOT_FOUND", "The requested clinic record was not found.");
   }
   if (code === "40001") {
     return new AuthRouteError(409, "STALE_RECORD", "This record was changed in another session. Refresh and retry.");
   }
   if (code === "23505" || code === "23P01") {
-    return new AuthRouteError(409, "DUPLICATE_KEY", cleanMsg || "A conflicting record or booking already exists.");
+    return new AuthRouteError(409, "DUPLICATE_KEY", "A conflicting record or booking already exists.");
   }
   if (code === "23514") {
-    return new AuthRouteError(400, "CHECK_VIOLATION", cleanMsg || "The update violates clinical or validation rules.");
+    return new AuthRouteError(400, "CHECK_VIOLATION", "The update violates clinical or validation rules.");
   }
   if (code === "22023" || code === "22P02") {
-    return new AuthRouteError(400, "INVALID_INPUT", cleanMsg || "Invalid input parameters provided.");
+    return new AuthRouteError(400, "INVALID_INPUT", "Invalid input parameters provided.");
   }
 
-  return new AuthRouteError(502, "DATABASE_ERROR", cleanMsg || "Database request could not be completed.");
+  return new AuthRouteError(502, "DATABASE_ERROR", "Database request could not be completed.");
 }
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
@@ -79,9 +77,9 @@ export async function withSessionClient<T>(
   const client = await p.connect();
   try {
     await client.query("BEGIN;");
-    if (authUserId) {
-      await client.query("SELECT set_config('request.jwt.claim.sub', $1, true);", [authUserId]);
-    }
+    await client.query(authUserId ? "SET LOCAL ROLE authenticated;" : "SET LOCAL ROLE anon;");
+    await client.query("SELECT set_config('request.jwt.claim.sub', $1, true);", [authUserId ?? ""]);
+    await client.query("SELECT set_config('request.jwt.claims', $1, true);", [JSON.stringify(authUserId ? { sub: authUserId, role: "authenticated" } : { role: "anon" })]);
     const result = await fn(client);
     await client.query("COMMIT;");
     return result;

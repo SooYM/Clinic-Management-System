@@ -27,7 +27,6 @@ The system automates core clinic operations across four operational pillars:
 | **Automated Patient Alerting** | Observer & Strategy Pattern `ClinicAlertDispatcher` (WhatsApp & Email) | Zero-friction booking confirmations, queue bump alerts, proactive 3-day refill reminders |
 | **Digital Clinical Documents** | Domain Service `ClinicalDocumentService` issuing QR-verified MCs, referral letters, and lab requisitions | 1-click generation from SOAP chart; employer QR verification portal |
 | **Cloud EMR & Clinical Charting** | Encapsulated Domain Aggregate `ClinicalEncounter` with specialized SOAP templates (GP, Aesthetic, Dental) | Sub-second chart loading; allergy conflict prevention |
-| **Treatment Packages & Prepaid Credits** | Aggregate Root `TreatmentPackage` with session redemption invariants & expiry enforcement | Eliminates manual package balance errors; real-time session sign-off |
 | **Multi-Doctor Appointment Scheduler** | Reactive calendar engine with optimistic locking and multi-room assignment | Eliminates double-booking; syncs directly to WhatsApp notifications |
 | **Pharmacy & Consumable Inventory** | Domain Entity `InventoryItem` with automated FEFO (First-Expiry-First-Out) batch depletion | Prevents dispensing expired stock; automatic par-level reorder alerts |
 | **Point of Sale (POS) & Billing** | Strategy Pattern `IPaymentStrategy` supporting Split Payments (Cash, Card, QR, Package Redemptions) | Fast checkout; automated receipt generation and deposit handling |

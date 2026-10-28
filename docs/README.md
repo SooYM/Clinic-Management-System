@@ -13,10 +13,10 @@ This documentation distinguishes the **specified target**, the **database founda
 ## Source of truth
 
 - Requirements: [`CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md`](../CLINIC_MANAGEMENT_SYSTEM_SPECIFICATION.md)
-- Current database definition: Ordered migrations in [`supabase/migrations/`](../supabase/migrations) (01 foundation, 02 queue transitions, 03 clinical documents, 04 scheduling & rooms, 05 encounters & prescriptions, 06 inventory & packages, 07 billing lifecycle) and seeds in [`supabase/seed.sql`](../supabase/seed.sql)
-- Supabase setup notes: [`SUPABASE_SETUP.md`](../SUPABASE_SETUP.md)
+- Current database definition: Ordered migrations in [`supabase/migrations/`](../supabase/migrations) (01 foundation, 02 queue transitions, 03 clinical documents, 04 scheduling & rooms, 05 encounters & prescriptions, 06 inventory & packages, 07 billing lifecycle, 08 audit patient queue, 09 audit access RPC, 10 PostgreSQL native auth) and seeds in [`supabase/seed.sql`](../supabase/seed.sql)
+- Supabase / PostgreSQL setup notes: [`SUPABASE_SETUP.md`](../SUPABASE_SETUP.md)
 - UI demo data/state: [`lib/data/clinic-store.ts`](../lib/data/clinic-store.ts), [`app/page.tsx`](../app/page.tsx)
-- Server backend & database: [`lib/server/db.ts`](../lib/server/db.ts), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts), [`lib/server/scheduling-api.ts`](../lib/server/scheduling-api.ts), [`lib/server/clinical-care.ts`](../lib/server/clinical-care.ts), and [`app/api/`](../app/api)
+- Server backend & database: [`lib/server/db.ts`](../lib/server/db.ts), [`lib/server/supabase-auth.ts`](../lib/server/supabase-auth.ts), [`lib/server/postgres-auth.ts`](../lib/server/postgres-auth.ts), [`lib/server/scheduling-api.ts`](../lib/server/scheduling-api.ts), [`lib/server/clinical-care.ts`](../lib/server/clinical-care.ts), and [`app/api/`](../app/api)
 - Document preview implementation: [`components/documents`](../components/documents)
 
-The migrations (01 through 07), not the older aspirational DDL in the requirements document, are authoritative for the current PostgreSQL tables, column names, RPCs, and RLS policies.
+The migrations (01 through 10), executed via Supabase CLI or `scripts/complete-postgresql-schema.cjs`, not the older aspirational DDL in the requirements document, are authoritative for the current PostgreSQL tables, column names, RPCs, and RLS policies.

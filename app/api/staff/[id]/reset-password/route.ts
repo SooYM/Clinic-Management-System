@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { resetStaffPassword } from "../../../../../lib/server/storage";
-import { assertSameOrigin, errorResponse, getAuthenticatedClinicStaff, jsonResponse } from "../../../../../lib/server/supabase-auth";
+import { AuthRouteError, assertSameOrigin, errorResponse, getAuthenticatedClinicStaff, isLocalDemoEnabled, jsonResponse } from "../../../../../lib/server/supabase-auth";
 
 export const runtime = "nodejs";
 
@@ -16,8 +16,9 @@ export async function POST(
     }
 
     const { id } = await context.params;
+    if (!isLocalDemoEnabled()) throw new AuthRouteError(503, "STAFF_MANAGEMENT_UNAVAILABLE", "Live staff management is not configured.");
     const body = (await request.json()) as { newPassword?: string };
-    if (!body.newPassword || body.newPassword.length < 6) {
+    if (!body || typeof body.newPassword !== "string" || body.newPassword.length < 6 || body.newPassword.length > 128) {
       return jsonResponse({ ok: false, error: { message: "New password must be at least 6 characters." } }, 400);
     }
 

@@ -36,12 +36,12 @@ export class InventoryItem {
   }
 
   public receiveBatch(batchNumber: string, expiryDate: Date, quantity: number): void {
-    if (quantity <= 0) throw new Error("Received quantity must be positive.");
-    if (expiryDate <= new Date()) throw new Error("Cannot receive expired inventory batch.");
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Received quantity must be positive.");
+    if (!Number.isFinite(expiryDate.getTime()) || expiryDate <= new Date()) throw new Error("Cannot receive expired inventory batch.");
 
     this._batches.push({
       batchNumber,
-      expiryDate,
+      expiryDate: new Date(expiryDate),
       quantityAvailable: quantity,
     });
 
@@ -53,9 +53,12 @@ export class InventoryItem {
    * Enforces FEFO (First-Expiry-First-Out) Dispensation Invariant
    */
   public dispenseStock(requestedQty: number): Array<{ batchNumber: string; quantityDeducted: number }> {
-    if (requestedQty <= 0) throw new Error("Dispense quantity must be positive.");
-    if (this.totalStockOnHand < requestedQty) {
-      throw new Error(`Insufficient stock for ${this._itemName}. Requested: ${requestedQty}, Available: ${this.totalStockOnHand}`);
+    if (!Number.isFinite(requestedQty) || requestedQty <= 0) throw new Error("Dispense quantity must be positive.");
+    const now = Date.now();
+    const available = this._batches.filter(b => b.expiryDate.getTime() > now)
+      .reduce((sum, b) => sum + b.quantityAvailable, 0);
+    if (available < requestedQty) {
+      throw new Error(`Insufficient stock for ${this._itemName}. Requested: ${requestedQty}, Available: ${available}`);
     }
 
     const deductions: Array<{ batchNumber: string; quantityDeducted: number }> = [];
@@ -63,7 +66,7 @@ export class InventoryItem {
 
     for (const batch of this._batches) {
       if (remainingToDeduct === 0) break;
-      if (batch.quantityAvailable <= 0) continue;
+      if (batch.quantityAvailable <= 0 || batch.expiryDate.getTime() <= now) continue;
 
       const deductAmount = Math.min(batch.quantityAvailable, remainingToDeduct);
       batch.quantityAvailable -= deductAmount;

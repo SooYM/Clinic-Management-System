@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import styles from "./clinic-document-print.module.css";
 import { QrCode } from "../QrCode";
 import { createDocumentPrintRecord, formatMalaysiaDateTime } from "./service";
@@ -32,7 +32,13 @@ export function ClinicDocumentPrintView({
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => setActiveDocument(document), [document]);
+  const [previousDocument, setPreviousDocument] = useState(document);
+  if (document !== previousDocument) {
+    setPreviousDocument(document);
+    setActiveDocument(document);
+    setPrintRecord(null);
+    setError("");
+  }
 
   const print = async () => {
     const record = createDocumentPrintRecord(activeDocument);

@@ -57,6 +57,7 @@ export class Invoice {
   private readonly _patientId: string;
   private _items: LineItem[] = [];
   private _isPaid: boolean = false;
+  private _paymentInProgress: boolean = false;
   private _payments: PaymentResult[] = [];
 
   constructor(id: string, patientId: string) {
@@ -65,8 +66,11 @@ export class Invoice {
   }
 
   public addItem(item: LineItem): void {
-    if (this._isPaid) throw new Error("Cannot add items to paid invoice.");
-    this._items.push(item);
+    if (this._isPaid || this._paymentInProgress) throw new Error("Cannot add items to paid invoice or while payment is in progress.");
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unitPrice) || item.unitPrice < 0) {
+      throw new Error("Item quantity must be positive and unit price must be nonnegative finite numbers.");
+    }
+    this._items.push({ ...item });
   }
 
   public calculateSubtotal(): number {
@@ -74,18 +78,27 @@ export class Invoice {
   }
 
   public calculateTotal(taxRate: number = 0.08): number {
+    if (!Number.isFinite(taxRate) || taxRate < 0) throw new Error("Tax rate must be a nonnegative finite number.");
     const subtotal = this.calculateSubtotal();
-    return subtotal + (subtotal * taxRate);
+    const total = subtotal + (subtotal * taxRate);
+    if (!Number.isFinite(total)) throw new Error("Invoice total must be finite.");
+    return total;
   }
 
   public async pay(strategy: IPaymentStrategy): Promise<PaymentResult> {
-    if (this._isPaid) throw new Error("Invoice is already paid.");
+    if (this._isPaid || this._paymentInProgress) throw new Error("Invoice is already paid or payment is in progress.");
     const total = this.calculateTotal();
-    const result = await strategy.processPayment(this._id, total);
-    if (result.isSuccess) {
-      this._payments.push(result);
-      this._isPaid = true;
+    this._paymentInProgress = true;
+    try {
+      const result = await strategy.processPayment(this._id, total);
+      if (result.isSuccess) {
+        if (result.amount !== total) throw new Error("Payment amount must match invoice total.");
+        this._payments.push(result);
+        this._isPaid = true;
+      }
+      return result;
+    } finally {
+      this._paymentInProgress = false;
     }
-    return result;
   }
 }

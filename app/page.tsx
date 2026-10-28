@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, CircleHelp, ChevronRight, ShieldCheck, Building2, Pencil, Users, Plus, Trash2, Edit3, Check, Stethoscope, Pill } from "lucide-react";
-import { useClinicStore, type Role, type ModuleKey, type InventoryItemData } from "../lib/data/clinic-store";
+import { ArrowLeft, CircleHelp, ChevronRight, ShieldCheck, Building2, Users, Plus, Trash2, Edit3 } from "lucide-react";
+import { useClinicStore, type ModuleKey, type InventoryItemData } from "../lib/data/clinic-store";
 import { Modal } from "../components/Modal";
 import { notify } from "../components/toast";
 import { useSession } from "../lib/state/session";
@@ -16,7 +16,7 @@ import { DatabaseViewerModal } from "../components/menu/DatabaseViewerModal";
 import { AddDrugModal } from "../components/menu/AddDrugModal";
 import { type MenuItem } from "../components/menu/modules";
 import { QrCode } from "../components/QrCode";
-import { genderFromMalaysianIc, normalizeMalaysianPhone } from "../src/domain/MalaysianIc";
+import { genderFromMalaysianIc } from "../src/domain/MalaysianIc";
 import { ClinicDocumentPrintView } from "../components/documents/ClinicDocumentPrintView";
 import { documentFromLabOrder, documentFromMC, documentFromReferral } from "../components/documents/fromClinicRecords";
 import { createClinicDocumentArtifact, regenerateClinicDocumentArtifact } from "../components/documents";
@@ -37,8 +37,6 @@ import {
   COUNTRY_CODES as WORLD_COUNTRY_CODES,
   DOSING_FREQUENCIES,
   MEAL_TIMINGS,
-  BLOOD_GROUPS,
-  MEDICAL_SPECIALTIES,
   MALAYSIAN_STATES,
 } from "../lib/config/dropdown-options";
 
@@ -71,11 +69,13 @@ export default function ClinicDashboard() {
 
 function ClinicDashboardContent() {
   const { user, signOut } = useSession();
-  const store = useClinicStore(Boolean(user));
+  const store = useClinicStore(Boolean(user), user?.role);
   const guide = useGuide();
   useFirstLoginGuide(user?.username ?? null);
   const demoMode = process.env.NEXT_PUBLIC_CLINIC_DEMO_MODE === "true";
-  const [tab, setTab] = useState<Tab>("menu");
+  const [selectedTab, setTab] = useState<Tab>("menu");
+  const tab = user && selectedTab !== "menu" && !store.hasAccess(user.role, selectedTab as ModuleKey)
+    ? "menu" : selectedTab;
   const [billingSubTab, setBillingSubTab] = useState<"pos" | "commission">("pos");
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -83,19 +83,6 @@ function ClinicDashboardContent() {
   const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [portalSettingsModalOpen, setPortalSettingsModalOpen] = useState(false);
 
-  // Sync role with session user when user logs in
-  useEffect(() => {
-    if (user?.role) {
-      store.setRole(user.role);
-    }
-  }, [user]);
-
-  // Tab permission guard (Requirement 10)
-  useEffect(() => {
-    if (tab !== "menu" && user && !store.hasAccess(user.role, tab as ModuleKey)) {
-      setTab("menu");
-    }
-  }, [tab, store.rolePermissions, user]);
 
   // Modal Dialog States
   const [mcModalOpen, setMcModalOpen] = useState(false);
@@ -119,8 +106,9 @@ function ClinicDashboardContent() {
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
   const [checkInSearch, setCheckInSearch] = useState("");
   const [viewPatientModal, setViewPatientModal] = useState<string | null>(null);
-  const [viewPatientNric, setViewPatientNric] = useState<string | null>(null);
-  const [viewPatientNricError, setViewPatientNricError] = useState(false);
+  const [identifierResult, setIdentifierResult] = useState<{ patientId: string; value: string | null; failed: boolean } | null>(null);
+  const viewPatientNric = identifierResult?.patientId === viewPatientModal ? identifierResult.value : null;
+  const viewPatientNricError = identifierResult?.patientId === viewPatientModal && identifierResult.failed;
 
   // Form states for Patient Registration (Requirements 3 & 4)
   const [regIdType, setRegIdType] = useState<"nric" | "passport">("nric");
@@ -135,7 +123,6 @@ function ClinicDashboardContent() {
   const [regPostcode, setRegPostcode] = useState("");
   const [regCity, setRegCity] = useState("");
   const [regState, setRegState] = useState(MALAYSIAN_STATES[0] || "Wilayah Persekutuan Kuala Lumpur");
-  const [regAddress, setRegAddress] = useState("");
   const [regPdpaConsent, setRegPdpaConsent] = useState(false);
   const [regPhoneRaw, setRegPhoneRaw] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -156,21 +143,15 @@ function ClinicDashboardContent() {
   const regIcGender = genderFromMalaysianIc(regNric);
 
   useEffect(() => {
-    if (!viewPatientModal) {
-      setViewPatientNric(null);
-      setViewPatientNricError(false);
-      return;
-    }
+    if (!viewPatientModal) return;
     const controller = new AbortController();
-    setViewPatientNric(null);
-    setViewPatientNricError(false);
     fetch("/api/patients/" + viewPatientModal, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("identifier unavailable");
         const payload = await response.json() as { patient?: { nationalId?: string | null } };
-        if (!controller.signal.aborted) setViewPatientNric(payload.patient?.nationalId ?? null);
+        if (!controller.signal.aborted) setIdentifierResult({ patientId: viewPatientModal, value: payload.patient?.nationalId ?? null, failed: false });
       })
-      .catch(() => { if (!controller.signal.aborted) setViewPatientNricError(true); });
+      .catch(() => { if (!controller.signal.aborted) setIdentifierResult({ patientId: viewPatientModal, value: null, failed: true }); });
     return () => controller.abort();
   }, [viewPatientModal]);
 
@@ -219,7 +200,7 @@ function ClinicDashboardContent() {
       let artifact: ClinicDocumentArtifact;
       if (demoMode) {
         if (kind === "MC") {
-          const record = store.issueDigitalMC(sourceData as {
+          const record = await store.issueDigitalMC(sourceData as {
             patientId?: string;
             doctorName?: string;
             days: number;
@@ -227,9 +208,10 @@ function ClinicDashboardContent() {
             diagnosis: string;
             isDiagnosisRedacted: boolean;
           });
+          if (!record) return false;
           artifact = documentFromMC(record, clinicDocumentProfile);
         } else if (kind === "REFERRAL") {
-          const record = store.issueReferralLetter(sourceData as {
+          const record = await store.issueReferralLetter(sourceData as {
             patientId?: string;
             doctorName?: string;
             hospitalOrSpecialty: string;
@@ -238,9 +220,11 @@ function ClinicDashboardContent() {
             summary: string;
             medications: string[];
           });
+          if (!record) return false;
           artifact = documentFromReferral(record, clinicDocumentProfile);
         } else {
-          const record = store.issueLabOrder(sourceData as { panels: string[]; specimenType: "BLOOD" | "URINE" | "SWAB" | "BIOPSY"; isFastingRequired: boolean; notes: string });
+          const record = await store.issueLabOrder(sourceData as { panels: string[]; specimenType: "BLOOD" | "URINE" | "SWAB" | "BIOPSY"; isFastingRequired: boolean; notes: string });
+          if (!record) return false;
           artifact = documentFromLabOrder(record, clinicDocumentProfile);
         }
       } else {
@@ -264,8 +248,7 @@ function ClinicDashboardContent() {
 
   async function regenerateClinicDocument(current: ClinicDocumentArtifact): Promise<ClinicDocumentArtifact> {
     if (demoMode) {
-      const { artifactId: _id, version: _version, ...snapshot } = current;
-      const next = regenerateClinicDocumentArtifact(current, { ...snapshot, issuedAt: new Date().toISOString() });
+      const next = regenerateClinicDocumentArtifact(current, { ...current, issuedAt: new Date().toISOString() });
       setDocumentVersions((previous) => ({ ...previous, [next.artifactId]: [...(previous[next.artifactId] ?? []), next] }));
       return next;
     }
@@ -450,7 +433,7 @@ function ClinicDashboardContent() {
         });
       }
 
-      await store.registerPatient({
+      const registered = await store.registerPatient({
         idType: regIdType,
         firstName: regFirstName.trim(),
         lastName: regLastName.trim(),
@@ -474,6 +457,7 @@ function ClinicDashboardContent() {
         enqueueNow: regEnqueueNow,
         pdpaConsent: regPdpaConsent,
       });
+      if (!registered) return;
 
       // Reset form
       setRegFirstName("");
@@ -485,7 +469,6 @@ function ClinicDashboardContent() {
       setRegPostcode("");
       setRegCity("");
       setRegState(MALAYSIAN_STATES[0] || "Wilayah Persekutuan Kuala Lumpur");
-      setRegAddress("");
       setRegNationality("Malaysian");
       setRegDob("");
       setRegPdpaConsent(false);
@@ -508,7 +491,7 @@ function ClinicDashboardContent() {
       notify("Please select a patient to check in.", "error");
       return;
     }
-    await store.enqueueExistingPatient(targetId);
+    if (!await store.enqueueExistingPatient(targetId)) return;
     setCheckInModalOpen(false);
     setCheckInPatientId("");
     setCheckInSearch("");
@@ -728,7 +711,7 @@ function ClinicDashboardContent() {
                   ? "menu"
                   : tab === "billing" && billingSubTab === "commission"
                   ? "ledger"
-                  : (tab as any)
+                  : tab === "inventory" || tab === "queue" || tab === "patients" || tab === "consultation" || tab === "billing" ? tab : "menu"
               );
             }}
             title="Open Interactive Coachmark Guide (?)"
@@ -2976,7 +2959,6 @@ function ClinicDashboardContent() {
                     value={regAddressLine1}
                     onChange={(e) => {
                       setRegAddressLine1(e.target.value);
-                      setRegAddress([e.target.value, regAddressLine2, [regPostcode, regCity].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
                     }}
                     placeholder="e.g. No. 12, Jalan Ampang"
                     className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
@@ -2991,7 +2973,6 @@ function ClinicDashboardContent() {
                     value={regAddressLine2}
                     onChange={(e) => {
                       setRegAddressLine2(e.target.value);
-                      setRegAddress([regAddressLine1, e.target.value, [regPostcode, regCity].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
                     }}
                     placeholder="e.g. Bukit Bintang (Optional)"
                     className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
@@ -3010,7 +2991,6 @@ function ClinicDashboardContent() {
                     maxLength={10}
                     onChange={(e) => {
                       setRegPostcode(e.target.value);
-                      setRegAddress([regAddressLine1, regAddressLine2, [e.target.value, regCity].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
                     }}
                     placeholder="e.g. 50450"
                     className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-mono"
@@ -3025,7 +3005,6 @@ function ClinicDashboardContent() {
                     value={regCity}
                     onChange={(e) => {
                       setRegCity(e.target.value);
-                      setRegAddress([regAddressLine1, regAddressLine2, [regPostcode, e.target.value].filter(Boolean).join(" "), regState].filter(Boolean).join(", "));
                     }}
                     placeholder="e.g. Kuala Lumpur"
                     className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]"
@@ -3039,7 +3018,6 @@ function ClinicDashboardContent() {
                     value={regState}
                     onChange={(e) => {
                       setRegState(e.target.value);
-                      setRegAddress([regAddressLine1, regAddressLine2, [regPostcode, regCity].filter(Boolean).join(" "), e.target.value].filter(Boolean).join(", "));
                     }}
                     className="w-full text-xs p-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-semibold"
                   >
@@ -3145,7 +3123,7 @@ function ClinicDashboardContent() {
 
             <label className="flex items-start gap-2 rounded-lg border border-[var(--line)] p-3 text-xs">
               <input required type="checkbox" checked={regPdpaConsent} onChange={(e) => setRegPdpaConsent(e.target.checked)} className="mt-0.5 accent-[var(--blue)]" />
-              <span>I confirm the patient has provided consent for collection and use of this information for clinic care, and that the clinic's PDPA notice was provided.</span>
+              <span>I confirm the patient has provided consent for collection and use of this information for clinic care, and that the clinic&apos;s PDPA notice was provided.</span>
             </label>
 
             <div className="p-3 bg-[var(--blue-soft)] border border-[var(--blue)]/20 rounded-xl space-y-2">
@@ -3485,7 +3463,7 @@ function ClinicDashboardContent() {
                   </h2>
                   <p className="text-xs text-[var(--muted)]">
                     {patient.firstName ? <span className="font-semibold text-[var(--ink)] mr-1">[{patient.firstName} {patient.lastName}]</span> : null}
-                    IC/ID: <span className="font-mono font-bold text-[var(--ink)]">{patient.nric || viewPatientNric || "—"}</span> • DOB: {patient.dob} ({patient.age} yrs, {patient.gender}) • <span className="font-semibold">{patient.nationality || "Malaysian"}</span>
+                    IC/ID: <span className="font-mono font-bold text-[var(--ink)]">{viewPatientNricError ? "Identifier unavailable" : viewPatientNric || "—"}</span> • DOB: {patient.dob} ({patient.age} yrs, {patient.gender}) • <span className="font-semibold">{patient.nationality || "Malaysian"}</span>
                   </p>
                 </div>
                 {activeTicket ? (
@@ -3621,11 +3599,10 @@ function ClinicDashboardContent() {
           onClose={() => setEditDrugModal(null)}
         >
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              store.updateInventoryItem(editDrugModal);
+              if (!await store.updateInventoryItem(editDrugModal)) return;
               setEditDrugModal(null);
-              notify(`Updated ${editDrugModal.name} in master formulary.`, "success");
             }}
             className="space-y-4 max-w-xl pr-2"
           >
@@ -3700,7 +3677,7 @@ function ClinicDashboardContent() {
                 </label>
                 <select
                   value={editDrugModal.category}
-                  onChange={(e) => setEditDrugModal({ ...editDrugModal, category: e.target.value as any })}
+                  onChange={(e) => setEditDrugModal({ ...editDrugModal, category: e.target.value as InventoryItemData["category"] })}
                   className="w-full text-xs p-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] font-medium"
                 >
                   <option value="MEDICATION">Medication (Rx)</option>

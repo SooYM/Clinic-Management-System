@@ -1,7 +1,6 @@
 import { Modal } from "../Modal";
 import {
   MENU,
-  type RoleType,
 } from "./modules";
 import { type ModuleKey, type Role } from "../../lib/data/clinic-store";
 
@@ -12,12 +11,6 @@ interface RolePermissionsModalProps {
   onGrantAll: (role: Role) => void;
   onResetDefaults: () => void;
 }
-
-const ROLES_TO_CUSTOMIZE: Array<{ id: Role; label: string; badgeClass: string }> = [
-  { id: "receptionist", label: "Front Desk", badgeClass: "badge-blue" },
-  { id: "doctor", label: "Doctor", badgeClass: "badge-mint" },
-  { id: "nurse", label: "Nurse", badgeClass: "badge-amber" },
-];
 
 export function RolePermissionsModal({
   onClose,

@@ -19,10 +19,10 @@ The current repository is an early web application plus a PostgreSQL foundation.
 
 | Persona | Intended responsibilities | Current state |
 | --- | --- | --- |
-| Receptionist | Patient registration, booking, check-in, queue, invoice and receipt | Patient registration, appointment scheduling, and queue transitions are API-backed; rooms, invoices and receipts remain demo/local |
+| Receptionist | Patient registration, booking, check-in, queue, invoice and receipt | Patient registration, appointment scheduling, room occupancy viewing, and queue transitions are API-backed; invoices and receipts remain demo/local |
 | Doctor/practitioner | Consult, SOAP notes, prescriptions, MC/referral/lab forms | Encounters (`/api/encounters`) and clinical document issue/versioning (`/api/clinical-documents`) are API-backed |
 | Nurse/dispensary | Queue triage, package session, stock dispense | UI demo; no inventory/dispense API |
-| Manager | Branch setup, staff, permissions, operations reports | Basic role-aware UI and schema manager policies; provisioning/data integration incomplete |
+| Manager | Branch setup, staff, permissions, operations reports | Role-aware UI, staff listing (`/api/staff`), sanitized table viewer (`/api/admin/database`), and schema manager policies; live staff registration requires dedicated provisioning |
 | Patient/employer/lab recipient | Receive clinic documents and check authenticity | Browser print preview; live clinical-document QR returns status only, while demo QR is explicitly non-verifying |
 
 Target flow: register/book → arrive/check-in → queue → triage/consultation → prescribe/issue documents → dispense/package redemption → invoice and record payment → optional notifications → append audit/history. Each state transition must eventually be a server-side transaction with tenant/branch authorization and audit evidence. The current UI only simulates parts of this flow.
@@ -40,10 +40,11 @@ Target flow: register/book → arrive/check-in → queue → triage/consultation
 
 | Requirement | Database foundation | Application status |
 | --- | --- | --- |
-| Patient demographics and allergies | `patients` | Patient list/create API writes PostgreSQL; non-demo load errors clear the list and show an error; opt-in demo mode seeds sample data |
-| Scheduling and room allocation | `appointments`, `consultation_rooms` | Appointment booking and updates backed by `/api/appointments`; room allocation UI remains demo |
-| Queue and history | `queue_tickets`, `queue_events` | In live mode list/create and supported transitions persist; PostgreSQL functions atomically write history. Client demo mode keeps patient/check-in/queue operations local. No realtime service |
+| Patient demographics and allergies | `patients` | Patient list/create API writes PostgreSQL; AES-256-GCM encryption with HMAC duplicates; non-demo load errors fail closed; opt-in demo mode seeds sample data |
+| Scheduling and room allocation | `appointments`, `consultation_rooms` | Appointment booking and updates backed by `/api/appointments`; room occupancy joined via `/api/rooms` and queue room dispatch |
+| Queue and history | `queue_tickets`, `queue_events` | In live mode list/create and supported transitions persist; PostgreSQL functions atomically write history with room occupancy tracking. Client demo mode keeps patient/check-in/queue operations local |
 | SOAP encounter and prescriptions | `encounters`, `medication_orders` | Outpatient consultation notes backed by `/api/encounters`; medication dispensary orders remain demo |
+| Staff and database exploration | `staff_members`, allowlisted public tables | Read-only staff listing (`/api/staff`) and sanitized phpMyAdmin-style manager database explorer (`/api/admin/database`) |
 | MC/referral/lab records, versioning, print history | `clinical_documents`, versions, verification tokens, print logs | Live mode issues versioned records to PostgreSQL, allows reception to regenerate from the log, records print attempts before browser print, and displays a status-only verification QR |
 | Inventory and FEFO | items, batches, movements | Schema defined in migration 06; stock operations remain UI demo |
 | Packages | packages and redemptions | Schema defined in migration 06; punch-card operations remain UI demo |

@@ -184,7 +184,8 @@
       "patients",
       "billing",
       "ledger",
-      "alerts"
+      "alerts",
+      "database"
     ],
     "doctor": [
       "queue",
@@ -194,13 +195,15 @@
       "lab",
       "drugs",
       "inventory",
-      "alerts"
+      "alerts",
+      "database"
     ],
     "nurse": [
       "queue",
       "inventory",
       "drugs",
-      "alerts"
+      "alerts",
+      "database"
     ],
     "manager": [
       "register",
@@ -221,5 +224,5 @@
       "portal_settings"
     ]
   },
-  "updatedAt": "2026-10-06T08:17:26.635Z"
+  "updatedAt": "2026-10-07T01:00:07.065Z"
 }
