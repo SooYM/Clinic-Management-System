@@ -82,6 +82,9 @@ Successful collection reads return `{ "data": [] }`; single-resource and mutatio
 | `/api/admin/rooms`                     | GET / POST | Admin rooms; tenant scope validated                                                                      |
 | `/api/admin/rooms/:id`                 | PUT        | Rename/archive selected-branch room; busy room returns 409                                               |
 | `/api/admin/role-modules`              | GET / PUT  | Admin tenant-wide role grants; ADMIN always retains every module                                         |
+| `/api/admin/letterhead`                | GET / PUT  | Admin letterhead logo (PNG/JPEG <=160KB <=2000px), header, address, footer, and optimistic version        |
+| `/api/admin/custom-roles`              | GET / POST | Admin custom module roles listing and creation                                                           |
+| `/api/admin/custom-roles/:id`          | PUT        | Admin custom role edit with optimistic locking version                                                   |
 | `/api/dispensary/encounters`           | GET        | Inventory module: signed, prescription-bearing, undispensed work; excludes SOAP                          |
 | `/api/dispensary/history`              | GET        | Clinical or inventory module: searchable signed prescription history, including completed dispenses      |
 | `/api/admin/audit`                     | GET        | Admin branch audit trail                                                                                 |

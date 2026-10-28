@@ -100,6 +100,15 @@ Serialization preserves user-defined JSON keys and free text, including text res
 Patient history uses timestamp/ID cursors to retain records sharing a timestamp.
 Typed JSON references require service validation; SQL foreign keys do not validate prescription arrays.
 
+## Clinic letterhead and logo branding
+
+Clinic letterhead and logo configuration (`Administration → Clinic settings → Document letterhead`) manages clinic-wide visual branding:
+- **Client pre-processing** (`src/client/logo-upload.ts`): loads source image (PNG/JPEG up to 10 MB, up to 40M pixels), validates format and dimensions, and iteratively scales via an offscreen HTML5 canvas to fit within 1200 px on the longest side and 160 KB base64 data URL.
+- **Server validation** (`src/server/letterhead.ts`): enforces strict embedded data URL format (`data:image/png;base64,...` or `data:image/jpeg;base64,...`), binary magic bytes inspection (valid PNG IHDR / JPEG SOF chunks), max 2000 × 2000 resolution, and max 160 KB payload size.
+- **Persistence and optimistic locking**: stored in `tenants.letterhead` JSON with an optimistic version counter via `GET/PUT /api/admin/letterhead`.
+- **Live portal propagation**: successful saves broadcast new branding across authenticated staff sessions via `/api/bootstrap` (`tenant.logoDataUrl`), updating portal sidebar navigation and header icons in real time.
+- **Immutable document snapshots**: newly issued receipts, medicine label stickers (`dispenses.label_snapshot`), and clinical certificates snapshot the active logo, letterhead text, and effective address at issue time, preserving tamper-evident historical audit integrity.
+
 ## Notifications and live updates
 
 Transactional outbox creation separates clinic completion from external provider availability.

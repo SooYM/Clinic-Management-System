@@ -22,6 +22,7 @@ Read the [documentation index](docs/README.md) for system specification, archite
 - Malaysian/non-Malaysian registration, formatted IC, derived birth date/gender and postcode city/state lookup.
 - Searchable appointment booking, queue management, administrator-configured rooms and GP practitioner accounts.
 - Signed SOAP consultations, structured medication instructions, stock receipt and pending-prescription dispensing.
+- Clinic logo upload and letterhead branding (`Administration → Clinic settings → Document letterhead`): client-side canvas downscaling (up to 10 MB PNG/JPEG source downscaled to 1200px / 160 KB), server raster validation (up to 2000×2000px, 160 KB), real-time portal sidebar branding, and immutable branding snapshots across receipts, medicine stickers, and clinical documents.
 - Full-system clinical documents, split payments, notifications and audit records.
 - Role-to-module access and in-app staff guide.
 

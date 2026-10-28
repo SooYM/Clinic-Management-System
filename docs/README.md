@@ -17,6 +17,7 @@ Patient QR registration requires the full persistent backend for cross-device re
 | [Complete column dictionary](DATA_DICTIONARY.md)                     | Every column, type, nullability, default and generated expression |
 | [Final schema SQL](schema.mysql.sql)                                 | Schema-only reference snapshot after migration 025; no records    |
 | [API contracts](API.md)                                              | Routes, authorization, errors and payloads                        |
+| [Clinical pricing and letterhead](CLINICAL_PRICING_AND_LETTERHEAD.md) | Clinical pricing, medication forms, consumables and letterhead logo upload |
 | [Requirements traceability](REQUIREMENTS.md)                         | Scope mapped to implementation and evidence                       |
 | [Test cases](TEST_CASES.md)                                          | Preconditions, actions, expected results and coverage             |
 | [Testing](TESTING.md)                                                | Reproducible automated and browser verification                   |
